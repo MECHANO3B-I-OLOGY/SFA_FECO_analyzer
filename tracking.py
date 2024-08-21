@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import pandas as pd
 import screeninfo
+from scipy.interpolate import splprep, splev
 
 from enums import *
 from exceptions import error_popup, warning_popup
@@ -173,3 +174,70 @@ def necking_point_y_axis(
         # record_data(file_mode, dist_data, "output/Necking_Point_Output.csv")
         cap.release()
         cv2.destroyAllWindows()
+
+def analyze_edges(frame):
+    # Convert to grayscale if needed
+    if len(frame.shape) == 3 and frame.shape[2] == 3:
+        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    else:
+        gray_frame = frame
+
+    # Convert to 8-bit image if not already
+    if gray_frame.dtype != np.uint8:
+        gray_frame = cv2.convertScaleAbs(gray_frame)
+
+    # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
+    clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
+    contrast_enhanced = clahe.apply(gray_frame)
+
+    # Apply Gaussian Blurring to reduce noise
+    blurred_image = cv2.GaussianBlur(contrast_enhanced, (0, 5), 5)
+
+    # Calculate the mean pixel intensity
+    mean_intensity = np.mean(blurred_image)
+
+    # Apply thresholding using the mean intensity as the threshold value
+    _, thresholded_image = cv2.threshold(blurred_image, mean_intensity * 1.15, 255, cv2.THRESH_BINARY)
+
+    # Use Canny edge detection to find edges
+    edges = cv2.Canny(thresholded_image, 50, 150)
+
+    # Convert the edges to BGR so we can blend with the original frame
+    edge_colored = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+
+    # Blend the edges with the original frame (which is expected to be in BGR format)
+    edge_blended_frame = cv2.addWeighted(frame, 0.7, edge_colored, 0.3, 0)
+    
+    # Find contours in the edge-detected image
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Initialize an image to draw the smoothed contours
+    smoothed_contours_img = np.zeros_like(frame)
+
+    for contour in contours:
+        contour = contour.reshape(-1, 2)
+        
+        # Exclude contours that are too small or do not have enough points
+        if len(contour) > 3:
+            try:
+                # Spline approximation
+                tck, u = splprep([contour[:, 0], contour[:, 1]], s=2)
+                x_new, y_new = splev(np.linspace(0, 1, 1000), tck)
+                smooth_contour = np.vstack((x_new, y_new)).T
+
+                # Draw smooth contour on the original frame
+                smooth_contour = np.round(smooth_contour).astype(int)
+                for i in range(len(smooth_contour) - 1):
+                    cv2.line(frame, tuple(smooth_contour[i]), tuple(smooth_contour[i + 1]), (0, 255, 0), 2)
+            except Exception as e:
+                # Handle any errors during spline fitting
+                print(f"Error fitting spline to contour: {e}")
+                
+    # Convert the smoothed contours to BGR format if needed
+    if len(smoothed_contours_img.shape) == 2:
+        smoothed_contours_img = cv2.cvtColor(smoothed_contours_img, cv2.COLOR_GRAY2BGR)
+
+    # Blend the smoothed contours with the original frame
+    contour_blended_frame = cv2.addWeighted(frame, 0.7, smoothed_contours_img, 0.3, 0)
+
+    return contour_blended_frame
