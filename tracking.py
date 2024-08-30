@@ -175,7 +175,7 @@ def necking_point_y_axis(
         cap.release()
         cv2.destroyAllWindows()
 
-def analyze_edges(frame):
+def detect_edges(frame, smoothing_factor=500):
     # Convert to grayscale if needed
     if len(frame.shape) == 3 and frame.shape[2] == 3:
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -202,42 +202,77 @@ def analyze_edges(frame):
     # Use Canny edge detection to find edges
     edges = cv2.Canny(thresholded_image, 50, 150)
 
-    # Convert the edges to BGR so we can blend with the original frame
-    edge_colored = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
-
-    # Blend the edges with the original frame (which is expected to be in BGR format)
-    edge_blended_frame = cv2.addWeighted(frame, 0.7, edge_colored, 0.3, 0)
-    
     # Find contours in the edge-detected image
     contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # Initialize an image to draw the smoothed contours
-    smoothed_contours_img = np.zeros_like(frame)
+    # Smooth the contours
+    smoothed_contours_img = np.zeros_like(edges)
 
     for contour in contours:
         contour = contour.reshape(-1, 2)
-        
-        # Exclude contours that are too small or do not have enough points
+
         if len(contour) > 3:
             try:
                 # Spline approximation
-                tck, u = splprep([contour[:, 0], contour[:, 1]], s=2)
+                tck, _ = splprep([contour[:, 0], contour[:, 1]], s=smoothing_factor)
                 x_new, y_new = splev(np.linspace(0, 1, 1000), tck)
                 smooth_contour = np.vstack((x_new, y_new)).T
-
-                # Draw smooth contour on the original frame
                 smooth_contour = np.round(smooth_contour).astype(int)
+
+                # Draw the smooth contour on the smoothed_contours_img
                 for i in range(len(smooth_contour) - 1):
-                    cv2.line(frame, tuple(smooth_contour[i]), tuple(smooth_contour[i + 1]), (0, 255, 0), 2)
+                    cv2.line(smoothed_contours_img, tuple(smooth_contour[i]), tuple(smooth_contour[i + 1]), 255, 1)
             except Exception as e:
-                # Handle any errors during spline fitting
                 print(f"Error fitting spline to contour: {e}")
-                
-    # Convert the smoothed contours to BGR format if needed
-    if len(smoothed_contours_img.shape) == 2:
-        smoothed_contours_img = cv2.cvtColor(smoothed_contours_img, cv2.COLOR_GRAY2BGR)
 
-    # Blend the smoothed contours with the original frame
-    contour_blended_frame = cv2.addWeighted(frame, 0.7, smoothed_contours_img, 0.3, 0)
+    return smoothed_contours_img
 
-    return contour_blended_frame
+def analyze_edges(frame):
+    # Get the edges from the core function
+    edges = detect_edges(frame)
+
+    # Find contours in the edge-detected image
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Initialize variables to store the leftmost points
+    leftmost_points = []
+
+    # Buffer distance to ignore points that are too close to previously detected ones
+    buffer_distance = 100
+
+    # List to store all potential leftmost points before filtering
+    all_leftmost_points = []
+
+    for contour in contours:
+        # Get the leftmost point of the contour
+        leftmost_point = tuple(contour[contour[:, :, 0].argmin()][0])
+        all_leftmost_points.append(leftmost_point)
+
+    # Sort points by their x-coordinate to ensure left-to-right processing
+    all_leftmost_points.sort(key=lambda pt: pt[0])
+
+    # Filter points to keep only those that are sufficiently far from the last detected one
+    for point in all_leftmost_points:
+        if not leftmost_points or abs(point[0] - leftmost_points[-1][0]) > buffer_distance:
+            leftmost_points.append(point)
+    print(leftmost_points)
+    # Return the list of filtered leftmost points
+    return leftmost_points
+
+def display_edges(frame):
+    smoothed_edges = detect_edges(frame)
+
+    # Call analyze_edges to get the leftmost points
+    leftmost_points = analyze_edges(frame)
+
+    # Convert smoothed edges to BGR for display
+    edges_colored = cv2.cvtColor(smoothed_edges, cv2.COLOR_GRAY2BGR)
+
+    # Blend the smoothed edges with the original frame
+    edge_blended_frame = cv2.addWeighted(frame, 0.7, edges_colored, 0.3, 0)
+
+    # Draw vertical lines at the leftmost points
+    for point in leftmost_points:
+        cv2.line(edge_blended_frame, (point[0], 0), (point[0], frame.shape[0]), (0, 0, 255), 2)
+
+    return edge_blended_frame
