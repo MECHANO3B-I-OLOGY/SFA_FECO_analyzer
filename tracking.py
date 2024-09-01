@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import screeninfo
 from scipy.interpolate import splprep, splev
+from PIL import Image, ImageTk, ImageSequence
 
 from enums import *
 from exceptions import error_popup, warning_popup
@@ -59,132 +60,21 @@ def find_furthest_left_average_y(image_path):
     else:
         return None
 
-def necking_point_y_axis(
-        cap,
-        frame_start,
-        frame_end,
-        percent_crop_top,
-        percent_crop_bottom,
-        binarize_intensity_thresh,
-        frame_record_interval,
-        frame_interval,
-        time_units,
-        file_mode,
-        video_file_name,
-        data_label
-    ):
-    """necking point detection loop on the x-axis
-    Detects and records the necking point in each frame of a video. The necking point is defined as the shortest horizontal distance
-    between two vertical edges within a specified region of interest. The function preprocesses the frames, performs edge detection,
-    and identifies the left and right edges to calculate the necking point, highlighting it in red on the visual output.
-
-    Args:
-        cap (cv2.VideoCapture): Video capture object loaded with the video.
-        frame_start (int): Frame number to start processing.
-        frame_end (int): Frame number to end processing.
-        percent_crop_top (float): Percentage of the frame's top side to exclude from processing.
-        percent_crop_bottom (float): Percentage of the frame's bottom side to exclude from processing.
-        binarize_intensity_thresh (int): Threshold for binarization of the frame to facilitate edge detection.
-        frame_record_interval (int): Interval at which frames are processed.
-        frame_interval (float): Real-world time interval between frames, used in time calculations.
-        time_units (str): Units of time (e.g., 'seconds', 'minutes') for the output data.
-        file_mode (FileMode): Specifies whether to overwrite or append data in the output file.
-        video_file_name (str): Name of the video file being processed.
-        data_label (str): Unique identifier for the data session.
-    """
-    y_interval = 50  # interval for how many blue line visuals to display
-    frame_num = frame_start
-    dist_data = {'1-Frame': [], f'1-Time({time_units})': [], '1-y at necking point (px)': [], '1-x necking distance (px)': [], '1-video_file_name': video_file_name, '1-detection_method': 'min_distance', '1-data_label': data_label}
-    percent_crop_top *= 0.01
-    percent_crop_bottom *= 0.01
-
-    while True:  # read frame by frame until the end of the video
-        ret, frame = cap.read()
-        frame_num += frame_record_interval
-        if frame_record_interval != 1:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
-
-        if not ret:
-            break
-
-        scaled_frame, scale_factor = scale_frame(frame)  # scale the frame
-        gray_frame = cv2.cvtColor(scaled_frame, cv2.COLOR_BGR2GRAY)  # convert frame to gray
-        _, binary_frame = cv2.threshold(gray_frame, binarize_intensity_thresh, 255, cv2.THRESH_BINARY)  # threshold to binarize image
-
-        # error checking for appropriate binarization threshold
-        if np.all(binary_frame == 255):
-            msg = "Binarization threshold too low,\nfound no pixels below the threshold.\n\nPlease adjust the threshold (default is 120)"
-            error_popup(msg)
-        if np.all(binary_frame == 0):
-            msg = "Binarization threshold too high,\nfound no pixels above the threshold.\n\nPlease adjust the threshold (default is 120)"
-
-        edges = cv2.Canny(binary_frame, 0, 2)  # edge detection, nums are gradient thresholds
-
-        y_samples = []
-        x_distances = []
-        x_line_values = []
-
-        frame_draw = scaled_frame.copy()
-        frame_draw[edges > 0] = [0, 255, 0]  # draw edges
-
-        # remove x% of edges from consideration of detection
-        vertical_pixels_top = 0
-        vertical_pixels_bottom = scaled_frame.shape[0]
-        if percent_crop_top != 0.:
-            top_pixels_removed = int(percent_crop_top * scaled_frame.shape[0])
-            vertical_pixels_top = max(0, top_pixels_removed)
-        if percent_crop_bottom != 0.:
-            bottom_pixels_removed = int(percent_crop_bottom * scaled_frame.shape[0])
-            vertical_pixels_bottom = min(scaled_frame.shape[0], scaled_frame.shape[0] - bottom_pixels_removed)
-
-        for y in range(vertical_pixels_top, vertical_pixels_bottom):
-            edge_pixels = np.nonzero(edges[y, :])[0]  # find x coord of edge pixels in cur row
-
-            if edge_pixels.size > 0:  # if edge pixels in cur row,
-                dist = np.abs(edge_pixels[0] - edge_pixels[-1])  # find distance of left and right edges
-                y_samples.append(y)
-                x_line_values.append((edge_pixels[0], edge_pixels[-1]))
-                x_distances.append(dist)
-
-                if y % y_interval == 0:  # draw visualization lines at every y_interval pixels
-                    # draw horizontal lines connecting edges for visualization
-                    cv2.line(frame_draw, (edge_pixels[0], y), (edge_pixels[-1], y), (200, 0, 0), 1)
-
-        # find index of smallest distance
-        necking_distance = np.min(x_distances)
-        necking_pt_indices = np.where(x_distances == necking_distance)[0]
-        necking_pt_ind = int(np.median(necking_pt_indices))
-
-        # record and save data using original resolution
-        if frame_interval == 0:
-            dist_data[f'1-Time({time_units})'].append(np.float16((frame_num - frame_start) / cap.get(5)))
-        else:
-            dist_data[f'1-Time({time_units})'].append(np.float16((frame_num - frame_start) * frame_interval))
-        dist_data['1-Frame'].append(frame_num - frame_start)
-        dist_data['1-y at necking point (px)'].append(int(y_samples[necking_pt_ind] / scale_factor))
-        dist_data['1-x necking distance (px)'].append(int(necking_distance / scale_factor))
-
-        cv2.line(frame_draw, (x_line_values[necking_pt_ind][0], y_samples[necking_pt_ind]), (x_line_values[necking_pt_ind][1], y_samples[necking_pt_ind]), (0, 0, 255), 2)
-
-        cv2.imshow('Necking Point Visualization', frame_draw)
-
-        if cv2.waitKey(1) == 27 or frame_end <= frame_num:
-            break
-
-        # record_data(file_mode, dist_data, "output/Necking_Point_Output.csv")
-        cap.release()
-        cv2.destroyAllWindows()
-
 def detect_edges(frame, smoothing_factor=500):
+    if frame.dtype != np.uint8:
+        # Normalize if necessary
+        if np.issubdtype(frame.dtype, np.floating):
+            frame = (frame * 255).astype(np.uint8)
+        elif frame.dtype == np.uint16:
+            frame = (frame / 256).astype(np.uint8)
+        else:
+            frame = frame.astype(np.uint8)
+
     # Convert to grayscale if needed
     if len(frame.shape) == 3 and frame.shape[2] == 3:
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     else:
         gray_frame = frame
-
-    # Convert to 8-bit image if not already
-    if gray_frame.dtype != np.uint8:
-        gray_frame = cv2.convertScaleAbs(gray_frame)
 
     # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
     clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
@@ -260,6 +150,19 @@ def analyze_edges(frame):
     return leftmost_points
 
 def display_edges(frame):
+
+    # Normalize the frame to the correct range and type if needed
+    if frame.dtype != np.uint8:
+        # Normalize to 0-255 range if it's a floating point type
+        if np.issubdtype(frame.dtype, np.floating):
+            frame = (frame * 255).astype(np.uint8)
+        # Convert 16-bit to 8-bit by normalizing
+        elif frame.dtype == np.uint16:
+            frame = (frame / 256).astype(np.uint8)
+        else:
+            frame = frame.astype(np.uint8)  # Fallback to direct conversion
+
+
     smoothed_edges = detect_edges(frame)
 
     # Call analyze_edges to get the leftmost points
@@ -268,11 +171,32 @@ def display_edges(frame):
     # Convert smoothed edges to BGR for display
     edges_colored = cv2.cvtColor(smoothed_edges, cv2.COLOR_GRAY2BGR)
 
+    # Convert frame to BGR if it's a single channel (grayscale)
+    if len(frame.shape) == 2:  # Grayscale image
+        frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+
+    # Ensure both images are the same size
+    if frame.shape[:2] != edges_colored.shape[:2]:
+        edges_colored_resized = cv2.resize(edges_colored, (frame.shape[1], frame.shape[0]))
+    else:
+        edges_colored_resized = edges_colored
+
+    # Check that edges_colored_resized is also uint8
+    if edges_colored_resized.dtype != np.uint8:
+        edges_colored_resized = edges_colored_resized.astype(np.uint8)
+
+    # Normalize the frame to the range 0-255
+    frame = cv2.normalize(frame, None, 0, 255, cv2.NORM_MINMAX)
+
     # Blend the smoothed edges with the original frame
-    edge_blended_frame = cv2.addWeighted(frame, 0.7, edges_colored, 0.3, 0)
+    edge_blended_frame = cv2.addWeighted(frame, 0.7, edges_colored_resized, 0.3, 10)  # Try different gamma values
 
     # Draw vertical lines at the leftmost points
     for point in leftmost_points:
-        cv2.line(edge_blended_frame, (point[0], 0), (point[0], frame.shape[0]), (0, 0, 255), 2)
+        if 0 <= point[0] < frame.shape[1]:  # Ensure the point is within the image width
+            cv2.line(edge_blended_frame, (point[0], 0), (point[0], frame.shape[0]), (0, 0, 255), 2)
 
-    return edge_blended_frame
+    # Convert the result to PIL Image
+    pil_image = Image.fromarray(cv2.cvtColor(edge_blended_frame, cv2.COLOR_BGR2RGB))
+
+    return pil_image
