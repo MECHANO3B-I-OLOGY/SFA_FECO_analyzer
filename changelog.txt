@@ -1,0 +1,4 @@
+
+
+8/31/24 - Isaac
+- Got .tif files to work properly
