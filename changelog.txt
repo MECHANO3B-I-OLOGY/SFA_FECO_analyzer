@@ -1,4 +1,7 @@
 
+9/8/24 - Isaac
+- Got crop and frame select slider to work 
+- Got fine_aprrox working to an acceptable level
 
 8/31/24 - Isaac
 - Got .tif files to work properly

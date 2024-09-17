@@ -1,9 +1,15 @@
 import cv2
+import csv
+import pprint
 import numpy as np
 import pandas as pd
 import screeninfo
 from scipy.interpolate import splprep, splev
+from scipy.optimize import curve_fit
 from PIL import Image, ImageTk, ImageSequence
+
+# temp?
+import matplotlib.pyplot as plt
 
 from enums import *
 from exceptions import error_popup, warning_popup
@@ -117,7 +123,7 @@ def detect_edges(frame, smoothing_factor=500):
 
     return smoothed_contours_img
 
-def analyze_edges(frame):
+def rough_approx_poi(frame):
     # Get the edges from the core function
     edges = detect_edges(frame)
 
@@ -145,7 +151,7 @@ def analyze_edges(frame):
     for point in all_leftmost_points:
         if not leftmost_points or abs(point[0] - leftmost_points[-1][0]) > buffer_distance:
             leftmost_points.append(point)
-    print(leftmost_points)
+    # print(leftmost_points)
     # Return the list of filtered leftmost points
     return leftmost_points
 
@@ -165,8 +171,8 @@ def display_edges(frame):
 
     smoothed_edges = detect_edges(frame)
 
-    # Call analyze_edges to get the leftmost points
-    leftmost_points = analyze_edges(frame)
+    # Call rough_approx_poi to get the leftmost points
+    leftmost_points = rough_approx_poi(frame)
 
     # Convert smoothed edges to BGR for display
     edges_colored = cv2.cvtColor(smoothed_edges, cv2.COLOR_GRAY2BGR)
@@ -200,3 +206,184 @@ def display_edges(frame):
     pil_image = Image.fromarray(cv2.cvtColor(edge_blended_frame, cv2.COLOR_BGR2RGB))
 
     return pil_image
+
+def save_data_as_csv(data, filename):
+    """
+    Save data to a CSV file.
+
+    :param data: List of dictionaries, each containing data for a frame
+    :param filename: Desired filename (without extension)
+    """
+    # Get the field names from the first dictionary in the list
+    fieldnames = data[0].keys()
+
+    # Write data to CSV file
+    with open(f"{filename}.csv", mode="w", newline='') as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()  # Write column headers
+        for row in data:
+            writer.writerow(row)
+
+    print(f"Data saved to {filename}.csv")
+
+def fine_approx_poi(tiff_file_path, y_start, y_end, filename=None, visualize=False):
+    """
+    Fine approximation of the points of interest using Y crop coordinates.
+    
+    :param tiff_file_path: Path to the TIFF file.
+    :param y_start: Y-coordinate start of the crop area.
+    :param y_end: Y-coordinate end of the crop area.
+    :param filename: Name of generated CSV file. Default is None.
+    :param visualize: If True, display the frame and ROI for debugging purposes.
+    """
+    visualize = True 
+    # visualize = False
+    # Convert y_start and y_end to integers
+    y_start = int(y_start)
+    y_end = int(y_end)
+    
+    # Open the TIFF file
+    tiff = Image.open(tiff_file_path)
+    num_frames = tiff.n_frames  # Number of frames in the TIFF file
+
+    # Prepare list to hold data for all frames
+    data = []
+
+    for frame_index in range(num_frames):
+        # Select the current frame
+        tiff.seek(frame_index)
+        frame = np.array(tiff)
+
+        # Crop the frame using the Y crop coordinates
+        cropped_frame = frame[y_start:y_end, :]
+
+        # Run rough_approx_poi to get leftmost points
+        leftmost_points = rough_approx_poi(cropped_frame)
+
+        # Approximate the point of interest using a bounding box
+        for point in leftmost_points:
+            x, y = point
+            # Define the region of interest around the leftmost point
+            box_size = 20  # Define the size of the box for collapsing intensity
+            # Define new ROI coordinates
+            x_start = x - int(.5 * box_size)   # Left edge starts at the detected x point
+            x_end = x + int(1.5 * box_size)  # Extend to the right by 2 * box_size
+
+            # Center the ROI vertically around y
+            y_start_roi = max(0, y - box_size)  # Start box_size above the detected y point
+            y_end_roi = min(cropped_frame.shape[0], y + box_size)  # End box_size below the detected y point
+
+            # Skip ROI if it extends beyond the cropped frame dimensions
+            if x_end > cropped_frame.shape[1] or y_end_roi > cropped_frame.shape[0] or x_start < 0:
+                print(f"Skipping invalid or empty ROI at frame {frame_index + 1}, point ({x}, {y})")
+                continue
+
+            # Crop the region of interest
+            roi = cropped_frame[y_start_roi:y_end_roi, x_start:x_end]
+
+            # Normalize the ROI to enhance contrast
+            roi = normalize_hist_equalization(roi)
+
+            # Collapse intensities along X and Y axes
+            collapsed_x = np.sum(roi, axis=0)
+            collapsed_y = np.sum(roi, axis=1)
+
+            y_values = np.arange(len(collapsed_y))
+            y_center = find_center_of_intensity(y_values, collapsed_y)
+
+            x_values = np.arange(len(collapsed_x))
+            x_center = find_center_of_intensity(x_values, collapsed_x)
+
+            # Visualize the frame and the ROI
+            if visualize:
+                plt.figure(figsize=(10, 5))
+
+                # Display the full cropped frame
+                plt.subplot(1, 2, 1)
+                plt.imshow(cropped_frame, cmap='gray')
+                plt.title(f"Frame {frame_index + 1} - Cropped")
+                plt.scatter(x_center + x_start, y_center + y_start_roi, color='red', marker='x', label='Center of Intensity')  # Corrected scatter coordinates
+
+                # Display the ROI
+                plt.subplot(1, 2, 2)
+                plt.imshow(roi, cmap='gray')
+                plt.title(f"ROI for point ({x}, {y}) in Frame {frame_index + 1}")
+                plt.scatter(x_center, y_center, color='red', marker='x', label='Center of Intensity')  # Corrected scatter in ROI coordinates
+
+                # Add legends to the plots
+                plt.subplot(1, 2, 1)
+                plt.legend()
+
+                plt.subplot(1, 2, 2)
+                plt.legend()
+
+                plt.show()
+
+            # Store the results in the data list
+            data.append({
+                "Frame": frame_index + 1,
+                "X Center": x_center,
+                "Y Center": y_center
+            })
+
+    # If the filename is not provided, ask the user
+    if not filename:
+        filename = input("Enter the desired filename for the CSV (without extension): ") + '.csv'
+
+    # Save the data to CSV
+    save_data_as_csv(data, filename)
+    print(f"Data saved to {filename}")
+
+def gaussian(x, amplitude, mean, stddev):
+    return amplitude * np.exp(-((x - mean) ** 2) / (2 * stddev ** 2))
+
+# Define your fitting function
+def find_center_of_intensity(values, collapsed_values):
+    initial_amplitude = np.max(collapsed_values)
+    initial_mean = np.argmax(collapsed_values)
+    initial_sigma = np.std(values)  # Use the standard deviation of the y-values as an initial guess
+
+    print(initial_amplitude)
+
+    try:
+        popt_y, _ = curve_fit(
+            gaussian,
+            values,
+            collapsed_values,
+            p0=[initial_amplitude, initial_mean, initial_sigma],
+            maxfev=2000
+        )
+        y_center = popt_y[1]
+        if y_center > 300 or y_center < 0:
+            raise RuntimeError
+    except RuntimeError:
+        print("Gaussian fitting failed; using average value as fallback.")
+        y_center = np.mean(values)
+
+    return y_center
+
+def normalize_min_max(roi):
+    """
+    Normalize the pixel values of the ROI to the range [0, 1].
+    
+    :param roi: The region of interest (2D numpy array).
+    :return: Normalized ROI.
+    """
+    roi_min = np.min(roi)
+    roi_max = np.max(roi)
+    normalized_roi = (roi - roi_min) / (roi_max - roi_min)
+    return normalized_roi
+
+def normalize_hist_equalization(roi):
+    """
+    Apply histogram equalization to enhance contrast.
+    
+    :param roi: The region of interest (2D numpy array).
+    :return: Contrast-enhanced ROI.
+    """
+    
+    if roi.dtype != np.uint8:
+        roi = (255 * normalize_min_max(roi)).astype(np.uint8)
+        
+    equalized_roi = cv2.equalizeHist(roi)
+    return equalized_roi

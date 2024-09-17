@@ -11,10 +11,10 @@ class SFA_FECO_UI:
         Main UI function for SFA FECO 
     """
     def __init__(self, root):
-        
         self.root = root
         self.root.title("SFA FECO Analyzer")
         self.file_path = None
+        self.data_file_path = None  # To store the chosen or generated data file path
 
         # Setup styles
         self.setup_styles()
@@ -31,32 +31,49 @@ class SFA_FECO_UI:
         screen_width = root.winfo_screenwidth()
         screen_height = root.winfo_screenheight()
 
-        # Define scaling factors 
+        # Define scaling factors
         window_width = int(screen_width * 0.5)
         window_height = int(screen_height * 0.7)
 
         # Set the window size and position
         self.root.geometry(f"{window_width}x{window_height}")
 
-        # File select button
+        # Step 1: Select File
+        step1_label = ttk.Label(root, text="STEP 1: Select File", style='Step.TLabel')
+        step1_label.grid(row=0, column=0, sticky='w', padx=10, pady=(10, 0))
+
         self.select_button = ttk.Button(root, text="Select File", command=self.select_file, style='Regular.TButton')
-        self.select_button.grid(row=0, column=0)
+        self.select_button.grid(row=0, column=1, sticky='w')
 
         # Label to display the selected file's name
-        self.file_label = ttk.Label(root, text="")
-        self.file_label.grid(row=1, column=0)
+        self.file_label = ttk.Label(root, text="", style='Regular.TLabel')
+        self.file_label.grid(row=1, column=0, columnspan=2, sticky='w', padx=10)
 
-        # Label to display the setup button
-        self.file_label = ttk.Label(text="STEP 1: Set analysis area")
-        self.file_label.grid(row=1, column=0)
+        # Step 2: Prepare/Preview
+        step2_label = ttk.Label(root, text="STEP 2: Prepare/Preview Analysis", style='Step.TLabel')
+        step2_label.grid(row=2, column=0, sticky='w', padx=10)
 
-        # Analysis setup button
         self.setup_button = ttk.Button(root, text="Set up", command=self.open_frame_inspect_window, style='Regular.TButton')
-        self.setup_button.grid(row=2, column=0)
+        self.setup_button.grid(row=2, column=1, sticky='w')
+
+        # Step 3: Analyze
+        step3_label = ttk.Label(root, text="STEP 3: Analyze", style='Step.TLabel')
+        step3_label.grid(row=3, column=0, sticky='w', padx=10)
+
+        self.analyze_button = ttk.Button(root, text="Analyze", command=self.analyze, style='Regular.TButton')
+        self.analyze_button.grid(row=3, column=1, sticky='w')
+
+        # File field for the output data
+        self.data_file_label = ttk.Label(root, text="No file selected", style='Regular.TLabel')
+        self.data_file_label.grid(row=4, column=0, columnspan=2, sticky='w', padx=10)
+
+        # Button to choose an existing data file
+        self.choose_data_button = ttk.Button(root, text="Choose Data File", command=self.choose_data_file, style='Regular.TButton')
+        self.choose_data_button.grid(row=5, column=0, sticky='w', padx=10)
 
         # Button to close the application
         self.close_button = ttk.Button(root, text="Close", command=self.close_popup, style='Regular.TButton')
-        self.close_button.grid(row=3, column=0, pady=(0, 10))
+        self.close_button.grid(row=6, column=0, pady=(10, 0))
 
     def setup_styles(self):
         self.btn_style = ttk.Style()
@@ -74,7 +91,7 @@ class SFA_FECO_UI:
             title='Browse for TIFF file',
             filetypes=[("TIFF Files", "*.tif *.tiff")]
         )"""
-        file_path = "P1 HW.tif"
+        file_path = "FR1-P1-bis.tif"
         if file_path:
             # Save the selected file path
             self.file_path = file_path
@@ -95,11 +112,33 @@ class SFA_FECO_UI:
         Handle the ROI data returned from the Frame_Inspect_Window.
         :param roi_data: Tuple containing (y_start, y_end, offset, frame).
         """
-        y_start, y_end, offset, cropped_frame = roi_data
+        self.y_start, self.y_end, self.offset, cropped_frame = roi_data
         # print(f"ROI Selected: Y-Start: {y_start}, Y-End: {y_end}, Offset: {offset}")
 
     def close_popup(self):
         self.root.destroy()
+    
+    def analyze(self):
+        # Ensure a file is selected before analyzing
+        if self.file_path:
+            # Ask the user for a filename to save the data
+            # filename = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
+            filename = "test3"
+            if filename:
+                if hasattr(self, 'y_start') and hasattr(self, 'y_end'):
+                    # Call the fine approximation function with the Y crop info
+                    tracking.fine_approx_poi(self.file_path, self.y_start, self.y_end, filename,)
+                    self.data_file_path = filename
+                    self.data_file_label.config(text=f"Data saved: {self.data_file_path}")
+                else:
+                    print("Y crop coordinates are not set. Please set up the analysis area.")
+
+
+    def choose_data_file(self):
+        # Allow the user to choose an existing data file
+        self.data_file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
+        if self.data_file_path:
+            self.data_file_label.config(text=f"Using file: {self.data_file_path}")
 
 class Frame_Inspect_Window:
     def __init__(self, file_path, roi_callback=None):
@@ -167,7 +206,7 @@ class Frame_Inspect_Window:
 
     def display_frame(self):
         """Display the current frame on the canvas."""
-        # Ensure self.cropped_frame and self.original_frame are PIL images if needed
+        # 
         frame = self.cropped_frame.copy() if self.cropped_frame is not None else self.original_frame.copy()
 
         if self.edge_var.get():  # Apply edge analysis if enabled
@@ -211,26 +250,37 @@ class Frame_Inspect_Window:
         if self.roi_y_start is not None and self.roi_y_end is not None:
             y_start = min(self.roi_y_start, self.roi_y_end)
             y_end = max(self.roi_y_start, self.roi_y_end)
-            frame = self.original_frame.copy()  # Make sure this is a PIL image
+            frame = self.original_frame.copy()  # Ensure this is a PIL image
 
-            frame_width, frame_height = frame.size
-            print(f"Frame Size: {frame_width}x{frame_height}")
-            print(f"Cropping Coordinates: {0}, {y_start}, {frame_width}, {y_end}")
+            # Use the new crop_frame method
+            self.cropped_frame = self.crop_frame()
 
-            if y_start < frame_height and y_end <= frame_height and y_start < y_end:
-                self.cropped_frame = frame.crop((0, y_start, frame_width, y_end))
+            if self.cropped_frame:
                 self.current_offset = y_start
-            else:
-                print("Invalid cropping coordinates.")
+                self.draw_rectangle = False
+                self.display_frame()
 
-            self.draw_rectangle = False
-            self.display_frame()
+                # Call the callback if provided
+                if self.roi_callback:
+                    self.roi_callback((y_start, y_end, self.current_offset, self.cropped_frame))
+                else:
+                    print("No callback provided. ROI selection will not be returned.")
 
-            # Check if the callback is provided and callable
-            if self.roi_callback:
-                self.roi_callback((y_start, y_end, self.current_offset, self.cropped_frame))
-            else:
-                print("No callback provided. ROI selection will not be returned to the main window.")
+    def crop_frame(self):
+        """
+        Crop the frame based on the provided Y coordinates.
+        """
+        frame_width, frame_height = self.original_frame.size
+
+        self.current_offset = min(self.roi_y_start, self.roi_y_end)
+
+        # Ensure y_start and y_end are within the frame height and valid
+        if self.roi_y_start < frame_height and self.roi_y_end <= frame_height and self.roi_y_start < self.roi_y_end:
+            cropped_frame = self.original_frame.crop((0, self.roi_y_start, frame_width, self.roi_y_end))
+            return cropped_frame
+        else:
+            print("Invalid cropping coordinates.")
+            return None    
 
     def draw_roi_rectangle(self):
         """Draw the ROI rectangle on the canvas."""
@@ -264,7 +314,19 @@ class Frame_Inspect_Window:
         """Handle slider changes to update the current frame."""
         self.current_frame = int(value)
         self.original_frame = self.frames[self.current_frame]
-        self.display_frame()
+
+        # Apply cropping using existing ROI if defined
+        if self.roi_y_start is not None and self.roi_y_end is not None:
+            self.cropped_frame = self.crop_frame()
+
+            if self.cropped_frame:
+                self.draw_rectangle = False
+                self.display_frame()
+            else:
+                print("Cropping failed due to invalid coordinates.")
+        else:
+            # Display the full frame if no ROI is defined
+            self.display_frame()
 
 # Example usage
 if __name__ == "__main__":
