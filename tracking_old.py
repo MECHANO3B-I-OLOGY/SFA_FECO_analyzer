@@ -42,6 +42,30 @@ def scale_frame(frame, scale_factor=0.9):
     scaled_frame = cv2.resize(frame, (int(frame.shape[1] * min_scale_factor), int(frame.shape[0] * min_scale_factor)))
     return scaled_frame, min_scale_factor
 
+def find_furthest_left_average_y(image_path):
+    # Load the image in grayscale
+    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    
+    # Threshold the image to binarize it (convert to black and white)
+    _, binary_image = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY)
+
+    # Find contours in the image
+    contours, _ = cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    leftmost_points = []
+
+    for contour in contours:
+        # Find the leftmost point in each contour
+        leftmost_point = tuple(contour[contour[:, :, 0].argmin()][0])
+        leftmost_points.append(leftmost_point)
+
+    # Calculate the average y-value of the leftmost points
+    if leftmost_points:
+        avg_y = np.mean([point[1] for point in leftmost_points])
+        return avg_y
+    else:
+        return None
+
 def detect_edges(frame, smoothing_factor=500):
     if frame.dtype != np.uint8:
         # Normalize if necessary
@@ -131,109 +155,6 @@ def rough_approx_poi(frame):
     # Return the list of filtered leftmost points
     return leftmost_points
 
-def process_timelapse(file_path, y_start, y_end, filename):
-    """
-    Processes the TIFF video by performing vertical summing and normalization,
-    then builds the final "timelapse" image. Displays progress after each frame.
-
-    Args:
-        file_path (str): Path to the input TIFF file.
-        y_start (int): Start y-coordinate of the RoI.
-        y_end (int): End y-coordinate of the RoI.
-        filename (str): Output filename for the final processed image.
-    """
-    visualize = False
-    i = 1
-    # Open the TIFF file
-    tiff = Image.open(file_path)
-    num_frames = tiff.n_frames  # Number of frames in the TIFF file
-
-    # Initialize an empty array to store the final "timelapse" image
-    timelapse_image = []
-
-    plt.ion()  # Turn on interactive plotting
-
-    for frame_index in range(num_frames):
-        # Get the current frame
-        tiff.seek(frame_index)
-        frame = np.array(tiff)  # Convert the frame to a numpy array
-
-        # Crop the frame to the Region of Interest (RoI)
-        cropped_frame = frame[y_start:y_end, :]
-
-        # Sum the brightness values vertically (across the y-axis)
-        vertical_sum = np.sum(cropped_frame, axis=0)
-
-        # Normalize the summed values to the range [0, 255]
-        norm_sum = np.interp(vertical_sum, (vertical_sum.min(), vertical_sum.max()), (0, 255))
-
-        # Filter out all pixels below intensity 150
-        norm_sum[norm_sum < 150] = 0
-
-        # Add the normalized line to the timelapse image
-        timelapse_image.append(norm_sum)
-
-        # Convert the timelapse array to a numpy array (for visualization)
-        timelapse_array = np.array(timelapse_image)
-
-        if visualize and i % 5 == 0:
-            # Visualization: display progress after each frame
-            plt.figure(figsize=(10, 5))
-            plt.imshow(timelapse_array, cmap='gray', aspect='auto')
-            plt.title(f"Timelapse Progress - Frame {frame_index + 1}/{num_frames}")
-            plt.colorbar()
-            plt.show()
-
-            # Wait for a key press before continuing to the next frame
-            plt.waitforbuttonpress()
-            plt.close()
-        
-        i += 1
-
-    # Once all frames are processed, save the final timelapse image
-    final_image = Image.fromarray(timelapse_array.astype(np.uint8))
-    final_image.save(filename)
-    print(f"Timelapse saved to {filename}")
-
-def analyze_timelapse_with_wave_centers(timelapse_file):
-    """
-    Analyzes the provided timelapse TIFF file by tracking the center of each wave's travel,
-    drawing a line across frames, and saving the result for further analysis.
-
-    Args:
-        timelapse_file (str): Path to the input timelapse TIFF file.
-    """
-    # Open the TIFF file and convert it to a numpy array
-    timelapse_image = np.array(Image.open(timelapse_file))
-
-    num_frames = timelapse_image.shape[0]  # Number of frames (rows) in the timelapse image
-    wave_centers = []  # Store the x-coordinates of wave centers
-
-    # Identify the center of the wave for each frame (each row in the timelapse image)
-    for frame_index in range(num_frames):
-        # Find the x-coordinate of the maximum brightness (the center of the wave)
-        wave_center = np.argmax(timelapse_image[frame_index, :])  # x-position of the maximum brightness
-        wave_centers.append(wave_center)  # Track the wave center for each frame
-
-    # Visualization: plot the timelapse image and the wave center line
-    plt.figure(figsize=(10, 5))
-    plt.imshow(timelapse_image, cmap='gray', aspect='auto')
-
-    # Plot the wave centers (as a red line)
-    plt.plot(wave_centers, color='red', label='Wave Center Line')
-
-    plt.title("Timelapse with Wave Center Line")
-    plt.colorbar()
-    plt.legend()
-    plt.show()
-
-    # Save the final image with wave center line
-    #final_image_with_centers = Image.fromarray(timelapse_image.astype(np.uint8))
-    #final_image_with_centers.save(filename)
-    #print(f"Image with wave center line saved to {filename}")
-
-    return wave_centers  # Return the list of wave centers for further analysis
-
 def display_edges(frame):
     # Normalize the frame to the correct range and type if needed
     if frame.dtype != np.uint8:
@@ -303,6 +224,114 @@ def save_data_as_csv(data, filename):
             writer.writerow(row)
 
     print(f"Data saved to {filename}.csv")
+
+def fine_approx_poi(tiff_file_path, y_start, y_end, filename=None, visualize=False):
+    """
+    Fine approximation of the points of interest using Y crop coordinates.
+    
+    :param tiff_file_path: Path to the TIFF file.
+    :param y_start: Y-coordinate start of the crop area.
+    :param y_end: Y-coordinate end of the crop area.
+    :param filename: Name of generated CSV file. Default is None.
+    :param visualize: If True, display the frame and ROI for debugging purposes.
+    """
+    visualize = True 
+    # visualize = False
+    # Convert y_start and y_end to integers
+    y_start = int(y_start)
+    y_end = int(y_end)
+    
+    # Open the TIFF file
+    tiff = Image.open(tiff_file_path)
+    num_frames = tiff.n_frames  # Number of frames in the TIFF file
+
+    # Prepare list to hold data for all frames
+    data = []
+
+    for frame_index in range(num_frames):
+        # Select the current frame
+        tiff.seek(frame_index)
+        frame = np.array(tiff)
+
+        # Crop the frame using the Y crop coordinates
+        cropped_frame = frame[y_start:y_end, :]
+
+        # Run rough_approx_poi to get leftmost points
+        leftmost_points = rough_approx_poi(cropped_frame)
+
+        # Approximate the point of interest using a bounding box
+        for point in leftmost_points:
+            x, y = point
+            # Define the region of interest around the leftmost point
+            box_size = 20  # Define the size of the box for collapsing intensity
+            # Define new ROI coordinates
+            x_start = x - int(.5 * box_size)   # Left edge starts at the detected x point
+            x_end = x + int(1.5 * box_size)  # Extend to the right by 2 * box_size
+
+            # Center the ROI vertically around y
+            y_start_roi = max(0, y - box_size)  # Start box_size above the detected y point
+            y_end_roi = min(cropped_frame.shape[0], y + box_size)  # End box_size below the detected y point
+
+            # Skip ROI if it extends beyond the cropped frame dimensions
+            if x_end > cropped_frame.shape[1] or y_end_roi > cropped_frame.shape[0] or x_start < 0:
+                print(f"Skipping invalid or empty ROI at frame {frame_index + 1}, point ({x}, {y})")
+                continue
+
+            # Crop the region of interest
+            roi = cropped_frame[y_start_roi:y_end_roi, x_start:x_end]
+
+            # Normalize the ROI to enhance contrast
+            roi = normalize_hist_equalization(roi)
+
+            # Collapse intensities along X and Y axes
+            collapsed_x = np.sum(roi, axis=0)
+            collapsed_y = np.sum(roi, axis=1)
+
+            y_values = np.arange(len(collapsed_y))
+            y_center = find_center_of_intensity(y_values, collapsed_y)
+
+            x_values = np.arange(len(collapsed_x))
+            x_center = find_center_of_intensity(x_values, collapsed_x)
+
+            # Visualize the frame and the ROI
+            if visualize:
+                plt.figure(figsize=(10, 5))
+
+                # Display the full cropped frame
+                plt.subplot(1, 2, 1)
+                plt.imshow(cropped_frame, cmap='gray')
+                plt.title(f"Frame {frame_index + 1} - Cropped")
+                plt.scatter(x_center + x_start, y_center + y_start_roi, color='red', marker='x', label='Center of Intensity')  # Corrected scatter coordinates
+
+                # Display the ROI
+                plt.subplot(1, 2, 2)
+                plt.imshow(roi, cmap='gray')
+                plt.title(f"ROI for point ({x}, {y}) in Frame {frame_index + 1}")
+                plt.scatter(x_center, y_center, color='red', marker='x', label='Center of Intensity')  # Corrected scatter in ROI coordinates
+
+                # Add legends to the plots
+                plt.subplot(1, 2, 1)
+                plt.legend()
+
+                plt.subplot(1, 2, 2)
+                plt.legend()
+
+                plt.show()
+
+            # Store the results in the data list
+            data.append({
+                "Frame": frame_index + 1,
+                "X Center": x_center,
+                "Y Center": y_center
+            })
+
+    # If the filename is not provided, ask the user
+    if not filename:
+        filename = input("Enter the desired filename for the CSV (without extension): ") + '.csv'
+
+    # Save the data to CSV
+    save_data_as_csv(data, filename)
+    print(f"Data saved to {filename}")
 
 def gaussian(x, amplitude, mean, stddev):
     return amplitude * np.exp(-((x - mean) ** 2) / (2 * stddev ** 2))

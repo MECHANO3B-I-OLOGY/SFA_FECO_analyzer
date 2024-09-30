@@ -15,65 +15,70 @@ class SFA_FECO_UI:
         self.root.title("SFA FECO Analyzer")
         self.file_path = None
         self.data_file_path = None  # To store the chosen or generated data file path
-
-        # Setup styles
-        self.setup_styles()
-
-        # Configure grid layout for the root window
-        root.grid_rowconfigure(0, weight=1)
-        root.grid_rowconfigure(1, weight=1)
-        root.grid_rowconfigure(2, weight=1)
-        root.grid_rowconfigure(3, weight=1)
-        root.grid_columnconfigure(0, weight=1)
-        root.grid_columnconfigure(1, weight=1)
+        self.is_sidebar_open = False
+        self.root.geometry("400x400+300+100") # Force the parent window to start at a set position
 
         # Get screen width and height
         screen_width = root.winfo_screenwidth()
         screen_height = root.winfo_screenheight()
 
         # Define scaling factors
-        window_width = int(screen_width * 0.5)
+        window_width = int(screen_width * 0.35)
         window_height = int(screen_height * 0.7)
-
-        # Set the window size and position
+        
         self.root.geometry(f"{window_width}x{window_height}")
 
-        # Step 1: Select File
-        step1_label = ttk.Label(root, text="STEP 1: Select File", style='Step.TLabel')
-        step1_label.grid(row=0, column=0, sticky='w', padx=10, pady=(10, 0))
+        # Setup styles
+        self.setup_styles()
 
-        self.select_button = ttk.Button(root, text="Select File", command=self.select_file, style='Regular.TButton')
-        self.select_button.grid(row=0, column=1, sticky='w')
+         # Configure grid layout for the root window
+        root.grid_rowconfigure(0, weight=1)
+        root.grid_rowconfigure(1, weight=1)
+        root.grid_rowconfigure(2, weight=1)
+        root.grid_rowconfigure(3, weight=1)
+        root.grid_rowconfigure(4, weight=1)
+        root.grid_columnconfigure(0, weight=1)
+        root.grid_columnconfigure(1, weight=0)
+        root.grid_columnconfigure(2, weight=1)
+
+        # Prep Section: Add a column for the raw video select, crop/preprocess, and generate motion profile buttons
+        prep_label = ttk.Label(root, text="STEP 1: Prep", style='Step.TLabel')
+        prep_label.grid(row=0, column=0, sticky='ew', padx=10)
+
+        # Raw video data select button
+        self.select_raw_button = ttk.Button(root, text="Select Raw Video File", command=self.select_raw_video, style='Regular.TButton')
+        self.select_raw_button.grid(row=1, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the selected file's name
-        self.file_label = ttk.Label(root, text="", style='Regular.TLabel')
-        self.file_label.grid(row=1, column=0, columnspan=2, sticky='w', padx=10)
+        self.file_label = ttk.Label(root, text="No file selected", style='Regular.TLabel')
+        self.file_label.grid(row=2, column=0, sticky='new', padx=10)
 
-        # Step 2: Prepare/Preview
-        step2_label = ttk.Label(root, text="STEP 2: Prepare/Preview Analysis", style='Step.TLabel')
-        step2_label.grid(row=2, column=0, sticky='w', padx=10)
+        # Crop/Preprocess button
+        self.crop_button = ttk.Button(root, text="Crop/Preprocess", command=self.open_crop_preprocess_window, style='Regular.TButton')
+        self.crop_button.grid(row=3, column=0, sticky='ew', padx=10, pady=5)
 
-        self.setup_button = ttk.Button(root, text="Set up", command=self.open_frame_inspect_window, style='Regular.TButton')
-        self.setup_button.grid(row=2, column=1, sticky='w')
+        # Generate motion profile button
+        self.generate_motion_button = ttk.Button(root, text="Generate Motion Profile", command=self.generate_motion_profile, style='Regular.TButton')
+        self.generate_motion_button.grid(row=4, column=0, sticky='ew', padx=10, pady=5)
 
         # Step 3: Analyze
-        step3_label = ttk.Label(root, text="STEP 3: Analyze", style='Step.TLabel')
-        step3_label.grid(row=3, column=0, sticky='w', padx=10)
+        step3_label = ttk.Label(root, text="STEP 2: Analyze", style='Step.TLabel')
+        step3_label.grid(row=0, column=2, sticky='ew', padx=10)
 
         self.analyze_button = ttk.Button(root, text="Analyze", command=self.analyze, style='Regular.TButton')
-        self.analyze_button.grid(row=3, column=1, sticky='w')
+        self.analyze_button.grid(row=1, column=2, sticky='ew')
 
         # File field for the output data
         self.data_file_label = ttk.Label(root, text="No file selected", style='Regular.TLabel')
-        self.data_file_label.grid(row=4, column=0, columnspan=2, sticky='w', padx=10)
+        self.data_file_label.grid(row=2, column=2, columnspan=2, sticky='ew', padx=10)
 
         # Button to choose an existing data file
         self.choose_data_button = ttk.Button(root, text="Choose Data File", command=self.choose_data_file, style='Regular.TButton')
-        self.choose_data_button.grid(row=5, column=0, sticky='w', padx=10)
+        self.choose_data_button.grid(row=3, column=2, sticky='ew', padx=10)
 
-        # Button to close the application
-        self.close_button = ttk.Button(root, text="Close", command=self.close_popup, style='Regular.TButton')
-        self.close_button.grid(row=6, column=0, pady=(10, 0))
+        # Add a vertical separator between columns
+        vertical_separator = ttk.Separator(root, orient="vertical")
+        vertical_separator.grid(row=0, column=1, rowspan=6, sticky='ns', padx=10)
 
     def setup_styles(self):
         self.btn_style = ttk.Style()
@@ -81,10 +86,10 @@ class SFA_FECO_UI:
             "Regular.TButton",
             padding=(10, 5),
             relief="raised",
-            width=20
+            width=10
         )
 
-    def select_file(self):
+    def select_raw_video(self):
         # Open a file dialog to select a TIFF file
         """file_path = filedialog.askopenfilename(
             initialdir=os.path.join(os.getcwd()),
@@ -104,12 +109,12 @@ class SFA_FECO_UI:
                 msg = "Invalid file"
                 error_popup(msg)
 
-    def open_frame_inspect_window(self):
-        Frame_Inspect_Window(self.file_path, self.handle_roi_selection)
+    def open_crop_preprocess_window(self):
+        Frame_Prep_Window(self.file_path, self.handle_roi_selection)
         
     def handle_roi_selection(self, roi_data):
         """
-        Handle the ROI data returned from the Frame_Inspect_Window.
+        Handle the ROI data returned from the Frame_Prep_Window.
         :param roi_data: Tuple containing (y_start, y_end, offset, frame).
         """
         self.y_start, self.y_end, self.offset, cropped_frame = roi_data
@@ -118,16 +123,16 @@ class SFA_FECO_UI:
     def close_popup(self):
         self.root.destroy()
     
-    def analyze(self):
+    def generate_motion_profile(self):
         # Ensure a file is selected before analyzing
         if self.file_path:
             # Ask the user for a filename to save the data
             # filename = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
-            filename = "test3"
+            filename = "test3.tiff"
             if filename:
                 if hasattr(self, 'y_start') and hasattr(self, 'y_end'):
                     # Call the fine approximation function with the Y crop info
-                    tracking.fine_approx_poi(self.file_path, self.y_start, self.y_end, filename,)
+                    tracking.process_timelapse(self.file_path, self.y_start, self.y_end, filename,)
                     self.data_file_path = filename
                     self.data_file_label.config(text=f"Data saved: {self.data_file_path}")
                 else:
@@ -140,7 +145,10 @@ class SFA_FECO_UI:
         if self.data_file_path:
             self.data_file_label.config(text=f"Using file: {self.data_file_path}")
 
-class Frame_Inspect_Window:
+    def analyze(self):
+        return
+
+class Frame_Prep_Window:
     def __init__(self, file_path, roi_callback=None):
         self.file_path = file_path
         self.roi_callback = roi_callback
@@ -165,7 +173,7 @@ class Frame_Inspect_Window:
 
         # Create the window
         self.window = tk.Toplevel()
-        self.window.title("Inspect TIFF File")
+        self.window.title("Prep TIFF File")
 
         # Create the canvas
         self.canvas = tk.Canvas(self.window, bg="white")
