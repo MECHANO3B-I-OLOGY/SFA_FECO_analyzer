@@ -2,9 +2,14 @@ import os
 import numpy as np
 import tkinter as tk
 from tkinter import ttk, filedialog
+import matplotlib.pyplot as plt
+from matplotlib.widgets import RectangleSelector
+import csv
 from PIL import Image, ImageTk, ImageSequence
+
 import tracking  # Assuming this is a custom module for edge analysis
 from exceptions import error_popup, warning_popup
+
 
 class SFA_FECO_UI:
     """
@@ -14,7 +19,7 @@ class SFA_FECO_UI:
         self.root = root
         self.root.title("SFA FECO Analyzer")
         self.file_path = None
-        self.data_file_path = None  # To store the chosen or generated data file path
+        self.motion_profile_file_path = None  # To store the chosen or generated data file path
         self.is_sidebar_open = False
         self.root.geometry("400x400+300+100") # Force the parent window to start at a set position
 
@@ -65,16 +70,16 @@ class SFA_FECO_UI:
         step3_label = ttk.Label(root, text="STEP 2: Analyze", style='Step.TLabel')
         step3_label.grid(row=0, column=2, sticky='ew', padx=10)
 
-        self.analyze_button = ttk.Button(root, text="Analyze", command=self.analyze, style='Regular.TButton')
-        self.analyze_button.grid(row=1, column=2, sticky='ew')
+        # Button to choose an existing data file
+        self.choose_data_button = ttk.Button(root, text="Choose Data File", command=self.choose_data_file, style='Regular.TButton')
+        self.choose_data_button.grid(row=1, column=2, sticky='ew', padx=10)
 
         # File field for the output data
         self.data_file_label = ttk.Label(root, text="No file selected", style='Regular.TLabel')
-        self.data_file_label.grid(row=2, column=2, columnspan=2, sticky='ew', padx=10)
+        self.data_file_label.grid(row=2, column=2, columnspan=2, sticky='enw', padx=10)
 
-        # Button to choose an existing data file
-        self.choose_data_button = ttk.Button(root, text="Choose Data File", command=self.choose_data_file, style='Regular.TButton')
-        self.choose_data_button.grid(row=3, column=2, sticky='ew', padx=10)
+        self.analyze_button = ttk.Button(root, text="Analyze", command=self.analyze, style='Regular.TButton')
+        self.analyze_button.grid(row=3, column=2, sticky='ew')
 
         # Add a vertical separator between columns
         vertical_separator = ttk.Separator(root, orient="vertical")
@@ -132,21 +137,24 @@ class SFA_FECO_UI:
             if filename:
                 if hasattr(self, 'y_start') and hasattr(self, 'y_end'):
                     # Call the fine approximation function with the Y crop info
-                    tracking.process_timelapse(self.file_path, self.y_start, self.y_end, filename,)
-                    self.data_file_path = filename
-                    self.data_file_label.config(text=f"Data saved: {self.data_file_path}")
+                    tracking.generate_motion_timelapse(self.file_path, self.y_start, self.y_end, filename,)
+                    self.motion_profile_file_path = filename
+                    self.data_file_label.config(text=f"Data saved: {self.motion_profile_file_path}")
                 else:
                     print("Y crop coordinates are not set. Please set up the analysis area.")
 
 
     def choose_data_file(self):
+        max_length = 20;
         # Allow the user to choose an existing data file
-        self.data_file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
-        if self.data_file_path:
-            self.data_file_label.config(text=f"Using file: {self.data_file_path}")
+        self.motion_profile_file_path = filedialog.askopenfilename(filetypes=[("Tiff files", "*.tiff")])
+        if len(self.motion_profile_file_path) > max_length:
+            data_file_text = '...' + self.motion_profile_file_path[len(self.motion_profile_file_path) - max_length:]
+        if self.motion_profile_file_path:
+            self.data_file_label.config(text=f"Using file: {data_file_text}")
 
     def analyze(self):
-        return
+        Motion_Analysis_Window(self.motion_profile_file_path)
 
 class Frame_Prep_Window:
     def __init__(self, file_path, roi_callback=None):
@@ -336,7 +344,162 @@ class Frame_Prep_Window:
             # Display the full frame if no ROI is defined
             self.display_frame()
 
-# Example usage
+class Motion_Analysis_Window:
+    def __init__(self, file_path) -> None:
+        # Step 1: Request output file name
+        self.output_filename = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
+        if not self.output_filename:
+            print("No output file selected. Aborting.")
+            return
+
+        # Step 2: Load the timelapse image (convert it to a NumPy array)
+        self.timelapse_image = np.array(Image.open(file_path).convert('L'))  # Grayscale conversion
+
+        # Step 3: Prompt the user to crop the image first
+        self.cropping_complete = False
+        self.crop_area = None  # Store the crop area
+
+        # Increase the figure size for larger display
+        self.fig, self.ax = plt.subplots(figsize=(12, 8))  # Set larger figure size
+        self.ax.imshow(self.timelapse_image, cmap='gray')
+        self.ax.set_title("Click and drag to crop the image, then press any key to confirm. Press escape to cancel selection.")
+
+        # Create a RectangleSelector for cropping the image
+        self.rect_selector = RectangleSelector(self.ax, self.on_select_crop, useblit=True, interactive=True)
+        self.fig.canvas.mpl_connect('key_press_event', self.on_key_press_crop)
+
+        plt.show(block=True)
+
+        # Step 4: Run the analysis after cropping
+        if self.cropping_complete:
+            self.run_analysis()
+
+    def on_select_crop(self, eclick, erelease):
+        """Callback for selecting crop area."""
+        self.crop_area = (int(eclick.xdata), int(erelease.xdata), int(eclick.ydata), int(erelease.ydata))
+
+    def on_key_press_crop(self, event):
+        """Handle key press events for confirming or retrying the crop."""
+        if event.key == 'escape':
+            # Reset the selection and allow the user to try again
+            print("Retrying crop selection...")
+            self.rect_selector.set_active(True)
+        else:
+            # Confirm the crop selection and proceed
+            if self.crop_area:
+                print(f"Crop confirmed: {self.crop_area}")
+                self.cropping_complete = True
+                plt.close(self.fig)  # Close the figure to continue
+
+    def run_analysis(self):
+        """Run the analysis on the cropped image."""
+        x_start, x_end, y_start, y_end = self.crop_area
+        self.cropped_image = self.timelapse_image[y_start:y_end, x_start:x_end]
+
+        # Step 5: Analyze the cropped image
+        self.wave_lines = tracking.analyze_and_append_waves(self.cropped_image)
+
+        # Step 6: Visualize and enable data deletion
+        self.visualize_wave_centerlines(self.cropped_image, self.wave_lines, enable_deletion=True)
+
+        # Step 7: Save the results as a CSV file
+        self.save_wave_centerlines_to_csv(self.wave_lines, self.output_filename)
+
+    def visualize_wave_centerlines(self, image, wave_lines, enable_deletion=False):
+        """Visualize and enable deletion on the results."""
+        self.fig, self.ax = plt.subplots(figsize=(12, 8))
+        self.ax.imshow(image, cmap='gray')
+        colors = plt.cm.rainbow(np.linspace(0, 1, len(wave_lines)))
+
+        for idx, wave_line in enumerate(wave_lines):
+            y_coords = [point[0] for point in wave_line]
+            x_coords = [point[1] for point in wave_line]
+            self.ax.plot(x_coords, y_coords, color=colors[idx], label=f"Wave {idx + 1}")
+
+        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        plt.title("Detected Wave Centerlines")
+        plt.xlabel("X (columns)")
+        plt.ylabel("Y (rows)")
+        plt.tight_layout()
+
+        if enable_deletion:
+            # Enable selection of areas to delete data
+            self.rect_selector = RectangleSelector(self.ax, self.on_select_delete, useblit=True)
+            self.fig.canvas.mpl_connect('key_press_event', self.on_key_press_delete)
+            self.deletion_areas = []  # Store deletion areas
+            self.fig.canvas.mpl_connect('close_event', self.on_close)
+
+        plt.show()
+
+    def on_select_delete(self, eclick, erelease):
+        """Callback to record the area selected for deletion."""
+        x_start, x_end = sorted([int(eclick.xdata), int(erelease.xdata)])
+        y_start, y_end = sorted([int(eclick.ydata), int(erelease.ydata)])
+        self.deletion_areas.append((x_start, x_end, y_start, y_end))
+        print(f"Area selected for deletion: {x_start}-{x_end}, {y_start}-{y_end}")
+
+    def on_key_press_delete(self, event):
+        """Handle key press events for confirming deletion or confirming crop."""
+        if event.key == 'enter':
+            # If Enter is pressed, apply deletions
+            print("Confirming deletion...")
+            self.apply_deletions()
+        else:
+            # For any other key, confirm the crop and proceed
+            if self.crop_area:
+                print(f"Crop confirmed: {self.crop_area}")
+                self.cropping_complete = True
+                plt.close(self.fig)  # Close the figure to continue
+
+    def apply_deletions(self):
+        """Apply deletions to the selected data."""
+        for area in self.deletion_areas:
+            x_start, x_end, y_start, y_end = area
+            for wave_line in self.wave_lines:
+                wave_line[:] = [(y, x) for (y, x) in wave_line if not (x_start <= x <= x_end and y_start <= y <= y_end)]
+
+        # Redraw the figure with the updated data
+        self.ax.clear()
+        
+        # Replot the image
+        self.ax.imshow(self.cropped_image, cmap='gray')
+
+        # Replot the wave lines
+        colors = plt.cm.rainbow(np.linspace(0, 1, len(self.wave_lines)))
+
+        for idx, wave_line in enumerate(self.wave_lines):
+            y_coords = [point[0] for point in wave_line]
+            x_coords = [point[1] for point in wave_line]
+            self.ax.plot(x_coords, y_coords, color=colors[idx], label=f"Wave {idx + 1}")
+
+        # Reapply title, labels, and legend
+        self.ax.set_title("Highlight data to delete it. Enter to accept, esc to cancel, exit window to save")
+        self.ax.set_xlabel("X (columns)")
+        self.ax.set_ylabel("Y (rows)")
+        self.ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+
+        # Redraw the updated plot
+        plt.draw()
+
+    def on_close(self, event):
+        """Save the modified wave lines when the window is closed."""
+        self.save_wave_centerlines_to_csv(self.wave_lines, self.output_filename)
+
+    def save_wave_centerlines_to_csv(self, wave_lines, output_filename):
+        """Save the wave centerlines to a CSV file."""
+        try:
+            with open(output_filename, mode='w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(["Wave Index", "Y-Coordinate (row)", "X-Center (column)"])
+
+                for wave_idx, wave_line in enumerate(wave_lines):
+                    for (y, x_center) in wave_line:
+                        writer.writerow([wave_idx + 1, y, x_center])
+
+            print(f"Wave centerlines successfully saved to {output_filename}")
+        except Exception as e:
+            print(f"Error saving wave centerlines to CSV: {e}")
+
 if __name__ == "__main__":
     root = tk.Tk()
     app = SFA_FECO_UI(root)

@@ -1,10 +1,12 @@
 existing bugs to patch:
 
 future plans:
-  - do frame/pixel line/analysis
-  - accept double waves
-  - user picks frame, pick peaks of interest, analysis records x location of peaks from first frame to last frame for that/those peak(s)
+  - make a readme
+  - get started on the linear approximation and interpolation of turning point
 
 finished:
   - ignore Y axis for point placement
     - bin across whole X
+  - user picks frame, pick peaks of interest, analysis records x location of peaks from first frame to last frame for that/those peak(s)
+  - do frame/pixel line/analysis
+  - accept double waves

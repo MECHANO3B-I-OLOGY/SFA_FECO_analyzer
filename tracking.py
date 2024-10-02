@@ -131,10 +131,10 @@ def rough_approx_poi(frame):
     # Return the list of filtered leftmost points
     return leftmost_points
 
-def process_timelapse(file_path, y_start, y_end, filename):
+def generate_motion_timelapse(file_path, y_start, y_end, filename):
     """
     Processes the TIFF video by performing vertical summing and normalization,
-    then builds the final "timelapse" image. Displays progress after each frame.
+    then builds the final "timelapse" image. Can display progress after each frame.
 
     Args:
         file_path (str): Path to the input TIFF file.
@@ -195,44 +195,94 @@ def process_timelapse(file_path, y_start, y_end, filename):
     final_image.save(filename)
     print(f"Timelapse saved to {filename}")
 
-def analyze_timelapse_with_wave_centers(timelapse_file):
+def analyze_and_append_waves(image, 
+                             wave_threshold=0, 
+                             min_wave_gap=15, 
+                             horizontal_proximity_threshold=15, 
+                             vertical_proximity_threshold=1, 
+                             max_missing_rows=2):
     """
-    Analyzes the provided timelapse TIFF file by tracking the center of each wave's travel,
-    drawing a line across frames, and saving the result for further analysis.
-
+    Analyze waves in the image, calculate the center of mass for each wave, 
+    and append them to the correct wave line based on proximity to previously detected waves.
+    
     Args:
-        timelapse_file (str): Path to the input timelapse TIFF file.
+    - image: 2D array representing the RoI of the motion profile.
+    - wave_threshold: Intensity threshold for wave detection.
+    - min_wave_gap: Minimum distance to separate different waves within a row.
+    - horizontal_proximity_threshold: Maximum allowable horizontal distance to append a new center point to an existing wave.
+    - vertical_proximity_threshold: Maximum allowable vertical distance between rows for a wave to be considered continuous.
+    - max_missing_rows: Maximum number of consecutive rows where a wave can be missing before terminating it.
+    
+    Returns:
+    - wave_lines: List of wave lines, each being a list of (y, x_center) points.
     """
-    # Open the TIFF file and convert it to a numpy array
-    timelapse_image = np.array(Image.open(timelapse_file))
+    height, width = image.shape
+    wave_lines = []  # Initialize list to store wave lines
+    wave_missing_counts = []  # Track how many rows each wave has been missing for
 
-    num_frames = timelapse_image.shape[0]  # Number of frames (rows) in the timelapse image
-    wave_centers = []  # Store the x-coordinates of wave centers
+    # Loop through each row
+    for y in range(height):
+        row = image[y, :]
+        
+        # Detect wave positions in the row (above threshold)
+        wave_positions = np.where(row > wave_threshold)[0]
 
-    # Identify the center of the wave for each frame (each row in the timelapse image)
-    for frame_index in range(num_frames):
-        # Find the x-coordinate of the maximum brightness (the center of the wave)
-        wave_center = np.argmax(timelapse_image[frame_index, :])  # x-position of the maximum brightness
-        wave_centers.append(wave_center)  # Track the wave center for each frame
+        if len(wave_positions) > 0:
+            # Cluster wave points based on proximity (min_wave_gap)
+            waves = []
+            current_wave = [wave_positions[0]]
 
-    # Visualization: plot the timelapse image and the wave center line
-    plt.figure(figsize=(10, 5))
-    plt.imshow(timelapse_image, cmap='gray', aspect='auto')
+            for i in range(1, len(wave_positions)):
+                if wave_positions[i] - wave_positions[i - 1] > min_wave_gap:
+                    waves.append(current_wave)
+                    current_wave = [wave_positions[i]]
+                else:
+                    current_wave.append(wave_positions[i])
 
-    # Plot the wave centers (as a red line)
-    plt.plot(wave_centers, color='red', label='Wave Center Line')
+            # Append the last wave
+            waves.append(current_wave)
 
-    plt.title("Timelapse with Wave Center Line")
-    plt.colorbar()
-    plt.legend()
-    plt.show()
+            # Calculate center of mass for each wave
+            center_of_mass_points = []
+            for wave in waves:
+                wave_intensities = row[wave]
+                total_intensity = np.sum(wave_intensities)
 
-    # Save the final image with wave center line
-    #final_image_with_centers = Image.fromarray(timelapse_image.astype(np.uint8))
-    #final_image_with_centers.save(filename)
-    #print(f"Image with wave center line saved to {filename}")
+                if total_intensity > 0:
+                    positions = np.array(wave)
+                    center_of_mass = np.sum(positions * wave_intensities) / total_intensity
+                    center_of_mass_points.append((y, center_of_mass))
 
-    return wave_centers  # Return the list of wave centers for further analysis
+            # Append center of mass points to the closest wave line
+            for (y, x_center) in center_of_mass_points:
+                added = False
+
+                # Compare to existing wave lines
+                for idx, wave_line in enumerate(wave_lines):
+                    last_y, last_x_center = wave_line[-1]
+
+                    # Check both horizontal and vertical proximity
+                    if abs(x_center - last_x_center) < horizontal_proximity_threshold and abs(y - last_y) <= vertical_proximity_threshold:
+                        wave_line.append((y, x_center))  # Append to existing wave line
+                        wave_missing_counts[idx] = 0  # Reset the missing row count for this wave
+                        added = True
+                        break
+
+                # If no match is found, start a new wave line
+                if not added:
+                    wave_lines.append([(y, x_center)])
+                    wave_missing_counts.append(0)  # Initialize missing row count for the new wave line
+
+        else:
+            # If no wave positions were found, increment the missing row count for each active wave line
+            for i in range(len(wave_missing_counts)):
+                wave_missing_counts[i] += 1
+
+        # Remove wave lines that have been missing for too many rows
+        wave_lines = [wave_line for idx, wave_line in enumerate(wave_lines) if wave_missing_counts[idx] < max_missing_rows]
+        wave_missing_counts = [count for count in wave_missing_counts if count < max_missing_rows]
+
+    return wave_lines
 
 def display_edges(frame):
     # Normalize the frame to the correct range and type if needed
