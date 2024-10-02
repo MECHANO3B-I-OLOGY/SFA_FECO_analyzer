@@ -1,3 +1,6 @@
+10/2/24 - Isaac
+- added pre-analysis image cropping and post-analysis data removal
+
 9/30/24 - Isaac
 - V3 working, motion profiler working
 
