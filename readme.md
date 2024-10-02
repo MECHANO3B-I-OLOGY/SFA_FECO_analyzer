@@ -13,24 +13,24 @@ Results Saving: Saves the wave centerlines as a CSV file and visualizes the resu
 
 ### Prerequisites
 
-contourpy==1.2.1
-cycler==0.12.1
-fonttools==4.53.1
-kiwisolver==1.4.5
-matplotlib==3.8.2
-numpy==1.26.3
-opencv-contrib-python==4.10.0.82
-packaging==24.1
-pandas==2.1.1
-pillow==10.2.0
-pyparsing==3.1.2
-python-dateutil==2.9.0.post0
-pytz==2024.1
-scipy==1.14.1
-screeninfo==0.8.1
-six==1.16.0
-tk==0.1.0
-tzdata==2024.1
+- contourpy==1.2.1
+- cycler==0.12.1
+- fonttools==4.53.1
+- kiwisolver==1.4.5
+- matplotlib==3.8.2
+- numpy==1.26.3
+- opencv-contrib-python==4.10.0.82
+- packaging==24.1
+- pandas==2.1.1
+- pillow==10.2.0
+- pyparsing==3.1.2
+- python-dateutil==2.9.0.post0
+- pytz==2024.1
+- scipy==1.14.1
+- screeninfo==0.8.1
+- six==1.16.0
+- tk==0.1.0
+- tzdata==2024.1
 
 ## Setup Instructions
 
@@ -39,7 +39,7 @@ tzdata==2024.1
 git clone https://github.com/yourusername/wave-motion-analyzer.git
 cd wave-motion-analyzer
 
-## Install dependencies:
+## 2. Install dependencies:
 
 pip install -r requirements.txt
 
@@ -88,7 +88,8 @@ pip install -r requirements.txt
 ├── data/ # Folder for input image data
 └── output/ # Folder for saving output results (CSV, images)
 
-Contributing
+### Contributing
+
 Feel free to open an issue or submit a pull request if you want to contribute to the project.
 
 License
