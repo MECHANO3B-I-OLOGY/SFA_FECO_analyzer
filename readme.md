@@ -80,6 +80,7 @@ pip install -r requirements.txt
 
 ### File Structure
 
+```
 .
 ├── main.py # Entry point of the program
 ├── tracking.py # Script for wave analysis functions
@@ -87,10 +88,12 @@ pip install -r requirements.txt
 ├── README.md # Project README
 ├── data/ # Folder for input image data
 └── output/ # Folder for saving output results (CSV, images)
+```
 
 ### Contributing
 
 Feel free to open an issue or submit a pull request if you want to contribute to the project.
 
-License
+### License
+
 This project is licensed under the MIT License. See the LICENSE file for details.
