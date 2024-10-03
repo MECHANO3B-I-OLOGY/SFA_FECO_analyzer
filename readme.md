@@ -51,19 +51,29 @@ pip install -r requirements.txt
 
 python main.py
 
-### In-Program:
+## In-Program:
 
-Select the Input Image: The tool prompts you to select a grayscale TIFF image for analysis.
+### Select the Input Image:
 
-Interactive Cropping: After loading the image, you can click and drag to select a region of interest. Press any key to confirm the crop or press Esc to retry.
+The tool prompts you to select a grayscale TIFF image for analysis.
 
-Wave Centerline Analysis: Once the crop is confirmed, the tool runs the wave centerline analysis on the cropped image.
+### Interactive Cropping:
 
-Post-Analysis Data Cleaning: After the analysis, you can highlight areas of the result to delete broken or unnecessary data points. Press Enter to confirm deletion.
+After loading the image, you can click and drag to select a region of interest. Press any key to confirm the crop or press Esc to retry.
 
-Results: The wave centerlines are saved as a CSV file, and the visualization is saved as a TIFF image in the output folder.
+### Wave Centerline Analysis:
 
-### Example Workflow:
+Once the crop is confirmed, the tool runs the wave centerline analysis on the cropped image.
+
+### Post-Analysis Data Cleaning:
+
+After the analysis, you can highlight areas of the result to delete broken or unnecessary data points. Press Enter to confirm deletion.
+
+### Results:
+
+The wave centerlines are saved as a CSV file, and the visualization is saved as a TIFF image in the output folder.
+
+## Example Workflow:
 
 Cropping: Select the cropping area of the image to focus the analysis on a specific region.
 Wave Analysis: View the detected wave centerlines on the cropped image.
@@ -86,8 +96,6 @@ pip install -r requirements.txt
 ├── tracking.py # Script for wave analysis functions
 ├── requirements.txt # List of Python dependencies
 ├── README.md # Project README
-├── data/ # Folder for input image data
-└── output/ # Folder for saving output results (CSV, images)
 ```
 
 ### Contributing
