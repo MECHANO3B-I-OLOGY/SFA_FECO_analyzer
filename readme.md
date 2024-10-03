@@ -4,10 +4,10 @@
 
 ## Features
 
-Interactive Cropping: Allows users to click and drag on the image to select a region of interest for analysis.
-Wave Centerline Analysis: Detects and visualizes wave centerlines across frames.
-Post-Analysis Data Cleaning: Users can select areas to delete broken or unnecessary data from the analysis results.
-Results Saving: Saves the wave centerlines as a CSV file and visualizes the results as an image (TIFF format).
+- Interactive Cropping: Allows users to click and drag on the - image to select a region of interest for analysis.
+- Wave Centerline Analysis: Detects and visualizes wave - centerlines across frames. Saves as TIFF imaage.
+- Post-Analysis Data Cleaning: Users can select areas to delete - broken or unnecessary data from the analysis results.
+- Results Saving: Saves the wave centerlines as a CSV file and - visualizes the results as an image (TIFF format).
 
 ## Installation
 
@@ -53,21 +53,25 @@ python main.py
 
 ## In-Program:
 
-### Select the Input Image:
+### Select the Input Video:
 
-The tool prompts you to select a grayscale TIFF image for analysis.
+The tool prompts you to select a TIFF video for analysis. Allows for cropping of video in-program.
+
+### Generate Motion_Analysis:
+
+Generates motion analysis image, taking a row of pixels from each frame of the video and stacking them to form a single image.
 
 ### Interactive Cropping:
 
-After loading the image, you can click and drag to select a region of interest. Press any key to confirm the crop or press Esc to retry.
+After loading the result image, you can click and drag to select a region of interest. Press any key to confirm the crop or press Esc to retry.
 
 ### Wave Centerline Analysis:
 
-Once the crop is confirmed, the tool runs the wave centerline analysis on the cropped image.
+Once the crop is confirmed, the tool runs the wave centerline analysis on the cropped image. This finds the center of mass of bright areas for each row, and connect the results to form lines along the center of each wave's motion analysis.
 
 ### Post-Analysis Data Cleaning:
 
-After the analysis, you can highlight areas of the result to delete broken or unnecessary data points. Press Enter to confirm deletion.
+After the analysis, you can highlight areas of the result to delete broken or unnecessary data points. Press Enter to confirm deletion. Esc to cancel.
 
 ### Results:
 
@@ -79,16 +83,15 @@ Cropping: Select the cropping area of the image to focus the analysis on a speci
 Wave Analysis: View the detected wave centerlines on the cropped image.
 Data Cleaning: Interactively delete unwanted data points.
 Save Results: Automatically saves the cleaned data to a CSV and visualization to a TIFF image.
-Packages and Dependencies
+
+## Packages and Dependencies
+
 NumPy: Array manipulation and numerical calculations.
 Matplotlib: For visualizing the image and wave centerlines.
 Pillow: For loading and handling image files (specifically TIFF format).
-Tkinter: Used for file dialog interactions.
-You can install all required dependencies using the requirements.txt file.
+Tkinter: Used for UI
 
-pip install -r requirements.txt
-
-### File Structure
+## File Structure
 
 ```
 .
