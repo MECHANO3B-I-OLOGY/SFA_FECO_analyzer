@@ -10,7 +10,6 @@ from PIL import Image, ImageTk, ImageSequence
 import tracking  # Assuming this is a custom module for edge analysis
 from exceptions import error_popup, warning_popup
 
-
 class SFA_FECO_UI:
     """
         Main UI function for SFA FECO 
@@ -18,9 +17,8 @@ class SFA_FECO_UI:
     def __init__(self, root):
         self.root = root
         self.root.title("SFA FECO Analyzer")
-        self.file_path = None
+        self.raw_video_file_path = None
         self.motion_profile_file_path = None  # To store the chosen or generated data file path
-        self.is_sidebar_open = False
         self.root.geometry("400x400+300+100") # Force the parent window to start at a set position
 
         # Get screen width and height
@@ -42,6 +40,7 @@ class SFA_FECO_UI:
         root.grid_rowconfigure(2, weight=1)
         root.grid_rowconfigure(3, weight=1)
         root.grid_rowconfigure(4, weight=1)
+        root.grid_rowconfigure(5, weight=1)
         root.grid_columnconfigure(0, weight=1)
         root.grid_columnconfigure(1, weight=0)
         root.grid_columnconfigure(2, weight=1)
@@ -66,7 +65,7 @@ class SFA_FECO_UI:
         self.generate_motion_button = ttk.Button(root, text="Generate Motion Profile", command=self.generate_motion_profile, style='Regular.TButton')
         self.generate_motion_button.grid(row=4, column=0, sticky='ew', padx=10, pady=5)
 
-        # Step 3: Analyze
+        # Step 2: Analyze
         step3_label = ttk.Label(root, text="STEP 2: Analyze", style='Step.TLabel')
         step3_label.grid(row=0, column=2, sticky='ew', padx=10)
 
@@ -80,6 +79,11 @@ class SFA_FECO_UI:
 
         self.analyze_button = ttk.Button(root, text="Analyze", command=self.analyze, style='Regular.TButton')
         self.analyze_button.grid(row=3, column=2, sticky='ew')
+
+        self.analyze_button = ttk.Button(root, text="Estimate Turnaround", command=self.estimate_turnaround, style='Regular.TButton')
+        self.analyze_button.grid(row=4, column=2, sticky='ew')
+
+        self.offset= 0
 
         # Add a vertical separator between columns
         vertical_separator = ttk.Separator(root, orient="vertical")
@@ -104,18 +108,18 @@ class SFA_FECO_UI:
         file_path = "FR1-P1-bis.tif"
         if file_path:
             # Save the selected file path
-            self.file_path = file_path
+            self.raw_video_file_path = file_path
             
             # Update the label to display the file name
             self.file_label.config(text=f"Selected File: {os.path.basename(file_path)}")
 
             # Check if the file exists
-            if not os.path.isfile(self.file_path):
+            if not os.path.isfile(self.raw_video_file_path):
                 msg = "Invalid file"
                 error_popup(msg)
 
     def open_crop_preprocess_window(self):
-        Frame_Prep_Window(self.file_path, self.handle_roi_selection)
+        Frame_Prep_Window(self.raw_video_file_path, self.handle_roi_selection)
         
     def handle_roi_selection(self, roi_data):
         """
@@ -124,20 +128,17 @@ class SFA_FECO_UI:
         """
         self.y_start, self.y_end, self.offset, cropped_frame = roi_data
         # print(f"ROI Selected: Y-Start: {y_start}, Y-End: {y_end}, Offset: {offset}")
-
-    def close_popup(self):
-        self.root.destroy()
     
     def generate_motion_profile(self):
         # Ensure a file is selected before analyzing
-        if self.file_path:
+        if self.raw_video_file_path:
             # Ask the user for a filename to save the data
             # filename = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
-            filename = "test3.tiff"
+            filename = "test3.tiff" # HARDCODED
             if filename:
                 if hasattr(self, 'y_start') and hasattr(self, 'y_end'):
                     # Call the fine approximation function with the Y crop info
-                    tracking.generate_motion_timelapse(self.file_path, self.y_start, self.y_end, filename,)
+                    tracking.generate_motion_profile(self.raw_video_file_path, self.y_start, self.y_end, filename,)
                     self.motion_profile_file_path = filename
                     self.data_file_label.config(text=f"Data saved: {self.motion_profile_file_path}")
                 else:
@@ -145,7 +146,7 @@ class SFA_FECO_UI:
 
 
     def choose_data_file(self):
-        max_length = 20;
+        max_length = 15;
         # Allow the user to choose an existing data file
         self.motion_profile_file_path = filedialog.askopenfilename(filetypes=[("Tiff files", "*.tiff")])
         if len(self.motion_profile_file_path) > max_length:
@@ -154,11 +155,21 @@ class SFA_FECO_UI:
             self.data_file_label.config(text=f"Using file: {data_file_text}")
 
     def analyze(self):
-        Motion_Analysis_Window(self.motion_profile_file_path)
+        Motion_Analysis_Window(self.motion_profile_file_path, self.handle_crop_offset)
+
+    def handle_crop_offset(self, offsets):
+        """
+        Handle the offset data returned from the Motion_Analysis_Window.
+        :param offsets: int of y offset
+        """
+        self.offset = offsets
+
+    def estimate_turnaround(self):
+        tracking.perform_turnaround_estimation('test3_cropped.tiff', "csvTest3.csv", self.offset) #HARDCODED
 
 class Frame_Prep_Window:
     def __init__(self, file_path, roi_callback=None):
-        self.file_path = file_path
+        self.raw_video_file_path = file_path
         self.roi_callback = roi_callback
 
         # Initialize variables
@@ -173,7 +184,7 @@ class Frame_Prep_Window:
 
         # Load the TIFF file using PIL
         try:
-            self.tiff_image = Image.open(self.file_path)
+            self.tiff_image = Image.open(self.raw_video_file_path)
             self.frames = [frame.copy() for frame in ImageSequence.Iterator(self.tiff_image)]
         except Exception as e:
             error_popup(f"Failed to load TIFF file: {e}")
@@ -268,9 +279,10 @@ class Frame_Prep_Window:
             y_end = max(self.roi_y_start, self.roi_y_end)
             frame = self.original_frame.copy()  # Ensure this is a PIL image
 
-            # Use the new crop_frame method
+            # Use the crop_frame method
             self.cropped_frame = self.crop_frame()
 
+            # Offset to account for crop
             if self.cropped_frame:
                 self.current_offset = y_start
                 self.draw_rectangle = False
@@ -345,7 +357,11 @@ class Frame_Prep_Window:
             self.display_frame()
 
 class Motion_Analysis_Window:
-    def __init__(self, file_path) -> None:
+    def __init__(self, file_path, offset_callback = None) -> None:
+        self.y_offset = 0
+        self.x_offset = 0
+        self.offset_callback = offset_callback
+
         # Step 1: Request output file name
         self.output_filename = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
         if not self.output_filename:
@@ -354,10 +370,13 @@ class Motion_Analysis_Window:
 
         # Step 2: Load the timelapse image (convert it to a NumPy array)
         self.timelapse_image = np.array(Image.open(file_path).convert('L'))  # Grayscale conversion
+        self.file_path = file_path  # Store file path for saving
 
-        # Step 3: Prompt the user to crop the image first
+        # Step 3: Initialize mode (cropping or deleting)
+        self.mode = 'crop'  # Start with cropping mode
         self.cropping_complete = False
         self.crop_area = None  # Store the crop area
+        self.deletion_areas = []  # Store areas selected for deletion
 
         # Increase the figure size for larger display
         self.fig, self.ax = plt.subplots(figsize=(12, 8))  # Set larger figure size
@@ -366,7 +385,7 @@ class Motion_Analysis_Window:
 
         # Create a RectangleSelector for cropping the image
         self.rect_selector = RectangleSelector(self.ax, self.on_select_crop, useblit=True, interactive=True)
-        self.fig.canvas.mpl_connect('key_press_event', self.on_key_press_crop)
+        self.fig.canvas.mpl_connect('key_press_event', self.on_key_press)
 
         plt.show(block=True)
 
@@ -378,31 +397,74 @@ class Motion_Analysis_Window:
         """Callback for selecting crop area."""
         self.crop_area = (int(eclick.xdata), int(erelease.xdata), int(eclick.ydata), int(erelease.ydata))
 
-    def on_key_press_crop(self, event):
-        """Handle key press events for confirming or retrying the crop."""
-        if event.key == 'escape':
-            # Reset the selection and allow the user to try again
-            print("Retrying crop selection...")
-            self.rect_selector.set_active(True)
-        else:
-            # Confirm the crop selection and proceed
-            if self.crop_area:
-                print(f"Crop confirmed: {self.crop_area}")
-                self.cropping_complete = True
-                plt.close(self.fig)  # Close the figure to continue
+    def on_key_press(self, event):
+        """Handle key press events for confirming crop or deletion based on mode."""
+        if self.mode == 'crop':
+            # Handle crop logic
+            if event.key == 'escape':
+                # Reset the selection and allow the user to try again
+                print("Retrying crop selection...")
+                self.rect_selector.set_active(True)
+            else:
+                # Confirm the crop selection and proceed
+                if self.crop_area:
+                    print(f"Crop confirmed: {self.crop_area}")
+                    self.cropping_complete = True
+
+                    # Perform the crop
+                    x_start, x_end, y_start, y_end = self.crop_area
+
+                    self.x_offset = x_start
+                    self.y_offset = y_start
+
+                    if self.offset_callback:
+                        self.offset_callback(y_start)
+
+                    self.cropped_image = self.timelapse_image[y_start:y_end, x_start:x_end]\
+                    
+                    # Get the base name and extension of the original file
+                    base_name, ext = os.path.splitext(self.file_path)
+
+                    # Create a new file name with "_cropped" appended to the base name
+                    cropped_file_path = f"{base_name}_cropped{ext}"
+
+                    # Convert NumPy array back to a PIL image and overwrite original file
+                    cropped_pil_image = Image.fromarray(self.cropped_image)
+                    cropped_pil_image.save(cropped_file_path)
+                    
+                    print(f"Image saved as {cropped_file_path} with the crop area {self.crop_area}")
+
+                    # Switch to deletion mode after cropping is complete
+                    self.mode = 'delete'
+
+                    plt.close(self.fig)  # Close the figure to proceed
+
+        elif self.mode == 'delete':
+            # Handle deletion logic
+            if event.key == 'enter':
+                # If Enter is pressed, apply deletions
+                print("Confirming deletion...")
+                self.apply_deletions()
+
+                pdf_filename = "last_centerline_visualization.pdf"
+
+                # Save the figure as a PDF
+                self.fig.savefig(pdf_filename, format='pdf', bbox_inches='tight')
+                print(f"Figure saved as {pdf_filename}")
+            elif event.key == 'escape':
+                # Reset deletion and cancel selection
+                print("Cancelling deletion...")
+                self.rect_selector.set_active(True)
 
     def run_analysis(self):
         """Run the analysis on the cropped image."""
-        x_start, x_end, y_start, y_end = self.crop_area
-        self.cropped_image = self.timelapse_image[y_start:y_end, x_start:x_end]
-
-        # Step 5: Analyze the cropped image
+        # Perform analysis on the cropped image
         self.wave_lines = tracking.analyze_and_append_waves(self.cropped_image)
 
-        # Step 6: Visualize and enable data deletion
+        # Visualize the results and enable data deletion
         self.visualize_wave_centerlines(self.cropped_image, self.wave_lines, enable_deletion=True)
 
-        # Step 7: Save the results as a CSV file
+        # Save the results to a CSV file
         self.save_wave_centerlines_to_csv(self.wave_lines, self.output_filename)
 
     def visualize_wave_centerlines(self, image, wave_lines, enable_deletion=False):
@@ -417,7 +479,7 @@ class Motion_Analysis_Window:
             self.ax.plot(x_coords, y_coords, color=colors[idx], label=f"Wave {idx + 1}")
 
         plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.title("Detected Wave Centerlines")
+        plt.title("Highlight data to delete it. Enter to accept, esc to cancel, exit window to save")
         plt.xlabel("X (columns)")
         plt.ylabel("Y (rows)")
         plt.tight_layout()
@@ -439,17 +501,21 @@ class Motion_Analysis_Window:
         print(f"Area selected for deletion: {x_start}-{x_end}, {y_start}-{y_end}")
 
     def on_key_press_delete(self, event):
-        """Handle key press events for confirming deletion or confirming crop."""
+        """Handle key press events for confirming deletion."""
         if event.key == 'enter':
             # If Enter is pressed, apply deletions
             print("Confirming deletion...")
             self.apply_deletions()
-        else:
-            # For any other key, confirm the crop and proceed
-            if self.crop_area:
-                print(f"Crop confirmed: {self.crop_area}")
-                self.cropping_complete = True
-                plt.close(self.fig)  # Close the figure to continue
+
+            pdf_filename = "last_centerline_visualization.pdf"
+
+            # Save the figure as a PDF
+            self.fig.savefig(pdf_filename, format='pdf', bbox_inches='tight')
+            print(f"Figure saved as {pdf_filename}")
+        elif event.key == 'escape':
+            # Reset deletion and cancel selection
+            print("Cancelling deletion...")
+            self.rect_selector.set_active(True)
 
     def apply_deletions(self):
         """Apply deletions to the selected data."""

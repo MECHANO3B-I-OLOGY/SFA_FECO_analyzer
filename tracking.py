@@ -6,8 +6,9 @@ import pandas as pd
 import screeninfo
 from scipy.interpolate import splprep, splev
 from scipy.optimize import curve_fit
+from scipy import stats
 from PIL import Image, ImageTk, ImageSequence
-
+from pprint import pprint
 # temp?
 import matplotlib.pyplot as plt
 
@@ -131,7 +132,7 @@ def rough_approx_poi(frame):
     # Return the list of filtered leftmost points
     return leftmost_points
 
-def generate_motion_timelapse(file_path, y_start, y_end, filename):
+def generate_motion_profile(file_path, y_start, y_end, filename):
     """
     Processes the TIFF video by performing vertical summing and normalization,
     then builds the final "timelapse" image. Can display progress after each frame.
@@ -200,7 +201,8 @@ def analyze_and_append_waves(image,
                              min_wave_gap=15, 
                              horizontal_proximity_threshold=15, 
                              vertical_proximity_threshold=1, 
-                             max_missing_rows=2):
+                             max_missing_rows=2,
+                             min_points_per_wave=50):
     """
     Analyze waves in the image, calculate the center of mass for each wave, 
     and append them to the correct wave line based on proximity to previously detected waves.
@@ -212,6 +214,7 @@ def analyze_and_append_waves(image,
     - horizontal_proximity_threshold: Maximum allowable horizontal distance to append a new center point to an existing wave.
     - vertical_proximity_threshold: Maximum allowable vertical distance between rows for a wave to be considered continuous.
     - max_missing_rows: Maximum number of consecutive rows where a wave can be missing before terminating it.
+    - min_points_per_wave: Minimum number of points for a wave line to be considered valid.
     
     Returns:
     - wave_lines: List of wave lines, each being a list of (y, x_center) points.
@@ -281,6 +284,13 @@ def analyze_and_append_waves(image,
         # Remove wave lines that have been missing for too many rows
         wave_lines = [wave_line for idx, wave_line in enumerate(wave_lines) if wave_missing_counts[idx] < max_missing_rows]
         wave_missing_counts = [count for count in wave_missing_counts if count < max_missing_rows]
+
+    # Remove wave lines that have fewer than the minimum required points
+    wave_lines = [wave_line for wave_line in wave_lines if len(wave_line) >= min_points_per_wave]
+
+    # Remove data too close to the edge
+    edge_threshold = 5
+    wave_lines = [[(y, x) for (y, x) in wave_line if edge_threshold <= x <= width - edge_threshold and edge_threshold <= y <= height - edge_threshold] for wave_line in wave_lines]
 
     return wave_lines
 
@@ -354,56 +364,134 @@ def save_data_as_csv(data, filename):
 
     print(f"Data saved to {filename}.csv")
 
-def gaussian(x, amplitude, mean, stddev):
-    return amplitude * np.exp(-((x - mean) ** 2) / (2 * stddev ** 2))
-
-# Define your fitting function
-def find_center_of_intensity(values, collapsed_values):
-    initial_amplitude = np.max(collapsed_values)
-    initial_mean = np.argmax(collapsed_values)
-    initial_sigma = np.std(values)  # Use the standard deviation of the y-values as an initial guess
-
-    print(initial_amplitude)
-
-    try:
-        popt_y, _ = curve_fit(
-            gaussian,
-            values,
-            collapsed_values,
-            p0=[initial_amplitude, initial_mean, initial_sigma],
-            maxfev=2000
-        )
-        y_center = popt_y[1]
-        if y_center > 300 or y_center < 0:
-            raise RuntimeError
-    except RuntimeError:
-        print("Gaussian fitting failed; using average value as fallback.")
-        y_center = np.mean(values)
-
-    return y_center
-
-def normalize_min_max(roi):
+def perform_turnaround_estimation(motion_profile_file_path, centerline_csv_path, y_offset = 0):
     """
-    Normalize the pixel values of the ROI to the range [0, 1].
+    Estimate the turnaround points for each wave by performing leftward and rightward 
+    linear fits, calculating their intersection points, and plotting the results.
     
-    :param roi: The region of interest (2D numpy array).
-    :return: Normalized ROI.
+    Args:
+    - motion_profile_file_path: Path to the motion profile image file (e.g., .tiff, .png).
+    - centerline_csv_path: Path to the CSV file that stores wave centerline coordinates.
+    - y_offset: offset in y (frames), results from cropping image
+    
+    Returns:
+    - Average of the estimated intersection points' y location, taking offset into account
     """
-    roi_min = np.min(roi)
-    roi_max = np.max(roi)
-    normalized_roi = (roi - roi_min) / (roi_max - roi_min)
-    return normalized_roi
 
-def normalize_hist_equalization(roi):
-    """
-    Apply histogram equalization to enhance contrast.
+    # Load the motion profile image
+    motion_profile_image = plt.imread(motion_profile_file_path)
     
-    :param roi: The region of interest (2D numpy array).
-    :return: Contrast-enhanced ROI.
-    """
+    # Read the wave lines (centerlines) from the CSV
+    wave_lines = []
+    with open(centerline_csv_path, 'r') as csvfile:
+        csvreader = csv.reader(csvfile)
+        header = next(csvreader)  # Skip the first row, which is likely the header
+        for row in csvreader:
+            wave_lines.append([(int(row[0]), int(row[1]), float(row[2]))])
+
+    # Dictionary to store intersection points for each wave line
+    intersection_points = {}
+
+    # Create a figure for the overlay
+    fig, ax = plt.subplots(figsize=(10, 6))  # Adjust the figure size for clarity
+    ax.imshow(motion_profile_image, cmap='gray')
+
+    # Replot the wave lines (limit for performance testing)
+    colors = plt.cm.rainbow(np.linspace(0, 1, min(10, len(wave_lines))))  # Limit to 10 lines for testing
+
+    unique_wave_numbers = sorted(set(point[0] for wave_line in wave_lines for point in wave_line))
+    # print(1, range(unique_wave_numbers[-1]))
+
+    for wavenum in range(1, unique_wave_numbers[-1] + 1): 
+        # Find the points in wave_lines corresponding to the current wave number
+        wave_data = [point for wave_line in wave_lines for point in wave_line if point[0] == wavenum]
+
+        # pprint(wave_data)
+
+        x_coords = [point[2] for point in wave_data]  # Extract the x-coordinates (third value in each tuple)
+        y_coords = [point[1] for point in wave_data]  # Extract the y-coordinates (second value in each tuple)
     
-    if roi.dtype != np.uint8:
-        roi = (255 * normalize_min_max(roi)).astype(np.uint8)
+        # Appending leftward points
+        pointNum = 5
+
+        # Initialize lists for leftward and rightward motion points
+        leftward_points = [(x_coords[pointNum - 2], y_coords[pointNum - 2])]
+
+        while pointNum < len(x_coords) and (leftward_points[-1][0]- x_coords[pointNum]) >= 5:
+            leftward_points.append((x_coords[pointNum], y_coords[pointNum]))
+            pointNum += 1
+
+        # Appending rightward points
+        pointNum = len(x_coords) - 5
+        rightward_points = [(x_coords[len(x_coords) - 4], y_coords[len(x_coords) - 4])]
+        while pointNum >= 0 and (rightward_points[-1][0] - x_coords[pointNum]) >= 5:
+            rightward_points.append((x_coords[pointNum], y_coords[pointNum]))
+            pointNum -= 1
+        print(wavenum)
+
+        # Separate Y and X coordinates for leftward and rightward points
+        left_x_coords = [point[0] for point in leftward_points]
+        left_y_coords = [point[1] for point in leftward_points]
+        right_x_coords = [point[0] for point in rightward_points]
+        right_y_coords = [point[1] for point in rightward_points]
+
+        # Perform linear regression on leftward and rightward points
+        left_slope, left_intercept = None, None
+        right_slope, right_intercept = None, None
         
-    equalized_roi = cv2.equalizeHist(roi)
-    return equalized_roi
+        if len(left_x_coords) > 1:
+            left_slope, left_intercept, _, _, _ = stats.linregress(left_x_coords, left_y_coords)
+        
+        if len(right_x_coords) > 1:
+            right_slope, right_intercept, _, _, _ = stats.linregress(right_x_coords, right_y_coords)
+
+        # Find intersection of the two lines: Solve for x in y = mx + b
+        intersection_point = None
+        if left_slope is not None and right_slope is not None:
+            # x-coordinate of intersection
+            intersection_x = (right_intercept - left_intercept) / (left_slope - right_slope)
+            # y-coordinate of intersection
+            intersection_y = left_slope * intersection_x + left_intercept
+            intersection_point = (intersection_x, intersection_y)
+            intersection_points[wavenum] = intersection_point
+            print(intersection_point)
+
+        # Plot each wave line
+        ax.plot(x_coords, y_coords, color=colors[wavenum])
+        # Plot leftward and rightward linear approximations
+        if left_slope is not None:
+            left_fit_x = np.array(left_x_coords)
+            left_fit_y = left_slope * left_fit_x + left_intercept
+            ax.plot(left_fit_x, left_fit_y, 'b--')
+
+        if right_slope is not None:
+            right_fit_x = np.array(right_x_coords)
+            right_fit_y = right_slope * right_fit_x + right_intercept
+            ax.plot(right_fit_x, right_fit_y, 'r--')
+
+        # Plot the intersection point
+        if intersection_point:
+            ax.plot(intersection_point[0], intersection_point[1], 'go')
+
+    # Reapply title, labels, and limit the legend for clarity
+    ax.set_title("Turnaround Estimation")
+    ax.set_xlabel("X (columns)")
+    ax.set_ylabel("Y (rows)")
+    ax.legend(loc='upper left', fontsize='small')
+
+    # Save the resulting overlay as a PDF
+    output_pdf_path = centerline_csv_path.replace(".csv", "_turnaround_estimation.pdf")
+    plt.savefig(output_pdf_path, format='pdf')
+
+    # Display the plot
+    plt.show()
+
+    # Extract all y-values from the dictionary
+    y_values = [point[1] for point in intersection_points.values()]
+
+    # Calculate the average y-value
+    estimated_turnaround = sum(y_values) / len(y_values) + y_offset
+
+    print(estimated_turnaround)
+
+    return estimated_turnaround
