@@ -16,32 +16,31 @@ from enums import *
 from exceptions import error_popup, warning_popup
 
 def scale_frame(frame, scale_factor=0.9):
-    """Sometimes resolution of video is larger than resolution of monitor this software is running on.
-    This function scales the resolution of the frame so the entire frame can be seen for selecting markers or just general analysis.
-    Scaling preseves aspect ratio, so it determines which dimension is most cut off from viewing (width or height),
-    and determines caling ratio for the other dimension based on that.
-
-    Distances of objects being tracked are scaled back up when recording data, so movement of tracked objects are recorded in the original resolution.
-
+    """Scales a PIL image based on monitor resolution and provided scale factor.
+    
     Args:
-        frame (numpy.ndarray): indv frame of video being tracked that will be scaled and returned
-        scale_factor (float, optional): fraction of monitor resolution to scale image. Defaults to 0.9.
+        frame (PIL.Image): Frame of the video (PIL image) to be scaled.
+        scale_factor (float, optional): Fraction of monitor resolution to scale the image. Defaults to 0.9.
 
     Returns:
-        scaled_frame (numpy.ndarray): scaled version of frame that was passed in
-        min_scale_factor (float): Determing scale factor, used to scale values back up before recording data.
+        scaled_frame (PIL.Image): Scaled version of the PIL image.
     """    
-    monitor = screeninfo.get_monitors()[0] # get primary monitor resolution
 
-    # get indv scale factors for width and height
-    scale_factor_height = scale_factor * (monitor.height / frame.shape[0])
-    scale_factor_width = scale_factor * (monitor.width / frame.shape[1])
+    # Get width and height of the original PIL image
+    width, height = frame.size
 
-    min_scale_factor = min(scale_factor_width, scale_factor_height)
+    # Calculate scale factors for height and width
+    scale_factor_height = scale_factor * height
+    scale_factor_width = scale_factor * width
 
-    # resize based on scale factors
-    scaled_frame = cv2.resize(frame, (int(frame.shape[1] * min_scale_factor), int(frame.shape[0] * min_scale_factor)))
-    return scaled_frame, min_scale_factor
+    # Resize the image using the minimum scale factor
+    new_width = int(scale_factor_width)
+    new_height = int(scale_factor_height)
+
+    # Resize the image using PIL's resize method
+    scaled_frame = frame.resize((new_width, new_height))
+
+    return scaled_frame
 
 def detect_edges(frame, smoothing_factor=500):
     if frame.dtype != np.uint8:

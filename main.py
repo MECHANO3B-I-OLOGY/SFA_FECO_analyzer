@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import RectangleSelector
 import csv
 from PIL import Image, ImageTk, ImageSequence
+import screeninfo
 
 import tracking  # Assuming this is a custom module for edge analysis
 from exceptions import error_popup, warning_popup
@@ -105,7 +106,7 @@ class SFA_FECO_UI:
             title='Browse for TIFF file',
             filetypes=[("TIFF Files", "*.tif *.tiff")]
         )"""
-        file_path = "FR1-P1-bis.tif"
+        file_path = "FR1.tif"
         if file_path:
             # Save the selected file path
             self.raw_video_file_path = file_path
@@ -181,6 +182,8 @@ class Frame_Prep_Window:
         self.draw_rectangle = True
         self.current_offset = 0
         self.frames = []
+        self.scale = .75
+        self.is_scaled = False
 
         # Load the TIFF file using PIL
         try:
@@ -234,7 +237,7 @@ class Frame_Prep_Window:
     def display_frame(self):
         """Display the current frame on the canvas."""
         # 
-        frame = self.cropped_frame.copy() if self.cropped_frame is not None else self.original_frame.copy()
+        frame = self.check_and_scale_frame(self.cropped_frame.copy() if self.cropped_frame is not None else self.original_frame.copy())
 
         if self.edge_var.get():  # Apply edge analysis if enabled
             pil_image = tracking.display_edges(np.array(frame))
@@ -262,6 +265,41 @@ class Frame_Prep_Window:
 
         # Update the window size based on the frame
         self.update_window_size()
+
+    def check_and_scale_frame(self, frame, scale_factor=0.9):
+        """
+        Check if the frame's height exceeds 75% of the screen height, and scale it if necessary.
+
+        Args:
+            frame (PIL.Image or numpy.ndarray): Frame to be checked and potentially scaled.
+            scale_factor (float, optional): The scale factor to be applied if the frame exceeds 75% of the screen height. Default is 0.9.
+
+        Returns:
+            scaled_frame: The scaled or original frame depending on the condition.
+        """
+        # Get monitor resolution using screeninfo 
+        monitor = screeninfo.get_monitors()[0]
+        screen_height = monitor.height
+
+        # Get frame dimensions
+        if isinstance(frame, Image.Image):  # If the frame is a PIL Image
+            frame_width, frame_height = frame.size
+        elif isinstance(frame, np.ndarray):  # If the frame is a NumPy array
+            frame_height, frame_width = frame.shape[:2]
+        else:
+            raise ValueError("Unsupported frame type. Must be PIL Image or NumPy array.")
+
+        # Check if the frame's height exceeds 75% of the screen height
+        if frame_height > self.scale * screen_height:
+            # Scale the frame using the scale_frame function
+            scaled_frame = tracking.scale_frame(frame, scale_factor)
+            self.is_scaled = True
+            return scaled_frame
+        else:
+            # Return the original frame if no scaling is needed
+            self.is_scaled = False
+            return frame
+
 
     def reset_image(self, event=None):
         """Reset the image to its original state without cropping or ROI."""
