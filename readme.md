@@ -62,13 +62,13 @@ This stage allows you to prepare the input TIFF file for further analysis by cro
 
 The tool prompts you to select a TIFF video for analysis.
 
-### Crop/Preprocess
+#### Crop/Preprocess
 
 Tool for selecting an area of the video to run future analysis on.
 
-### Generate Motion Profile:
+#### Generate Motion Profile:
 
-This button will take the cropped video and run a series of operations on it to create a single image, the "motion profile." This is done by computing the video's vertical "center of intensity" via analysis of pixel brightness. This center is becomes the center axis of a "region of interest" for each frame of the video. The now one-dimensional frame is "stacked" on top of all other frames' one-dimensional summary. This creates a single frame which shows the profile of motion over the duration of the video. The result is automatically selected for the next step. 
+This button will take the cropped video and run a series of operations on it to create a single image, the "motion profile." This is done by computing the video's vertical "center of intensity" via analysis of pixel brightness. This center is becomes the center axis of a "region of interest" for each frame of the video. The now one-dimensional frame is "stacked" on top of all other frames' one-dimensional summary. This creates a single frame which shows the profile of motion over the duration of the video. The result is automatically selected for the next step.
 
 ## Step 2: Analyze
 
