@@ -3,6 +3,7 @@
 10/12/24 - Isaac
 - Cleaned up code
 - Got Readme updated
+- Scaling fixed
 
 10/7/24 - Isaac
 - got linear approximation of motion working

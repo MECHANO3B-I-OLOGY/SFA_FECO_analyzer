@@ -18,9 +18,13 @@ class SFA_FECO_UI:
     def __init__(self, root):
         self.root = root
         self.root.title("SFA FECO Analyzer")
+        self.root.geometry("400x400+300+100") # Force the parent window to start at a set position
+
         self.raw_video_file_path = None
         self.motion_profile_file_path = None  # To store the chosen or generated data file path
-        self.root.geometry("400x400+300+100") # Force the parent window to start at a set position
+        self.split_frame_num = 0
+        self.offset= 0
+
 
         # Get screen width and height
         screen_width = root.winfo_screenwidth()
@@ -84,7 +88,34 @@ class SFA_FECO_UI:
         self.analyze_button = ttk.Button(root, text="Estimate Turnaround", command=self.estimate_turnaround, style='Regular.TButton')
         self.analyze_button.grid(row=4, column=2, sticky='ew')
 
-        self.offset= 0
+        # Creating the frame to hold the button and the number-entry box
+        self.split_subframe = ttk.Frame(root)
+        self.split_subframe.grid(row=5, column=2, sticky='ew')
+
+        # Configure validation to accept only numbers
+        vcmd = (root.register(self.validate_numeric_input), '%P')
+
+        # Adding a label to the frame
+        self.split_label = ttk.Label(self.split_subframe, text="Frame turnaround: ")
+        self.split_label.grid(row=0, column=0, columnspan=2, pady=(0, 5), sticky = 'w')
+
+        # Creating a StringVar to hold and control the value of the entry box
+        self.split_var = tk.StringVar(value=str(self.split_frame_num))
+
+        # Trace changes to split_var and automatically update the entry when split_frame_num changes
+        self.split_var.trace('w', self.update_entry)
+
+        # Number-entry box
+        self.split_entry = ttk.Entry(self.split_subframe, textvariable=self.split_var, validate='key', validatecommand=vcmd)
+        self.split_entry.grid(row=1, column=0, padx=(0, 25), sticky='ew')
+
+        # Split button
+        self.analyze_button = ttk.Button(self.split_subframe, text="Split", command=self.split, style='Regular.TButton')
+        self.analyze_button.grid(row=1, column=1, sticky='ew')
+
+        # Make the columns expand correctly
+        self.split_subframe.columnconfigure(0, weight=0)
+        self.split_subframe.columnconfigure(1, weight=1)  
 
         # Add a vertical separator between columns
         vertical_separator = ttk.Separator(root, orient="vertical")
@@ -120,9 +151,9 @@ class SFA_FECO_UI:
                 error_popup(msg)
 
     def open_crop_preprocess_window(self):
-        Frame_Prep_Window(self.raw_video_file_path, self.handle_roi_selection)
+        Frame_Prep_Window(self.raw_video_file_path, self.callback_handle_roi_selection)
         
-    def handle_roi_selection(self, roi_data):
+    def callback_handle_roi_selection(self, roi_data):
         """
         Handle the ROI data returned from the Frame_Prep_Window.
         :param roi_data: Tuple containing (y_start, y_end, offset, frame).
@@ -135,7 +166,7 @@ class SFA_FECO_UI:
         if self.raw_video_file_path:
             # Ask the user for a filename to save the data
             # filename = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
-            filename = "test3.tiff" # HARDCODED
+            filename = "test6.tiff" # HARDCODED
             if filename:
                 if hasattr(self, 'y_start') and hasattr(self, 'y_end'):
                     # Call the fine approximation function with the Y crop info
@@ -156,9 +187,9 @@ class SFA_FECO_UI:
             self.data_file_label.config(text=f"Using file: {data_file_text}")
 
     def analyze(self):
-        Motion_Analysis_Window(self.motion_profile_file_path, self.handle_crop_offset)
+        Motion_Analysis_Window(self.motion_profile_file_path, self.callback_handle_crop_offset)
 
-    def handle_crop_offset(self, offsets):
+    def callback_handle_crop_offset(self, offsets):
         """
         Handle the offset data returned from the Motion_Analysis_Window.
         :param offsets: int of y offset
@@ -166,7 +197,50 @@ class SFA_FECO_UI:
         self.offset = offsets
 
     def estimate_turnaround(self):
-        tracking.perform_turnaround_estimation('test3_cropped.tiff', "csvTest3.csv", self.offset) #HARDCODED
+        self.split_frame_num = tracking.perform_turnaround_estimation('test3_cropped.tiff', "csvTest3.csv", self.offset) #HARDCODED
+        self.split_var.set(str(self.split_frame_num))
+    
+    def split(self):
+        # Open the CSV file
+        with open("csvTest3.csv", 'r') as csv_file: # HARDCODED
+            csv_reader = csv.reader(csv_file)
+            header = next(csv_reader)  # Assuming the first row is the header
+
+            # Prepare file paths
+            base, ext = os.path.splitext("csvTest3.csv") # HARDCODED
+            in_file_path = f"{base}_in{ext}"
+            out_file_path = f"{base}_out{ext}"
+
+            # Open new CSV files for writing
+            with open(in_file_path, 'w', newline='') as in_file, open(out_file_path, 'w', newline='') as out_file:
+                in_writer = csv.writer(in_file)
+                out_writer = csv.writer(out_file)
+
+                # Write the header to both files
+                in_writer.writerow(header)
+                out_writer.writerow(header)
+
+                # Process each row and split based on the y value (second column)
+                for row in csv_reader:
+                    y_value = float(row[1])  # Convert second column to a float
+                    if y_value <= self.split_frame_num:
+                        in_writer.writerow(row)
+                    else:
+                        out_writer.writerow(row)
+
+        print(f"CSV files saved as {in_file_path} and {out_file_path}")
+    
+    def validate_numeric_input(self, value):
+        # Allow only numbers (positive integers)
+        return value.isdigit() or value == ""
+    
+    def update_entry(self, *args):
+        # Automatically update split_frame_num when split_var changes
+        try:
+            self.split_frame_num = int(self.split_var.get())
+        except ValueError:
+            pass  # Ignore if the value isn't a valid integer
+        
 
 class Frame_Prep_Window:
     def __init__(self, file_path, roi_callback=None):
@@ -594,7 +668,7 @@ class Motion_Analysis_Window:
         try:
             with open(output_filename, mode='w', newline='') as file:
                 writer = csv.writer(file)
-                writer.writerow(["Wave Index", "Y-Coordinate (row)", "X-Center (column)"])
+                writer.writerow(["Wave Index", "Frame Number", "Center of Mass X Coord"])
 
                 for wave_idx, wave_line in enumerate(wave_lines):
                     for (y, x_center) in wave_line:
