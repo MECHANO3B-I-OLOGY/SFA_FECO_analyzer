@@ -1,4 +1,10 @@
+10/23/24 - Isaac
+- calibration function finished
 
+10/21/24 - Isaac
+- Got split cleaned up
+- Manual split location
+- started calibration implementation  
 
 10/12/24 - Isaac
 - Cleaned up code

@@ -2,9 +2,6 @@ existing bugs to patch:
 
 future plans:
 
-- use mercury calibration file to identify x coords of known wavelengths, extrapolate a translation of pixels to wavelength
-  - dispersion val = slope wavelength/pixels
-
 finished:
 
 - ignore Y axis for point placement
@@ -16,3 +13,4 @@ finished:
 - linear approximation and interpolation of turning point
 - add option to split frame around turnaround
 - add option to manually enter turnaround point
+- use mercury calibration file to identify x coords of known wavelengths, extrapolate a translation of pixels to wavelength

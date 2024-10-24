@@ -286,7 +286,7 @@ def analyze_and_append_waves(image,
 
     # Remove wave lines that have fewer than the minimum required points
     wave_lines = [wave_line for wave_line in wave_lines if len(wave_line) >= min_points_per_wave]
-
+    # pprint(wave_lines)
     # Remove data too close to the edge
     edge_threshold = 5
     wave_lines = [[(y, x) for (y, x) in wave_line if edge_threshold <= x <= width - edge_threshold and edge_threshold <= y <= height - edge_threshold] for wave_line in wave_lines]
@@ -426,7 +426,7 @@ def perform_turnaround_estimation(motion_profile_file_path, centerline_csv_path,
         while pointNum >= 0 and (rightward_points[-1][0] - x_coords[pointNum]) >= 5:
             rightward_points.append((x_coords[pointNum], y_coords[pointNum]))
             pointNum -= 1
-        print(wavenum)
+        # print(wavenum)
 
         # Separate Y and X coordinates for leftward and rightward points
         left_x_coords = [point[0] for point in leftward_points]
