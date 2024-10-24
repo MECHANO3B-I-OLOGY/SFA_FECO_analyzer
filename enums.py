@@ -1,5 +1,10 @@
 from enum import Enum, auto
 
+class CalibrationValues(Enum):
+    HG_GREEN = 546.075
+    HG_YELLOW_1 = 576.959 
+    HG_YELLOW_2 = 579.065
+
 class FileMode(Enum):
     UNSELECTED = auto()
     APPEND = auto()
@@ -10,9 +15,3 @@ class TimeUnits(Enum):
     SECONDS = 's'
     MINUTES = 'min'
     HOURS = 'hr'
-
-class LineMethod(Enum):
-    CREST_TO_CREST = auto()
-    AVERAGE = auto()
-
-    

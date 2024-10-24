@@ -1,4 +1,5 @@
 import os
+import cv2
 import numpy as np
 import tkinter as tk
 from tkinter import ttk, filedialog
@@ -7,6 +8,7 @@ from matplotlib.widgets import RectangleSelector
 import csv
 from PIL import Image, ImageTk, ImageSequence
 import screeninfo
+from enums import CalibrationValues
 
 import tracking  # Assuming this is a custom module for edge analysis
 from exceptions import error_popup, warning_popup
@@ -22,9 +24,10 @@ class SFA_FECO_UI:
 
         self.raw_video_file_path = None
         self.motion_profile_file_path = None  # To store the chosen or generated data file path
+        self.calibration_video_file_path = None
         self.split_frame_num = 0
         self.offset= 0
-
+        self.calibration_parameters = {}
 
         # Get screen width and height
         screen_width = root.winfo_screenwidth()
@@ -35,6 +38,9 @@ class SFA_FECO_UI:
         window_height = int(screen_height * 0.7)
         
         self.root.geometry(f"{window_width}x{window_height}")
+
+        # Configure validation to accept only numbers
+        vcmd = (root.register(self.validate_numeric_input), '%P')
 
         # Setup styles
         self.setup_styles()
@@ -51,7 +57,7 @@ class SFA_FECO_UI:
         root.grid_columnconfigure(2, weight=1)
 
         # Prep Section: Add a column for the raw video select, crop/preprocess, and generate motion profile buttons
-        prep_label = ttk.Label(root, text="STEP 1: Prep", style='Step.TLabel')
+        prep_label = ttk.Label(root, text="STEP 1: Prep", style='Step.TLabel', font=20)
         prep_label.grid(row=0, column=0, sticky='ew', padx=10)
 
         # Raw video data select button
@@ -59,8 +65,8 @@ class SFA_FECO_UI:
         self.select_raw_button.grid(row=1, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the selected file's name
-        self.file_label = ttk.Label(root, text="No file selected", style='Regular.TLabel')
-        self.file_label.grid(row=2, column=0, sticky='new', padx=10)
+        self.raw_file_label = ttk.Label(root, text="No file selected", style='Regular.TLabel')
+        self.raw_file_label.grid(row=2, column=0, sticky='new', padx=10)
 
         # Crop/Preprocess button
         self.crop_button = ttk.Button(root, text="Crop/Preprocess", command=self.open_crop_preprocess_window, style='Regular.TButton')
@@ -70,8 +76,32 @@ class SFA_FECO_UI:
         self.generate_motion_button = ttk.Button(root, text="Generate Motion Profile", command=self.generate_motion_profile, style='Regular.TButton')
         self.generate_motion_button.grid(row=4, column=0, sticky='ew', padx=10, pady=5)
 
+        # Creating the frame to hold the calibration 
+        self.calibration_subframe = ttk.Frame(root)
+        self.calibration_subframe.grid(row=5, column=0, sticky='new')
+
+        # Configure the column of the subframe to expand
+        self.calibration_subframe.columnconfigure(0, weight=1)  
+
+        # Adding a label to the subframe
+        self.split_label = ttk.Label(self.calibration_subframe, text="Calibrate Wavelengths")
+        self.split_label.grid(row=0, column=0, pady=(0, 5), sticky = 'w')
+
+        # Select file for calibration
+        self.select_calibration_file_button = ttk.Button(self.calibration_subframe, text="Select Calibration Video", command=self.select_calibration_file, style='Regular.TButton')
+        self.select_calibration_file_button.grid(row=1, column=0, sticky='ew', padx=10, pady=5)
+
+        # Label to display the selected file's name
+        self.calibration_file_label = ttk.Label(self.calibration_subframe, text="No file selected", style='Regular.TLabel')
+        self.calibration_file_label.grid(row=2, column=0, sticky='new', padx=10)
+
+        self.execute_calibration = ttk.Button(self.calibration_subframe, text="Calibrate Wavelengths", command=self.run_calibration, style='Regular.TButton')
+        self.execute_calibration.grid(row=3, column=0,sticky='ew', padx=10, pady=5)
+
+
+        # COLUMN TWO
         # Step 2: Analyze
-        step3_label = ttk.Label(root, text="STEP 2: Analyze", style='Step.TLabel')
+        step3_label = ttk.Label(root, text="STEP 2: Analyze", style='Step.TLabel', font=20)
         step3_label.grid(row=0, column=2, sticky='ew', padx=10)
 
         # Button to choose an existing data file
@@ -92,18 +122,12 @@ class SFA_FECO_UI:
         self.split_subframe = ttk.Frame(root)
         self.split_subframe.grid(row=5, column=2, sticky='ew')
 
-        # Configure validation to accept only numbers
-        vcmd = (root.register(self.validate_numeric_input), '%P')
-
         # Adding a label to the frame
         self.split_label = ttk.Label(self.split_subframe, text="Frame turnaround: ")
         self.split_label.grid(row=0, column=0, columnspan=2, pady=(0, 5), sticky = 'w')
 
         # Creating a StringVar to hold and control the value of the entry box
         self.split_var = tk.StringVar(value=str(self.split_frame_num))
-
-        # Trace changes to split_var and automatically update the entry when split_frame_num changes
-        self.split_var.trace('w', self.update_entry)
 
         # Number-entry box
         self.split_entry = ttk.Entry(self.split_subframe, textvariable=self.split_var, validate='key', validatecommand=vcmd)
@@ -120,6 +144,8 @@ class SFA_FECO_UI:
         # Add a vertical separator between columns
         vertical_separator = ttk.Separator(root, orient="vertical")
         vertical_separator.grid(row=0, column=1, rowspan=6, sticky='ns', padx=10)
+
+
 
     def setup_styles(self):
         self.btn_style = ttk.Style()
@@ -143,7 +169,7 @@ class SFA_FECO_UI:
             self.raw_video_file_path = file_path
             
             # Update the label to display the file name
-            self.file_label.config(text=f"Selected File: {os.path.basename(file_path)}")
+            self.raw_file_label.config(text=f"Selected File: {os.path.basename(file_path)}")
 
             # Check if the file exists
             if not os.path.isfile(self.raw_video_file_path):
@@ -240,6 +266,33 @@ class SFA_FECO_UI:
             self.split_frame_num = int(self.split_var.get())
         except ValueError:
             pass  # Ignore if the value isn't a valid integer
+            
+    def select_calibration_file(self):
+        # Open a file dialog to select a TIFF file
+        """file_path = filedialog.askopenfilename(
+            initialdir=os.path.join(os.getcwd()),
+            title='Browse for TIFF file',
+            filetypes=[("TIFF Files", "*.tif *.tiff")]
+        )"""
+        file_path = "mica_gold.tif"
+        if file_path:
+            # Save the selected file path
+            self.calibration_video_file_path = file_path
+            
+            # Update the label to display the file name
+            self.calibration_file_label.config(text=f"Selected File: {os.path.basename(file_path)}")
+
+            # Check if the file exists
+            if not os.path.isfile(self.calibration_video_file_path):
+                msg = "Invalid file"
+                error_popup(msg)
+
+    def callback_get_calibration(self, values):
+        self.calibration_parameters = values
+
+    def run_calibration(self):
+        Calibration_Window(self.calibration_video_file_path, self.callback_get_calibration)
+        return
         
 
 class Frame_Prep_Window:
@@ -677,6 +730,234 @@ class Motion_Analysis_Window:
             print(f"Wave centerlines successfully saved to {output_filename}")
         except Exception as e:
             print(f"Error saving wave centerlines to CSV: {e}")
+
+
+class Calibration_Window:
+    def __init__(self, file_path, callback):
+        self.file_path = file_path
+        self.callback = callback
+        self.window = tk.Toplevel()
+        self.window.title("Calibration Window")
+
+        # Load the image as a PIL image
+        self.image = Image.open(self.file_path)
+
+        # State variables
+        self.crop_start = None
+        self.crop_rectangle = None
+        self.waves = None
+        self.stage = 1
+        self.scale_factor = 0.75
+        self.cropped_image = None
+        self.wave_x_avgs = []
+        self.selected_waves = [] 
+        self.num_waves = 3
+
+        # Create instruction label
+        self.instruction_label = ttk.Label(self.window, text="Step 1: Select the region to crop (y-axis only).")
+        self.instruction_label.pack(pady=5)
+
+        # Create UI elements
+        self.canvas = tk.Canvas(self.window)
+        self.canvas.pack(fill="both", expand=True)
+        self.slider = ttk.Scale(self.window, from_=0, to=self.image.n_frames - 1, orient="horizontal", command=self.update_frame)
+        self.slider.pack(fill="x")
+
+        # Bind events
+        self.canvas.bind("<Button-1>", self.click_start_crop)
+        self.canvas.bind("<ButtonRelease-1>", self.end_crop)
+        self.window.bind("<Escape>", self.cancel_crop)
+        self.window.bind("<Return>", self.confirm_crop)
+
+        # Load the initial frame
+        self.update_frame(0)
+
+    def update_frame(self, value):
+        """Updates the displayed frame based on the slider value."""
+        current_frame_index = int(float(value))
+        self.image.seek(current_frame_index)
+        scaled_frame = tracking.scale_frame(self.image, self.scale_factor)
+        self.display_image(scaled_frame)
+
+    def display_image(self, image):
+        """Displays a PIL image on the canvas."""
+        self.photo = ImageTk.PhotoImage(image)
+        self.canvas.create_image(0, 0, anchor="nw", image=self.photo)
+        
+        frame_width, frame_height = image.size
+        self.canvas.config(width=frame_width, height=frame_height)
+        self.window.geometry(f"{frame_width}x{frame_height + 80}")
+
+    def click_start_crop(self, event):
+        """Begins the crop selection (only y-axis)."""
+        if self.stage == 1:  # Only allow cropping in step 1    
+            self.crop_start_y = event.y
+            if self.crop_rectangle:
+                self.canvas.delete(self.crop_rectangle)
+        elif self.stage == 2:
+            self.select_wave_click(event)
+
+    def end_crop(self, event):
+        """Draws the cropping line (only y-axis)."""
+        
+        if self.stage == 1:  # Only allow cropping in step 1 
+            self.crop_end_y = event.y
+            width = self.image.width  # Use the entire width of the image
+            self.crop_rectangle = self.canvas.create_rectangle(0, self.crop_start_y, width, self.crop_end_y, outline="red", width=2)
+
+    def cancel_crop(self, event):
+        """Cancels the cropping selection."""
+        if self.stage == 1:  # Only allow cropping in step 1 
+            if self.crop_rectangle:
+                self.canvas.delete(self.crop_rectangle)
+            self.crop_start_y = None
+            self.crop_end_y = None
+        elif self.stage == 2:
+            self.selected_waves = []
+            self.update_overlay
+
+    def confirm_crop(self, event):
+        """Confirms the crop and proceeds to analyze waves."""
+        if self.stage == 1 and self.crop_start_y is not None and self.crop_end_y is not None:
+            y1 = min(self.crop_start_y, self.crop_end_y)
+            y2 = max(self.crop_start_y, self.crop_end_y)
+            cropped_frame = self.image.crop((0, y1, self.image.width, y2))
+            self.canvas.delete(self.crop_rectangle)
+            self.cropped_image = cropped_frame
+
+            # Hide the slider after step 1 is complete
+            self.slider.pack_forget()
+            self.stage = 2
+        
+            # Update instructions
+            self.instruction_label.config(text="Step 2: Select 3 wave lines.")
+        
+            self.run_wave_analysis(cropped_frame)
+
+    def run_wave_analysis(self, image):
+        """Runs the wave analysis on the cropped image."""
+        self.waves = tracking.analyze_and_append_waves(np.array(image), wave_threshold=110)
+        self.display_waves()
+
+    def display_waves(self):
+        """Displays the waves over the cropped image."""
+        if self.waves and self.cropped_image is not None:
+            # Ensure the cropped image is in RGB mode
+            if self.cropped_image.mode != 'RGB':
+                self.cropped_image = self.cropped_image.convert('RGB')
+                
+            # Convert the PIL image to a numpy array for OpenCV processing
+            overlay = np.array(self.cropped_image).copy()
+
+            # Print out the waves for debugging
+            print(f"Number of waves: {len(self.waves)}")
+            for wave_index, wave in enumerate(self.waves):
+                # Calculate the average x position for the wave
+                average_x = int(np.mean([point[1] for point in wave]))
+                self.wave_x_avgs.append(average_x)
+                print(f"Wave {wave_index} average x-position: {average_x}")
+
+                # Ensure the average_x is within the image boundaries
+                if 0 <= average_x < overlay.shape[1]:
+                    # Draw a vertical line at the average x position
+                    cv2.line(overlay, (average_x, 0), (average_x, overlay.shape[0]), (0, 255, 0), 2)
+                else:
+                    print(f"Wave {wave_index} average x-position is out of bounds and will not be drawn.")
+
+            # Convert back to a PIL image if needed or continue processing with OpenCV
+            overlay_pil = Image.fromarray(overlay)
+            scaled_overlay = tracking.scale_frame(overlay_pil, self.scale_factor)
+            self.display_image(scaled_overlay)
+
+            # DEBUG: Display the frame using OpenCV for debugging
+            debug_frame = cv2.cvtColor(np.array(overlay), cv2.COLOR_RGB2BGR)  # Convert to BGR for OpenCV
+            # self.display_image_with_pixel_scale(debug_frame)
+
+            # Convert the numpy array back to a PIL image
+            overlay_pil = Image.fromarray(debug_frame)
+            
+            # Scale the overlay image
+            scaled_overlay = tracking.scale_frame(overlay_pil, self.scale_factor)
+            
+            # Display the scaled image
+            self.display_image(scaled_overlay)
+            
+            # Bind the return key for wave selection confirmation
+            self.window.bind("<Return>", self.confirm_wave_selection)
+
+    def confirm_wave_selection(self, event):
+        """Allows the user to select 3 wave lines and calculate the calibration equation."""
+        if len(self.waves) < 3:
+            print("Select at least 3 wave lines")
+            return
+        self.select_waves(3)
+
+    def select_waves(self, num_waves):
+        """Allows the user to select a number of wave lines by clicking on the canvas."""
+        self.num_waves = num_waves
+        self.canvas.bind("<Button-1>", self.select_wave_click)
+
+        # Instructions for the user
+        self.instructions_label = ttk.Label(self.window, text=f"Click to select {self.num_waves} wave lines.")
+        self.instructions_label.pack(pady=5)
+
+    def select_wave_click(self, event):
+        """Handles click events to select wave lines based on the average x-coordinate."""
+        x = event.x / self.scale_factor
+
+        # Find the closest wave based on the x-coordinate clicked
+        closest_wave = None
+        min_distance = float('inf')
+        for wave_x in self.wave_x_avgs:
+            distance = abs(wave_x - x)
+            print(wave_x, " wave pixel")
+            print(distance, " distance")
+            print()
+            if distance < min_distance:
+                min_distance = distance
+                closest_wave = wave_x
+
+        if closest_wave is not None:
+            # Check if the closest wave has already been selected; if not, add it
+            if closest_wave not in self.selected_waves:
+                self.selected_waves.append(closest_wave)
+
+            # Redraw the overlay to highlight all waves (green for unselected, red for selected)
+            self.update_overlay()
+
+            # Check if enough waves have been selected
+            if len(self.selected_waves) >= self.num_waves:
+                self.canvas.unbind("<Button-1>")
+                self.instruction_label.config(text="Wave selection complete. Press Enter to proceed.")
+                self.window.bind("<Return>", self.calculate_transformation)
+
+    def update_overlay(self):
+        """Updates the overlay to highlight selected and unselected waves."""
+        # Create an overlay image
+        overlay = np.array(self.cropped_image).copy()
+
+        # Draw all waves: green for unselected and red for selected
+        for wave_x in self.wave_x_avgs:
+            color = (0, 255, 0)  # Default color is green
+            if wave_x in self.selected_waves:
+                color = (255, 0, 0)  # Change to red for selected waves
+            cv2.line(overlay, (int(wave_x), 0), (int(wave_x), overlay.shape[0]), color, 2)
+
+        # Convert the overlay back to PIL format and scale it
+        overlay_pil = Image.fromarray(overlay)
+        scaled_overlay = tracking.scale_frame(overlay_pil, self.scale_factor)
+        self.display_image(scaled_overlay)
+
+
+    def calculate_transformation(self, event):
+        """Calculates the calibration equation using the selected waves."""
+        x_values = self.wave_x_avgs
+        y_values = [CalibrationValues.HG_GREEN.value, CalibrationValues.HG_YELLOW_1.value, CalibrationValues.HG_YELLOW_2.value]
+        coefficients = np.polyfit(x_values, y_values, 1)
+        calibration_equation = {"slope": coefficients[0], "intercept": coefficients[1]}
+        print(calibration_equation)
+        self.callback(calibration_equation)
+        self.window.destroy() 
 
 if __name__ == "__main__":
     root = tk.Tk()
