@@ -453,7 +453,7 @@ def perform_turnaround_estimation(motion_profile_file_path, centerline_csv_path,
             intersection_y = left_slope * intersection_x + left_intercept
             intersection_point = (intersection_x, intersection_y)
             intersection_points[wavenum] = intersection_point
-            print(intersection_point)
+            # print(intersection_point)
 
         # Plot each wave line
         ax.plot(x_coords, y_coords, color=colors[wavenum])
