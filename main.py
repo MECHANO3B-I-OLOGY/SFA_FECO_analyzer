@@ -25,6 +25,9 @@ class SFA_FECO_UI:
         self.raw_video_file_path = None
         self.motion_profile_file_path = None  # To store the chosen or generated data file path
         self.calibration_video_file_path = None
+        self.split_file_path = None
+        self.centerlines_csv_path = None
+
         self.split_frame_num = 0
         self.offset= 0
         self.calibration_parameters = {}
@@ -98,6 +101,10 @@ class SFA_FECO_UI:
         self.execute_calibration = ttk.Button(self.calibration_subframe, text="Calibrate Wavelengths", command=self.run_calibration, style='Regular.TButton')
         self.execute_calibration.grid(row=3, column=0,sticky='ew', padx=10, pady=5)
 
+        # Label to display the calibration status
+        self.calibration_completion_label = ttk.Label(self.calibration_subframe, text="Calibration not completed", style='Regular.TLabel')
+        self.calibration_completion_label.grid(row=4, column=0, sticky='new', padx=10)
+
 
         # COLUMN TWO
         # Step 2: Analyze
@@ -126,16 +133,24 @@ class SFA_FECO_UI:
         self.split_label = ttk.Label(self.split_subframe, text="Frame turnaround: ")
         self.split_label.grid(row=0, column=0, columnspan=2, pady=(0, 5), sticky = 'w')
 
+        # Button to choose an existing data file
+        self.choose_split_button = ttk.Button(self.split_subframe, text="Choose File to Split", command=self.choose_split_file, style='Regular.TButton')
+        self.choose_split_button.grid(row=1, columnspan=2, sticky='ew', padx=10)
+
+        # File field for the output data
+        self.split_file_label = ttk.Label(self.split_subframe, text="No file selected", style='Regular.TLabel')
+        self.split_file_label.grid(row=2, columnspan=2, sticky='enw', padx=10, pady=(0, 5))
+
         # Creating a StringVar to hold and control the value of the entry box
         self.split_var = tk.StringVar(value=str(self.split_frame_num))
 
         # Number-entry box
         self.split_entry = ttk.Entry(self.split_subframe, textvariable=self.split_var, validate='key', validatecommand=vcmd)
-        self.split_entry.grid(row=1, column=0, padx=(0, 25), sticky='ew')
+        self.split_entry.grid(row=3, column=0, padx=(0, 25), sticky='ew')
 
         # Split button
         self.analyze_button = ttk.Button(self.split_subframe, text="Split", command=self.split, style='Regular.TButton')
-        self.analyze_button.grid(row=1, column=1, sticky='ew')
+        self.analyze_button.grid(row=3, column=1, sticky='ew')
 
         # Make the columns expand correctly
         self.split_subframe.columnconfigure(0, weight=0)
@@ -163,7 +178,7 @@ class SFA_FECO_UI:
             title='Browse for TIFF file',
             filetypes=[("TIFF Files", "*.tif *.tiff")]
         )"""
-        file_path = "FR1.tif"
+        file_path = "FR1-P1-bis.tif" # hardcoded
         if file_path:
             # Save the selected file path
             self.raw_video_file_path = file_path
@@ -185,14 +200,14 @@ class SFA_FECO_UI:
         :param roi_data: Tuple containing (y_start, y_end, offset, frame).
         """
         self.y_start, self.y_end, self.offset, cropped_frame = roi_data
-        # print(f"ROI Selected: Y-Start: {y_start}, Y-End: {y_end}, Offset: {offset}")
+        # print(f"ROI Selected: Y-Start: {self.y_start}, Y-End: {self.y_end}, Offset: {self.offset}")
     
     def generate_motion_profile(self):
         # Ensure a file is selected before analyzing
         if self.raw_video_file_path:
             # Ask the user for a filename to save the data
-            # filename = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
-            filename = "test6.tiff" # HARDCODED
+            # filename = filedialog.asksaveasfilename(defaultextension=".tiff", filetypes=[("tiff files", "*.tiff")])
+            filename = "test3.tiff" # HARDCODED
             if filename:
                 if hasattr(self, 'y_start') and hasattr(self, 'y_end'):
                     # Call the fine approximation function with the Y crop info
@@ -206,14 +221,28 @@ class SFA_FECO_UI:
     def choose_data_file(self):
         max_length = 15;
         # Allow the user to choose an existing data file
-        self.motion_profile_file_path = filedialog.askopenfilename(filetypes=[("Tiff files", "*.tiff")])
+        check_file = filedialog.askopenfilename(filetypes=[("Tiff files", "*.tiff")])
+        if(check_file): 
+            self.motion_profile_file_path = check_file
         if len(self.motion_profile_file_path) > max_length:
             data_file_text = '...' + self.motion_profile_file_path[len(self.motion_profile_file_path) - max_length:]
-        if self.motion_profile_file_path:
             self.data_file_label.config(text=f"Using file: {data_file_text}")
 
+    def choose_split_file(self):
+        max_length = 15;
+        # Allow the user to choose an existing data file
+        self.split_file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
+        if len(self.split_file_path) > max_length:
+            data_file_text = '...' + self.split_file_path[len(self.split_file_path) - max_length:]
+        if self.split_file_path:
+            self.split_file_label.config(text=f"Using file: {data_file_text}")
+
     def analyze(self):
-        Motion_Analysis_Window(self.motion_profile_file_path, self.callback_handle_crop_offset)
+        self.centerlines_csv_path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
+        if not self.centerlines_csv_path:
+            print("No output file selected. Aborting.")
+            return
+        Motion_Analysis_Window(self.motion_profile_file_path, self.calibration_parameters, self.centerlines_csv_path, self.callback_handle_crop_offset)
 
     def callback_handle_crop_offset(self, offsets):
         """
@@ -223,38 +252,47 @@ class SFA_FECO_UI:
         self.offset = offsets
 
     def estimate_turnaround(self):
-        self.split_frame_num = tracking.perform_turnaround_estimation('test3_cropped.tiff', "csvTest3.csv", self.offset) #HARDCODED
+        # Ensure the output directory and filename components are handled separately
+        output_dir = os.path.dirname(self.motion_profile_file_path)
+        base_filename = os.path.basename(self.motion_profile_file_path)
+
+        cropped_path = os.path.join(output_dir, f"{base_filename}_cropped")
+        
+        self.split_frame_num = tracking.perform_turnaround_estimation(cropped_path, self.centerlines_csv_path, self.offset) 
         self.split_var.set(str(self.split_frame_num))
     
     def split(self):
-        # Open the CSV file
-        with open("csvTest3.csv", 'r') as csv_file: # HARDCODED
-            csv_reader = csv.reader(csv_file)
-            header = next(csv_reader)  # Assuming the first row is the header
+        file_to_split = self.split_file_path
 
-            # Prepare file paths
-            base, ext = os.path.splitext("csvTest3.csv") # HARDCODED
-            in_file_path = f"{base}_in{ext}"
-            out_file_path = f"{base}_out{ext}"
+        if(file_to_split):
+            # Open the CSV file
+            with open(file_to_split, 'r') as csv_file: 
+                csv_reader = csv.reader(csv_file)
+                header = next(csv_reader)  # Assuming the first row is the header
 
-            # Open new CSV files for writing
-            with open(in_file_path, 'w', newline='') as in_file, open(out_file_path, 'w', newline='') as out_file:
-                in_writer = csv.writer(in_file)
-                out_writer = csv.writer(out_file)
+                # Prepare file paths
+                base, ext = os.path.splitext(file_to_split)
+                in_file_path = f"{base}_in{ext}"
+                out_file_path = f"{base}_out{ext}"
 
-                # Write the header to both files
-                in_writer.writerow(header)
-                out_writer.writerow(header)
+                # Open new CSV files for writing
+                with open(in_file_path, 'w', newline='') as in_file, open(out_file_path, 'w', newline='') as out_file:
+                    in_writer = csv.writer(in_file)
+                    out_writer = csv.writer(out_file)
 
-                # Process each row and split based on the y value (second column)
-                for row in csv_reader:
-                    y_value = float(row[1])  # Convert second column to a float
-                    if y_value <= self.split_frame_num:
-                        in_writer.writerow(row)
-                    else:
-                        out_writer.writerow(row)
+                    # Write the header to both files
+                    in_writer.writerow(header)
+                    out_writer.writerow(header)
 
-        print(f"CSV files saved as {in_file_path} and {out_file_path}")
+                    # Process each row and split based on the y value (second column)
+                    for row in csv_reader:
+                        y_value = float(row[1])  # Convert second column to a float
+                        if y_value <= self.split_frame_num:
+                            in_writer.writerow(row)
+                        else:
+                            out_writer.writerow(row)
+
+            print(f"CSV files saved as {in_file_path} and {out_file_path}")
     
     def validate_numeric_input(self, value):
         # Allow only numbers (positive integers)
@@ -288,6 +326,7 @@ class SFA_FECO_UI:
                 error_popup(msg)
 
     def callback_get_calibration(self, values):
+        self.calibration_completion_label.config(text="Calibration completed")
         self.calibration_parameters = values
 
     def run_calibration(self):
@@ -522,20 +561,18 @@ class Frame_Prep_Window:
             self.display_frame()
 
 class Motion_Analysis_Window:
-    def __init__(self, file_path, offset_callback = None) -> None:
+    def __init__(self, data_file_path, calibration_parameters, output_file_path, offset_callback = None) -> None:
         self.y_offset = 0
         self.x_offset = 0
+        self.calibration_parameters = calibration_parameters
         self.offset_callback = offset_callback
 
         # Step 1: Request output file name
-        self.output_filename = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
-        if not self.output_filename:
-            print("No output file selected. Aborting.")
-            return
+        self.output_filename = output_file_path
 
         # Step 2: Load the timelapse image (convert it to a NumPy array)
-        self.timelapse_image = np.array(Image.open(file_path).convert('L'))  # Grayscale conversion
-        self.file_path = file_path  # Store file path for saving
+        self.timelapse_image = np.array(Image.open(data_file_path).convert('L'))  # Grayscale conversion
+        self.file_path = data_file_path  # Store file path for saving
 
         # Step 3: Initialize mode (cropping or deleting)
         self.mode = 'crop'  # Start with cropping mode
@@ -585,7 +622,7 @@ class Motion_Analysis_Window:
                     if self.offset_callback:
                         self.offset_callback(y_start)
 
-                    self.cropped_image = self.timelapse_image[y_start:y_end, x_start:x_end]\
+                    self.cropped_image = self.timelapse_image[y_start:y_end, x_start:x_end]
                     
                     # Get the base name and extension of the original file
                     base_name, ext = os.path.splitext(self.file_path)
@@ -717,8 +754,13 @@ class Motion_Analysis_Window:
         self.save_wave_centerlines_to_csv(self.wave_lines, self.output_filename)
 
     def save_wave_centerlines_to_csv(self, wave_lines, output_filename):
-        """Save the wave centerlines to a CSV file."""
+        """Save the wave centerlines to a CSV file, with an optional calibrated CSV if parameters are available."""
         try:
+            # Ensure the output directory and filename components are handled separately
+            output_dir = os.path.dirname(output_filename)
+            base_filename = os.path.basename(output_filename)
+
+            # Save the original CSV
             with open(output_filename, mode='w', newline='') as file:
                 writer = csv.writer(file)
                 writer.writerow(["Wave Index", "Frame Number", "Center of Mass X Coord"])
@@ -728,9 +770,24 @@ class Motion_Analysis_Window:
                         writer.writerow([wave_idx + 1, y, x_center])
 
             print(f"Wave centerlines successfully saved to {output_filename}")
+
+            # Generate calibrated CSV if calibration parameters exist
+            if self.calibration_parameters:
+                # Construct the calibrated filename in the same directory as the original file
+                calibrated_filename = os.path.join(output_dir, f"calibrated_{base_filename}")
+                with open(calibrated_filename, mode='w', newline='') as file:
+                    writer = csv.writer(file)
+                    writer.writerow(["Wave Index", "Frame Number", "Calibrated Center of Mass X Coord"])
+
+                    for wave_idx, wave_line in enumerate(wave_lines):
+                        for (y, x_center) in wave_line:
+                            calibrated_x = self.calibration_parameters['slope'] * x_center + self.calibration_parameters['intercept']
+                            writer.writerow([wave_idx + 1, y, calibrated_x])
+
+                print(f"Calibrated wave centerlines successfully saved to {calibrated_filename}")
+
         except Exception as e:
             print(f"Error saving wave centerlines to CSV: {e}")
-
 
 class Calibration_Window:
     def __init__(self, file_path, callback):
