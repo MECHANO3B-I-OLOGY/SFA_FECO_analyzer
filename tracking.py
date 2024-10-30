@@ -489,9 +489,9 @@ def perform_turnaround_estimation(motion_profile_file_path, centerline_csv_path,
     y_values = [point[1] for point in intersection_points.values()]
 
     # Calculate the average y-value
-    print(y_offset)
+    # print(y_offset)
     estimated_turnaround = sum(y_values) / len(y_values) + y_offset
 
-    print(estimated_turnaround)
+    # print(estimated_turnaround)
 
     return estimated_turnaround
