@@ -253,10 +253,15 @@ class SFA_FECO_UI:
 
     def estimate_turnaround(self):
         # Ensure the output directory and filename components are handled separately
-        output_dir = os.path.dirname(self.motion_profile_file_path)
-        base_filename = os.path.basename(self.motion_profile_file_path)
+        # Assuming self.motion_profile_file_path holds the original file path
+        original_path = self.motion_profile_file_path
 
-        cropped_path = os.path.join(output_dir, f"{base_filename}_cropped")
+        # Separate the file directory, base name, and extension
+        file_dir = os.path.dirname(original_path)
+        base_name, ext = os.path.splitext(os.path.basename(original_path))
+
+        # Append "_cropped" to the base name and reassemble the path
+        cropped_path = os.path.join(file_dir, f"{base_name}_cropped{ext}")
         
         self.split_frame_num = tracking.perform_turnaround_estimation(cropped_path, self.centerlines_csv_path, self.offset) 
         self.split_var.set(str(self.split_frame_num))
@@ -312,7 +317,7 @@ class SFA_FECO_UI:
             title='Browse for TIFF file',
             filetypes=[("TIFF Files", "*.tif *.tiff")]
         )"""
-        file_path = "mica_gold.tif"
+        file_path = "mica_gold.tif" # HARDCODED
         if file_path:
             # Save the selected file path
             self.calibration_video_file_path = file_path
@@ -563,7 +568,8 @@ class Frame_Prep_Window:
 class Motion_Analysis_Window:
     def __init__(self, data_file_path, calibration_parameters, output_file_path, offset_callback = None) -> None:
         self.y_offset = 0
-        self.x_offset = 0
+        self.x_offset_start = 0
+        self.x_offset_end = 0
         self.calibration_parameters = calibration_parameters
         self.offset_callback = offset_callback
 
@@ -583,6 +589,7 @@ class Motion_Analysis_Window:
         # Increase the figure size for larger display
         self.fig, self.ax = plt.subplots(figsize=(12, 8))  # Set larger figure size
         self.ax.imshow(self.timelapse_image, cmap='gray')
+        # self.ax.set_xlim( self.x_offset_start, self.x_offset_end)
         self.ax.set_title("Click and drag to crop the image, then press any key to confirm. Press escape to cancel selection.")
 
         # Create a RectangleSelector for cropping the image
@@ -616,8 +623,12 @@ class Motion_Analysis_Window:
                     # Perform the crop
                     x_start, x_end, y_start, y_end = self.crop_area
 
-                    self.x_offset = x_start
-                    self.y_offset = y_start
+                    self.x_offset_start = min(x_start, x_end)
+                    self.x_offset_end = max(x_start, x_end)
+                    self.y_offset = min(y_start, y_end)
+
+                    print(self.x_offset_start)
+                    print(self.x_offset_end)
 
                     if self.offset_callback:
                         self.offset_callback(y_start)
@@ -648,11 +659,19 @@ class Motion_Analysis_Window:
                 print("Confirming deletion...")
                 self.apply_deletions()
 
-                pdf_filename = "last_centerline_visualization.pdf"
+                # Update the plot title for saving
+                self.ax.set_title("Visualization of Wave Centerlines")
+                self.fig.canvas.draw()  # Refresh the figure to apply the new title
 
-                # Save the figure as a PDF
+                # Save the figure as a PDF with the new title
+                pdf_filename = "last_centerline_visualization.pdf"
                 self.fig.savefig(pdf_filename, format='pdf', bbox_inches='tight')
+
+                # Optionally, revert the title back if you want the displayed plot to retain its original title
+                self.ax.set_title("Highlight data to delete it. Enter to accept, esc to cancel, exit window to save")
+                self.fig.canvas.draw()  # Refresh the figure to show the original title again
                 print(f"Figure saved as {pdf_filename}")
+
             elif event.key == 'escape':
                 # Reset deletion and cancel selection
                 print("Cancelling deletion...")
@@ -670,7 +689,7 @@ class Motion_Analysis_Window:
         self.save_wave_centerlines_to_csv(self.wave_lines, self.output_filename)
 
     def visualize_wave_centerlines(self, image, wave_lines, enable_deletion=False):
-        """Visualize and enable deletion on the results."""
+        """Visualize and enable deletion on the results with calibrated x-axis ticks if calibration is available."""
         self.fig, self.ax = plt.subplots(figsize=(12, 8))
         self.ax.imshow(image, cmap='gray')
         colors = plt.cm.rainbow(np.linspace(0, 1, len(wave_lines)))
@@ -682,9 +701,33 @@ class Motion_Analysis_Window:
 
         plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         plt.title("Highlight data to delete it. Enter to accept, esc to cancel, exit window to save")
-        plt.xlabel("X (columns)")
-        plt.ylabel("Y (rows)")
+        if(self.calibration_parameters):
+            plt.xlabel(r"Wavelength, $\lambda$ (nm)")
+        else:
+            plt.xlabel("Pixels")
+        plt.ylabel("Frame Number")
         plt.tight_layout()
+
+        # Apply custom calibrated x-axis ticks if calibration parameters exist
+        if self.calibration_parameters:
+            # Get the original tick locations
+            original_ticks = self.ax.get_xticks()
+            
+            # Apply calibration transformation to each tick position
+            calibrated_ticks = [
+                self.calibration_parameters['slope'] * tick + self.calibration_parameters['intercept']
+                for tick in original_ticks
+            ]
+        
+            ticks = self.ax.get_xticks()  # Get original x-axis ticks
+
+            # Apply calibration to display ticks only
+            calibrated_ticks = [self.calibration_parameters['slope'] * (tick-self.x_offset_start) + self.calibration_parameters['intercept'] for tick in ticks]
+            self.ax.set_xticks(ticks)  # Original ticks for data
+            self.ax.set_xticklabels([f"{tick:.2f}" for tick in calibrated_ticks])  # Show calibrated labels
+
+            self.ax.set_xlim(0, self.x_offset_end-self.x_offset_start)
+            
 
         if enable_deletion:
             # Enable selection of areas to delete data
@@ -694,7 +737,7 @@ class Motion_Analysis_Window:
             self.fig.canvas.mpl_connect('close_event', self.on_close)
 
         plt.show()
-
+    
     def on_select_delete(self, eclick, erelease):
         """Callback to record the area selected for deletion."""
         x_start, x_end = sorted([int(eclick.xdata), int(erelease.xdata)])
@@ -704,23 +747,31 @@ class Motion_Analysis_Window:
 
     def on_key_press_delete(self, event):
         """Handle key press events for confirming deletion."""
+         # If Enter is pressed, apply deletions
         if event.key == 'enter':
-            # If Enter is pressed, apply deletions
             print("Confirming deletion...")
             self.apply_deletions()
 
-            pdf_filename = "last_centerline_visualization.pdf"
+            # Update the plot title for saving
+            self.ax.set_title("Visualization of Wave Centerlines")
+            self.fig.canvas.draw()  # Refresh the figure to apply the new title
 
-            # Save the figure as a PDF
+            # Save the figure as a PDF with the new title
+            pdf_filename = "last_centerline_visualization.pdf"
             self.fig.savefig(pdf_filename, format='pdf', bbox_inches='tight')
+
+            # Optionally, revert the title back if you want the displayed plot to retain its original title
+            self.ax.set_title("Highlight data to delete it. Enter to accept, esc to cancel, exit window to save")
+            self.fig.canvas.draw()  # Refresh the figure to show the original title again
             print(f"Figure saved as {pdf_filename}")
+
         elif event.key == 'escape':
             # Reset deletion and cancel selection
-            print("Cancelling deletion...")
+            print("Cancelling deletion...") # Needs fixing, deletion does nothing
             self.rect_selector.set_active(True)
 
     def apply_deletions(self):
-        """Apply deletions to the selected data."""
+        """Apply deletions to the selected data and reapply calibrated axis ticks if applicable."""
         for area in self.deletion_areas:
             x_start, x_end, y_start, y_end = area
             for wave_line in self.wave_lines:
@@ -742,9 +793,29 @@ class Motion_Analysis_Window:
 
         # Reapply title, labels, and legend
         self.ax.set_title("Highlight data to delete it. Enter to accept, esc to cancel, exit window to save")
-        self.ax.set_xlabel("X (columns)")
-        self.ax.set_ylabel("Y (rows)")
+        if(self.calibration_parameters):
+            plt.xlabel(r"Wavelength, $\lambda$ (nm)")
+        else:
+            plt.xlabel("Pixels")
+        self.ax.set_ylabel("Frame Number")
         self.ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+
+        # Apply calibrated x-axis ticks if calibration parameters exist
+        if self.calibration_parameters:
+            original_ticks = self.ax.get_xticks()
+            calibrated_ticks = [
+                self.calibration_parameters['slope'] * tick + self.calibration_parameters['intercept']
+                for tick in original_ticks
+            ]
+
+            ticks = self.ax.get_xticks()  # Get original x-axis ticks
+
+            # Apply calibration to display ticks only
+            calibrated_ticks = [self.calibration_parameters['slope'] * (tick - self.x_offset_start) + self.calibration_parameters['intercept'] for tick in ticks]
+            self.ax.set_xticks(ticks)  # Original ticks for data
+            self.ax.set_xticklabels([f"{tick:.2f}" for tick in calibrated_ticks])  # Show calibrated labels
+
+            self.ax.set_xlim(0, self.x_offset_end-self.x_offset_start)
 
         # Redraw the updated plot
         plt.draw()
@@ -767,7 +838,8 @@ class Motion_Analysis_Window:
 
                 for wave_idx, wave_line in enumerate(wave_lines):
                     for (y, x_center) in wave_line:
-                        writer.writerow([wave_idx + 1, y, x_center])
+                        frame_number = y + self.y_offset  # Calculate once
+                        writer.writerow([wave_idx + 1, frame_number, x_center + self.x_offset_start])
 
             print(f"Wave centerlines successfully saved to {output_filename}")
 
@@ -781,8 +853,9 @@ class Motion_Analysis_Window:
 
                     for wave_idx, wave_line in enumerate(wave_lines):
                         for (y, x_center) in wave_line:
-                            calibrated_x = self.calibration_parameters['slope'] * x_center + self.calibration_parameters['intercept']
-                            writer.writerow([wave_idx + 1, y, calibrated_x])
+                            frame_number = y + self.y_offset  # Ensure consistency
+                            calibrated_x = self.calibration_parameters['slope'] * (x_center - self.x_offset_start) + self.calibration_parameters['intercept']
+                            writer.writerow([wave_idx + 1, frame_number, calibrated_x])
 
                 print(f"Calibrated wave centerlines successfully saved to {calibrated_filename}")
 
@@ -967,9 +1040,9 @@ class Calibration_Window:
         min_distance = float('inf')
         for wave_x in self.wave_x_avgs:
             distance = abs(wave_x - x)
-            print(wave_x, " wave pixel")
-            print(distance, " distance")
-            print()
+            # print(wave_x, " wave pixel")
+            # print(distance, " distance")
+            # print()
             if distance < min_distance:
                 min_distance = distance
                 closest_wave = wave_x
