@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import RectangleSelector
 import csv
 from PIL import Image, ImageTk, ImageSequence
-import screeninfo
 from enums import CalibrationValues
 
 import tracking  # Assuming this is a custom module for edge analysis
@@ -22,6 +21,10 @@ class SFA_FECO_UI:
         self.root.title("SFA FECO Analyzer")
         self.root.geometry("400x400+300+100") # Force the parent window to start at a set position
 
+        # Constants for window sizing and positioning
+        self.DEFAULT_WIDTH_RATIO = 0.35
+        self.DEFAULT_HEIGHT_RATIO = 0.7
+
         self.raw_video_file_path = None
         self.motion_profile_file_path = None  # To store the chosen or generated data file path
         self.calibration_video_file_path = None
@@ -29,16 +32,19 @@ class SFA_FECO_UI:
         self.centerlines_csv_path = None
 
         self.split_frame_num = 0
-        self.offset= 0
+        self.roi_offset= 0
+        self.analysis_offset = 0
         self.calibration_parameters = {}
+
+        self.mica_thickness = '0'
 
         # Get screen width and height
         screen_width = root.winfo_screenwidth()
         screen_height = root.winfo_screenheight()
 
         # Define scaling factors
-        window_width = int(screen_width * 0.35)
-        window_height = int(screen_height * 0.7)
+        window_width = int(screen_width * self.DEFAULT_WIDTH_RATIO)
+        window_height = int(screen_height * self.DEFAULT_HEIGHT_RATIO)
         
         self.root.geometry(f"{window_width}x{window_height}")
 
@@ -98,12 +104,29 @@ class SFA_FECO_UI:
         self.calibration_file_label = ttk.Label(self.calibration_subframe, text="No file selected", style='Regular.TLabel')
         self.calibration_file_label.grid(row=2, column=0, sticky='new', padx=10)
 
-        self.execute_calibration = ttk.Button(self.calibration_subframe, text="Calibrate Wavelengths", command=self.run_calibration, style='Regular.TButton')
-        self.execute_calibration.grid(row=3, column=0,sticky='ew', padx=10, pady=5)
+        self.execute_wavelength_calibration = ttk.Button(self.calibration_subframe, text="Calibrate Wavelengths", command=self.run_wavelength_calibration, style='Regular.TButton')
+        self.execute_wavelength_calibration.grid(row=3, column=0,sticky='ew', padx=10, pady=5)
 
         # Label to display the calibration status
         self.calibration_completion_label = ttk.Label(self.calibration_subframe, text="Calibration not completed", style='Regular.TLabel')
         self.calibration_completion_label.grid(row=4, column=0, sticky='new', padx=10)
+
+        self.execute_thickness_calibration = ttk.Button(self.calibration_subframe, text="Calibrate Thickness", command=self.run_thickness_calibration, style='Regular.TButton')
+        self.execute_thickness_calibration.grid(row=5, column=0,sticky='esw', padx=10, pady=(20, 5))
+
+        # Label to display the thickness num
+        self.calibration_thickness_label = ttk.Label(self.calibration_subframe, text="Mica thickness", style='Regular.TLabel')
+        self.calibration_thickness_label.grid(row=6, column=0, sticky='sew', padx=10)
+
+        # thickness display 
+        self.thickness_display = tk.Text(self.calibration_subframe, height=1, width=10, wrap="none")
+        self.thickness_display.grid(row=7, column=0, sticky="esw", padx=10, pady=(20, 5))
+
+        # Insert the mica thickness value into the text widget
+        self.thickness_display.insert("1.0", str(self.mica_thickness))
+
+        # Set the text widget to be read-only
+        self.thickness_display.config(state="disabled")
 
 
         # COLUMN TWO
@@ -160,8 +183,6 @@ class SFA_FECO_UI:
         vertical_separator = ttk.Separator(root, orient="vertical")
         vertical_separator.grid(row=0, column=1, rowspan=6, sticky='ns', padx=10)
 
-
-
     def setup_styles(self):
         self.btn_style = ttk.Style()
         self.btn_style.configure(
@@ -199,15 +220,14 @@ class SFA_FECO_UI:
         Handle the ROI data returned from the Frame_Prep_Window.
         :param roi_data: Tuple containing (y_start, y_end, offset, frame).
         """
-        self.y_start, self.y_end, self.offset, cropped_frame = roi_data
+        self.y_start, self.y_end, self.roi_offset, cropped_frame = roi_data
         # print(f"ROI Selected: Y-Start: {self.y_start}, Y-End: {self.y_end}, Offset: {self.offset}")
     
     def generate_motion_profile(self):
         # Ensure a file is selected before analyzing
         if self.raw_video_file_path:
             # Ask the user for a filename to save the data
-            # filename = filedialog.asksaveasfilename(defaultextension=".tiff", filetypes=[("tiff files", "*.tiff")])
-            filename = "test3.tiff" # HARDCODED
+            filename = filedialog.asksaveasfilename(defaultextension=".tiff", filetypes=[("tiff files", "*.tiff")])
             if filename:
                 if hasattr(self, 'y_start') and hasattr(self, 'y_end'):
                     # Call the fine approximation function with the Y crop info
@@ -215,8 +235,58 @@ class SFA_FECO_UI:
                     self.motion_profile_file_path = filename
                     self.data_file_label.config(text=f"Data saved: {self.motion_profile_file_path}")
                 else:
-                    print("Y crop coordinates are not set. Please set up the analysis area.")
+                    msg = "Please select a region of interest in the crop/preprocess window"
+                    error_popup(msg)
 
+        else:
+            msg = "No file selected, aborting"
+            error_popup(msg)
+
+    def select_calibration_file(self):
+        # Open a file dialog to select a TIFF file
+        """file_path = filedialog.askopenfilename(
+            initialdir=os.path.join(os.getcwd()),
+            title='Browse for TIFF file',
+            filetypes=[("TIFF Files", "*.tif *.tiff")]
+        )"""
+        file_path = "mica_gold.tif" # HARDCODED
+        if file_path:
+            # Save the selected file path
+            self.calibration_video_file_path = file_path
+            
+            # Update the label to display the file name
+            self.calibration_file_label.config(text=f"Selected File: {os.path.basename(file_path)}")
+
+            # Check if the file exists
+            if not os.path.isfile(self.calibration_video_file_path):
+                msg = "Invalid file"
+                error_popup(msg)
+
+    def callback_get_calibration(self, values):
+        self.calibration_completion_label.config(text="Calibration completed")
+        self.calibration_parameters = values
+
+    def run_wavelength_calibration(self):
+        Wavelength_Calibration_Window(self.calibration_video_file_path, self.callback_get_calibration)
+        return
+    
+    def run_thickness_calibration(self):
+        Mica_Thickness_Calibration_Window(self.calibration_parameters, self.callback_get_thickness_value)
+
+    def callback_get_thickness_value(self, thickness):
+        self.mica_thickness = thickness       
+        
+        # Enable the widget to update the text
+        self.thickness_display.config(state="normal")
+        
+        # Clear the current content and insert the new value
+        self.thickness_display.delete("1.0", "end")
+        self.thickness_display.insert("1.0", str(abs(thickness)) + 'um')
+        
+        # Disable the widget again to make it read-only
+        self.thickness_display.config(state="disabled")
+
+    # STEP 2
 
     def choose_data_file(self):
         max_length = 15;
@@ -228,20 +298,12 @@ class SFA_FECO_UI:
             data_file_text = '...' + self.motion_profile_file_path[len(self.motion_profile_file_path) - max_length:]
             self.data_file_label.config(text=f"Using file: {data_file_text}")
 
-    def choose_split_file(self):
-        max_length = 15;
-        # Allow the user to choose an existing data file
-        self.split_file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
-        if len(self.split_file_path) > max_length:
-            data_file_text = '...' + self.split_file_path[len(self.split_file_path) - max_length:]
-        if self.split_file_path:
-            self.split_file_label.config(text=f"Using file: {data_file_text}")
 
     def analyze(self):
         self.centerlines_csv_path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
         if not self.centerlines_csv_path:
-            print("No output file selected. Aborting.")
-            return
+            msg = "No output file selected, aborting"
+            error_popup(msg)
         Motion_Analysis_Window(self.motion_profile_file_path, self.calibration_parameters, self.centerlines_csv_path, self.callback_handle_crop_offset)
 
     def callback_handle_crop_offset(self, offsets):
@@ -249,7 +311,7 @@ class SFA_FECO_UI:
         Handle the offset data returned from the Motion_Analysis_Window.
         :param offsets: int of y offset
         """
-        self.offset = offsets
+        self.analysis_offset = offsets
 
     def estimate_turnaround(self):
         # Ensure the output directory and filename components are handled separately
@@ -263,9 +325,9 @@ class SFA_FECO_UI:
         # Append "_cropped" to the base name and reassemble the path
         cropped_path = os.path.join(file_dir, f"{base_name}_cropped{ext}")
         
-        self.split_frame_num = tracking.perform_turnaround_estimation(cropped_path, self.centerlines_csv_path, self.offset) 
+        self.split_frame_num = tracking.perform_turnaround_estimation(cropped_path, self.centerlines_csv_path, self.analysis_offset) 
         self.split_var.set(str(self.split_frame_num))
-    
+
     def split(self):
         file_to_split = self.split_file_path
 
@@ -298,11 +360,20 @@ class SFA_FECO_UI:
                             out_writer.writerow(row)
 
             print(f"CSV files saved as {in_file_path} and {out_file_path}")
+        else:
+            msg = "No spltting file selected, aborting"
+            error_popup(msg)
+
     
-    def validate_numeric_input(self, value):
-        # Allow only numbers (positive integers)
-        return value.isdigit() or value == ""
-    
+    def choose_split_file(self):
+        max_length = 15;
+        # Allow the user to choose an existing data file
+        self.split_file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
+        if len(self.split_file_path) > max_length:
+            data_file_text = '...' + self.split_file_path[len(self.split_file_path) - max_length:]
+        if self.split_file_path:
+            self.split_file_label.config(text=f"Using file: {data_file_text}")
+
     def update_entry(self, *args):
         # Automatically update split_frame_num when split_var changes
         try:
@@ -310,51 +381,23 @@ class SFA_FECO_UI:
         except ValueError:
             pass  # Ignore if the value isn't a valid integer
             
-    def select_calibration_file(self):
-        # Open a file dialog to select a TIFF file
-        """file_path = filedialog.askopenfilename(
-            initialdir=os.path.join(os.getcwd()),
-            title='Browse for TIFF file',
-            filetypes=[("TIFF Files", "*.tif *.tiff")]
-        )"""
-        file_path = "mica_gold.tif" # HARDCODED
-        if file_path:
-            # Save the selected file path
-            self.calibration_video_file_path = file_path
-            
-            # Update the label to display the file name
-            self.calibration_file_label.config(text=f"Selected File: {os.path.basename(file_path)}")
-
-            # Check if the file exists
-            if not os.path.isfile(self.calibration_video_file_path):
-                msg = "Invalid file"
-                error_popup(msg)
-
-    def callback_get_calibration(self, values):
-        self.calibration_completion_label.config(text="Calibration completed")
-        self.calibration_parameters = values
-
-    def run_calibration(self):
-        Calibration_Window(self.calibration_video_file_path, self.callback_get_calibration)
-        return
+    def validate_numeric_input(self, value):
+        # Allow only numbers (positive integers)
+        return value.isdigit() or value == ""
         
-
 class Frame_Prep_Window:
+    SCALE_FACTOR = 0.75
+
     def __init__(self, file_path, roi_callback=None):
         self.raw_video_file_path = file_path
         self.roi_callback = roi_callback
-
-        # Initialize variables
-        self.current_frame = 0
-        self.original_frame = None
         self.cropped_frame = None
-        self.roi_y_start = None
-        self.roi_y_end = None
-        self.draw_rectangle = True
-        self.current_offset = 0
         self.frames = []
-        self.scale = .75
-        self.is_scaled = False
+        self.current_frame_index = 0
+        self.crop_rectangle = None
+
+        self.crop_start_y = 0
+        self.crop_end_y = 0
 
         # Load the TIFF file using PIL
         try:
@@ -366,206 +409,106 @@ class Frame_Prep_Window:
 
         # Create the window
         self.window = tk.Toplevel()
-        self.window.title("Prep TIFF File")
+        self.window.title("Frame Preparation Window")
 
-        # Create the canvas
+        # Add an instruction label
+        self.instruction_label = ttk.Label(self.window, text="Step 1: Select the region to crop (y-axis only). Press enter to accept.")
+        self.instruction_label.pack(pady=5)
+
+        # Create canvas and slider for frame selection
         self.canvas = tk.Canvas(self.window, bg="white")
-        self.canvas.grid(row=0, column=0, columnspan=3, sticky="nsew")
+        self.canvas.pack(fill="both", expand=True)
+        
+        self.slider = ttk.Scale(self.window, from_=0, to=len(self.frames) - 1, orient="horizontal", command=self.update_frame)
+        self.slider.pack(fill="x")
 
-        # Define checkbox variable for edge analysis
-        self.edge_var = tk.BooleanVar()
-        self.edge_checkbutton = tk.Checkbutton(
-            self.window, text="Enable Edge Analysis", variable=self.edge_var, command=self.display_frame
-        )
-        self.edge_checkbutton.grid(row=1, column=2, sticky="ew", padx=10)
+        # Bind events
+        self.canvas.bind("<Button-1>", self.start_crop)
+        self.canvas.bind("<ButtonRelease-1>", self.end_crop)
+        self.window.bind("<Escape>", self.cancel_crop)
+        self.window.bind("<Return>", self.confirm_crop)
 
-        # Read the first frame
-        self.original_frame = self.frames[0]
-        self.display_frame()
+        # Display the initial frame
+        self.update_frame(0)
 
-        # Add a slider if there are frames
-        if len(self.frames) > 1:
-            self.slider = tk.Scale(
-                self.window, from_=0, to=len(self.frames) - 1,
-                orient=tk.HORIZONTAL, command=self.on_slider_change
-            )
-            self.slider.grid(row=1, column=0, columnspan=2, sticky="ew", padx=10, pady=10)
+    def update_frame(self, value):
+        """Update the displayed frame based on the slider."""
+        self.current_frame_index = int(float(value))
+        frame = self.frames[self.current_frame_index]
+        scaled_frame = tracking.scale_frame(frame, Frame_Prep_Window.SCALE_FACTOR)
+        self.display_image(scaled_frame)
 
-        # Bind key and mouse events
-        self.window.bind("<Escape>", self.reset_image)
-        self.canvas.bind("<ButtonPress-1>", self.on_mouse_down)
+    def display_image(self, image):
+        """Displays a PIL image on the canvas, scaling the window appropriately."""
+        self.photo = ImageTk.PhotoImage(image)
+        self.canvas.create_image(0, self.crop_start_y, anchor="nw", image=self.photo)
 
-        # Set initial window size
-        self.update_window_size()
+        frame_width, frame_height = image.size
+        self.canvas.config(width=frame_width, height=frame_height)
+        self.window.geometry(f"{frame_width}x{frame_height + 80}")
 
-    def update_window_size(self):
-        """Update window size based on the current frame dimensions."""
-        if self.original_frame is not None:
-            frame_width, frame_height = self.original_frame.size
-            self.canvas.config(width=frame_width, height=frame_height)
-            self.window.geometry(f"{frame_width}x{frame_height + 50}")
+    def start_crop(self, event):
+        """Begins the crop selection (only y-axis)."""
+        if(self.crop_start_y is not None):
+            self.cancel_crop()
+        self.crop_start_y = event.y
+        self.crop_rectangle = self.canvas.create_rectangle(0, self.crop_start_y, self.canvas.winfo_width(), self.crop_start_y, outline="red", width=2)
 
-    def display_frame(self):
-        """Display the current frame on the canvas."""
-        # 
-        frame = self.check_and_scale_frame(self.cropped_frame.copy() if self.cropped_frame is not None else self.original_frame.copy())
+    def end_crop(self, event):
+        """Finalize the crop selection."""
+        self.crop_end_y = event.y
+        if(self.crop_rectangle):
+            self.canvas.delete(self.crop_rectangle)
+        self.crop_rectangle = self.canvas.create_rectangle(0, self.crop_start_y, self.canvas.winfo_width(), self.crop_end_y, outline="red", width=2)
 
-        if self.edge_var.get():  # Apply edge analysis if enabled
-            pil_image = tracking.display_edges(np.array(frame))
-            # Convert the PIL Image to PhotoImage
-            tk_image = ImageTk.PhotoImage(pil_image)
-        else:
-            # Convert the numpy array or PIL image directly to PhotoImage
-            if isinstance(frame, np.ndarray):
-                pil_image = Image.fromarray(frame)
+    def cancel_crop(self, event = None):
+        """Cancels the cropping selection."""
+        if self.crop_rectangle:
+            self.canvas.delete(self.crop_rectangle)
+        self.crop_start_y = None
+        self.crop_end_y = None
+
+    def confirm_crop(self, event):
+        """Confirms the crop and finalizes the cropped image."""
+        if self.crop_start_y is not None and self.crop_end_y is not None:
+            # Convert crop coordinates to original image scale
+            y_start, y_end = sorted((int(self.crop_start_y / Frame_Prep_Window.SCALE_FACTOR), int(self.crop_end_y / Frame_Prep_Window.SCALE_FACTOR)))
+            current_frame = self.frames[self.current_frame_index]
+            cropped_frame = current_frame.crop((0, y_start, current_frame.width, y_end))
+
+            # Scale the cropped frame and display it
+            self.scaled_cropped_frame = tracking.scale_frame(cropped_frame, Frame_Prep_Window.SCALE_FACTOR)
+            self.slider.pack_forget()
+            self.instruction_label.config(text="Cropping complete. Ready for further processing. You may close the window.")
+            self.display_image(self.scaled_cropped_frame)
+
+            # Call the callback if provided
+            if self.roi_callback:
+                self.roi_callback((int(y_start/Frame_Prep_Window.SCALE_FACTOR), int(y_end/Frame_Prep_Window.SCALE_FACTOR), int(y_start/Frame_Prep_Window.SCALE_FACTOR), self.cropped_frame))
             else:
-                pil_image = frame  # Assume it's already a PIL Image
-
-            tk_image = ImageTk.PhotoImage(pil_image)
-
-        # Clear the canvas before displaying the new frame
-        self.canvas.delete("all")
-
-        # Display the image on the canvas
-        self.canvas.create_image(0, self.current_offset, anchor=tk.NW, image=tk_image)
-        self.canvas.image = tk_image  # Keep a reference to avoid garbage collection
-
-        # Draw the ROI rectangle if needed
-        if self.draw_rectangle and self.roi_y_start is not None and self.roi_y_end is not None:
-            self.draw_roi_rectangle()
-
-        # Update the window size based on the frame
-        self.update_window_size()
-
-    def check_and_scale_frame(self, frame, scale_factor=0.9):
-        """
-        Check if the frame's height exceeds 75% of the screen height, and scale it if necessary.
-
-        Args:
-            frame (PIL.Image or numpy.ndarray): Frame to be checked and potentially scaled.
-            scale_factor (float, optional): The scale factor to be applied if the frame exceeds 75% of the screen height. Default is 0.9.
-
-        Returns:
-            scaled_frame: The scaled or original frame depending on the condition.
-        """
-        # Get monitor resolution using screeninfo 
-        monitor = screeninfo.get_monitors()[0]
-        screen_height = monitor.height
-
-        # Get frame dimensions
-        if isinstance(frame, Image.Image):  # If the frame is a PIL Image
-            frame_width, frame_height = frame.size
-        elif isinstance(frame, np.ndarray):  # If the frame is a NumPy array
-            frame_height, frame_width = frame.shape[:2]
-        else:
-            raise ValueError("Unsupported frame type. Must be PIL Image or NumPy array.")
-
-        # Check if the frame's height exceeds 75% of the screen height
-        if frame_height > self.scale * screen_height:
-            # Scale the frame using the scale_frame function
-            scaled_frame = tracking.scale_frame(frame, scale_factor)
-            self.is_scaled = True
-            return scaled_frame
-        else:
-            # Return the original frame if no scaling is needed
-            self.is_scaled = False
-            return frame
-
-
-    def reset_image(self, event=None):
-        """Reset the image to its original state without cropping or ROI."""
-        self.cropped_frame = None
-        self.roi_y_start = None
-        self.roi_y_end = None
-        self.current_offset = 0
-        self.draw_rectangle = True
-        self.display_frame()
-
-    def apply_roi(self):
-        """Apply the selected ROI to the frame."""
-        if self.roi_y_start is not None and self.roi_y_end is not None:
-            y_start = min(self.roi_y_start, self.roi_y_end)
-            y_end = max(self.roi_y_start, self.roi_y_end)
-            frame = self.original_frame.copy()  # Ensure this is a PIL image
-
-            # Use the crop_frame method
-            self.cropped_frame = self.crop_frame()
-
-            # Offset to account for crop
-            if self.cropped_frame:
-                self.current_offset = y_start
-                self.draw_rectangle = False
-                self.display_frame()
-
-                # Call the callback if provided
-                if self.roi_callback:
-                    self.roi_callback((y_start, y_end, self.current_offset, self.cropped_frame))
-                else:
-                    print("No callback provided. ROI selection will not be returned.")
-
-    def crop_frame(self):
-        """
-        Crop the frame based on the provided Y coordinates.
-        """
-        frame_width, frame_height = self.original_frame.size
-
-        self.current_offset = min(self.roi_y_start, self.roi_y_end)
-
-        # Ensure y_start and y_end are within the frame height and valid
-        if self.roi_y_start < frame_height and self.roi_y_end <= frame_height and self.roi_y_start < self.roi_y_end:
-            cropped_frame = self.original_frame.crop((0, self.roi_y_start, frame_width, self.roi_y_end))
-            return cropped_frame
-        else:
-            print("Invalid cropping coordinates.")
-            return None    
-
-    def draw_roi_rectangle(self):
-        """Draw the ROI rectangle on the canvas."""
-        if self.roi_y_start is not None and self.roi_y_end is not None:
-            y_start = min(self.roi_y_start, self.roi_y_end)
-            y_end = max(self.roi_y_start, self.roi_y_end)
-            self.canvas.create_rectangle(0, y_start, self.canvas.winfo_width(), y_end, outline="red", width=2)
-
-    def on_mouse_down(self, event):
-        """Handle mouse button press event."""
-        self.draw_rectangle = True
-        self.roi_y_start = event.y
-        self.roi_y_end = event.y
-        self.canvas.bind("<B1-Motion>", self.on_mouse_drag)
-        self.canvas.bind("<ButtonRelease-1>", self.on_mouse_up)
-
-    def on_mouse_drag(self, event):
-        """Handle mouse drag event."""
-        if self.roi_y_start is not None:
-            self.roi_y_end = event.y
-            self.display_frame()
-
-    def on_mouse_up(self, event):
-        """Handle mouse button release event."""
-        self.roi_y_end = event.y
-        self.canvas.unbind("<B1-Motion>")
-        self.canvas.unbind("<ButtonRelease-1>")
-        self.apply_roi()
-
-    def on_slider_change(self, value):
-        """Handle slider changes to update the current frame."""
-        self.current_frame = int(value)
-        self.original_frame = self.frames[self.current_frame]
-
-        # Apply cropping using existing ROI if defined
-        if self.roi_y_start is not None and self.roi_y_end is not None:
-            self.cropped_frame = self.crop_frame()
-
-            if self.cropped_frame:
-                self.draw_rectangle = False
-                self.display_frame()
-            else:
-                print("Cropping failed due to invalid coordinates.")
-        else:
-            # Display the full frame if no ROI is defined
-            self.display_frame()
+                print("No callback provided. ROI selection will not be returned.")
+            
+            # Unbind cropping events
+            self.canvas.unbind("<Button-1>")
+            self.canvas.unbind("<ButtonRelease-1>")
+        else: 
+            msg = "No crop area selected"
+            error_popup(msg)
 
 class Motion_Analysis_Window:
+    """
+    A class to perform motion analysis on a TIFF image, allowing cropping, deletion, and wave analysis.
+    Parameters:
+        data_file_path (str): Path to the input data file (TIFF).
+        calibration_parameters (dict): Dictionary containing slope and intercept for calibrated x-axis ticks.
+        output_file_path (str): Path to save analysis results.
+        offset_callback (function, optional): Callback function to handle offsets after cropping.
+    """
+
+    CROPPING_MODE = 'crop'
+    DELETION_MODE = 'delete'
+    FIGURE_SIZE = (12, 8)
+
     def __init__(self, data_file_path, calibration_parameters, output_file_path, offset_callback = None) -> None:
         self.y_offset = 0
         self.x_offset_start = 0
@@ -581,20 +524,20 @@ class Motion_Analysis_Window:
         self.file_path = data_file_path  # Store file path for saving
 
         # Step 3: Initialize mode (cropping or deleting)
-        self.mode = 'crop'  # Start with cropping mode
+        self.mode = Motion_Analysis_Window.CROPPING_MODE  # Start with cropping mode
         self.cropping_complete = False
         self.crop_area = None  # Store the crop area
         self.deletion_areas = []  # Store areas selected for deletion
 
         # Increase the figure size for larger display
-        self.fig, self.ax = plt.subplots(figsize=(12, 8))  # Set larger figure size
+        self.fig, self.ax = plt.subplots(figsize=Motion_Analysis_Window.FIGURE_SIZE)  # Set larger figure size
         self.ax.imshow(self.timelapse_image, cmap='gray')
         # self.ax.set_xlim( self.x_offset_start, self.x_offset_end)
         self.ax.set_title("Click and drag to crop the image, then press any key to confirm. Press escape to cancel selection.")
 
         # Create a RectangleSelector for cropping the image
         self.rect_selector = RectangleSelector(self.ax, self.on_select_crop, useblit=True, interactive=True)
-        self.fig.canvas.mpl_connect('key_press_event', self.on_key_press)
+        self.fig.canvas.mpl_connect('key_press_event', self.handle_key_press)
 
         plt.show(block=True)
 
@@ -602,175 +545,84 @@ class Motion_Analysis_Window:
         if self.cropping_complete:
             self.run_analysis()
 
-    def on_select_crop(self, eclick, erelease):
-        """Callback for selecting crop area."""
-        self.crop_area = (int(eclick.xdata), int(erelease.xdata), int(eclick.ydata), int(erelease.ydata))
+    def handle_key_press(self, event):
+        """Centralized key press handler based on mode."""
+        if self.mode == self.CROPPING_MODE:
+            self.handle_crop_keypress(event)
+        elif self.mode == self.DELETION_MODE:
+            self.handle_delete_keypress(event)
 
-    def on_key_press(self, event):
-        """Handle key press events for confirming crop or deletion based on mode."""
-        if self.mode == 'crop':
-            # Handle crop logic
-            if event.key == 'escape':
-                # Reset the selection and allow the user to try again
-                print("Retrying crop selection...")
-                self.rect_selector.set_active(True)
-            else:
-                # Confirm the crop selection and proceed
-                if self.crop_area:
-                    print(f"Crop confirmed: {self.crop_area}")
-                    self.cropping_complete = True
-
-                    # Perform the crop
-                    x_start, x_end, y_start, y_end = self.crop_area
-
-                    self.x_offset_start = min(x_start, x_end)
-                    self.x_offset_end = max(x_start, x_end)
-                    self.y_offset = min(y_start, y_end)
-
-                    print(self.x_offset_start)
-                    print(self.x_offset_end)
-
-                    if self.offset_callback:
-                        self.offset_callback(y_start)
-
-                    self.cropped_image = self.timelapse_image[y_start:y_end, x_start:x_end]
-                    
-                    # Get the base name and extension of the original file
-                    base_name, ext = os.path.splitext(self.file_path)
-
-                    # Create a new file name with "_cropped" appended to the base name
-                    cropped_file_path = f"{base_name}_cropped{ext}"
-
-                    # Convert NumPy array back to a PIL image and overwrite original file
-                    cropped_pil_image = Image.fromarray(self.cropped_image)
-                    cropped_pil_image.save(cropped_file_path)
-                    
-                    print(f"Image saved as {cropped_file_path} with the crop area {self.crop_area}")
-
-                    # Switch to deletion mode after cropping is complete
-                    self.mode = 'delete'
-
-                    plt.close(self.fig)  # Close the figure to proceed
-
-        elif self.mode == 'delete':
-            # Handle deletion logic
-            if event.key == 'enter':
-                # If Enter is pressed, apply deletions
-                print("Confirming deletion...")
-                self.apply_deletions()
-
-                # Update the plot title for saving
-                self.ax.set_title("Visualization of Wave Centerlines")
-                self.fig.canvas.draw()  # Refresh the figure to apply the new title
-
-                # Save the figure as a PDF with the new title
-                pdf_filename = "last_centerline_visualization.pdf"
-                self.fig.savefig(pdf_filename, format='pdf', bbox_inches='tight')
-
-                # Optionally, revert the title back if you want the displayed plot to retain its original title
-                self.ax.set_title("Highlight data to delete it. Enter to accept, esc to cancel, exit window to save")
-                self.fig.canvas.draw()  # Refresh the figure to show the original title again
-                print(f"Figure saved as {pdf_filename}")
-
-            elif event.key == 'escape':
-                # Reset deletion and cancel selection
-                print("Cancelling deletion...")
-                self.rect_selector.set_active(True)
-
-    def run_analysis(self):
-        """Run the analysis on the cropped image."""
-        # Perform analysis on the cropped image
-        self.wave_lines = tracking.analyze_and_append_waves(self.cropped_image)
-
-        # Visualize the results and enable data deletion
-        self.visualize_wave_centerlines(self.cropped_image, self.wave_lines, enable_deletion=True)
-
-        # Save the results to a CSV file
-        self.save_wave_centerlines_to_csv(self.wave_lines, self.output_filename)
-
-    def visualize_wave_centerlines(self, image, wave_lines, enable_deletion=False):
-        """Visualize and enable deletion on the results with calibrated x-axis ticks if calibration is available."""
-        self.fig, self.ax = plt.subplots(figsize=(12, 8))
-        self.ax.imshow(image, cmap='gray')
-        colors = plt.cm.rainbow(np.linspace(0, 1, len(wave_lines)))
-
-        for idx, wave_line in enumerate(wave_lines):
-            y_coords = [point[0] for point in wave_line]
-            x_coords = [point[1] for point in wave_line]
-            self.ax.plot(x_coords, y_coords, color=colors[idx], label=f"Wave {idx + 1}")
-
-        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.title("Highlight data to delete it. Enter to accept, esc to cancel, exit window to save")
-        if(self.calibration_parameters):
-            plt.xlabel(r"Wavelength, $\lambda$ (nm)")
-        else:
-            plt.xlabel("Pixels")
-        plt.ylabel("Frame Number")
-        plt.tight_layout()
-
-        # Apply custom calibrated x-axis ticks if calibration parameters exist
-        if self.calibration_parameters:
-            # Get the original tick locations
-            original_ticks = self.ax.get_xticks()
-            
-            # Apply calibration transformation to each tick position
-            calibrated_ticks = [
-                self.calibration_parameters['slope'] * tick + self.calibration_parameters['intercept']
-                for tick in original_ticks
-            ]
-        
-            ticks = self.ax.get_xticks()  # Get original x-axis ticks
-
-            # Apply calibration to display ticks only
-            calibrated_ticks = [self.calibration_parameters['slope'] * (tick-self.x_offset_start) + self.calibration_parameters['intercept'] for tick in ticks]
-            self.ax.set_xticks(ticks)  # Original ticks for data
-            self.ax.set_xticklabels([f"{tick:.2f}" for tick in calibrated_ticks])  # Show calibrated labels
-
-            self.ax.set_xlim(0, self.x_offset_end-self.x_offset_start)
-            
-
-        if enable_deletion:
-            # Enable selection of areas to delete data
-            self.rect_selector = RectangleSelector(self.ax, self.on_select_delete, useblit=True)
-            self.fig.canvas.mpl_connect('key_press_event', self.on_key_press_delete)
-            self.deletion_areas = []  # Store deletion areas
-            self.fig.canvas.mpl_connect('close_event', self.on_close)
-
-        plt.show()
-    
-    def on_select_delete(self, eclick, erelease):
-        """Callback to record the area selected for deletion."""
-        x_start, x_end = sorted([int(eclick.xdata), int(erelease.xdata)])
-        y_start, y_end = sorted([int(eclick.ydata), int(erelease.ydata)])
-        self.deletion_areas.append((x_start, x_end, y_start, y_end))
-        print(f"Area selected for deletion: {x_start}-{x_end}, {y_start}-{y_end}")
-
-    def on_key_press_delete(self, event):
-        """Handle key press events for confirming deletion."""
-         # If Enter is pressed, apply deletions
+    def handle_crop_keypress(self, event):
+        """Handle key presses specifically for cropping mode."""
         if event.key == 'enter':
-            print("Confirming deletion...")
-            self.apply_deletions()
-
-            # Update the plot title for saving
-            self.ax.set_title("Visualization of Wave Centerlines")
-            self.fig.canvas.draw()  # Refresh the figure to apply the new title
-
-            # Save the figure as a PDF with the new title
-            pdf_filename = "last_centerline_visualization.pdf"
-            self.fig.savefig(pdf_filename, format='pdf', bbox_inches='tight')
-
-            # Optionally, revert the title back if you want the displayed plot to retain its original title
-            self.ax.set_title("Highlight data to delete it. Enter to accept, esc to cancel, exit window to save")
-            self.fig.canvas.draw()  # Refresh the figure to show the original title again
-            print(f"Figure saved as {pdf_filename}")
-
+            if self.crop_area:
+                self.confirm_crop()
+            else:
+                print("No crop area selected.")
         elif event.key == 'escape':
-            # Reset deletion and cancel selection
-            print("Cancelling deletion...") # Needs fixing, deletion does nothing
-            self.rect_selector.set_active(True)
+            self.cancel_crop()
 
-    def apply_deletions(self):
+    def handle_delete_keypress(self, event):
+        """Handle key presses specifically for deletion mode."""
+        if event.key == 'enter':
+            self.confirm_deletion()
+        elif event.key == 'escape':
+            self.cancel_deletion()
+
+    def confirm_crop(self):
+        print(f"Crop confirmed: {self.crop_area}")
+        self.cropping_complete = True
+
+        # Perform the crop
+        x_start, x_end, y_start, y_end = self.crop_area
+        self.x_offset_start = min(x_start, x_end)
+        self.x_offset_end = max(x_start, x_end)
+        self.y_offset = min(y_start, y_end)
+        print(self.x_offset_start)
+        print(self.x_offset_end)
+        if self.offset_callback:
+            self.offset_callback(y_start)
+        self.cropped_image = self.timelapse_image[y_start:y_end, x_start:x_end]
+        
+        # Get the base name and extension of the original file
+        base_name, ext = os.path.splitext(self.file_path)
+
+        # Create a new file name with "_cropped" appended to the base name
+        cropped_file_path = f"{base_name}_cropped{ext}"
+
+        # Convert NumPy array back to a PIL image and overwrite original file
+        cropped_pil_image = Image.fromarray(self.cropped_image)
+        cropped_pil_image.save(cropped_file_path)
+        
+        print(f"Image saved as {cropped_file_path} with the crop area {self.crop_area}")
+
+        # Deactivate the cropping RectangleSelector
+        self.rect_selector.set_active(False)
+
+        # Switch to deletion mode after cropping is complete
+        self.mode = Motion_Analysis_Window.DELETION_MODE
+        plt.close(self.fig)  # Close the figure to proceed
+
+    def cancel_crop(self):
+        """Cancel the current cropping selection and reset the mode."""
+        # Reset the crop area coordinates
+        self.crop_area = None
+        self.current_area = None
+        self.cropping_complete = False
+
+        # Clear any displayed crop rectangle on the plot
+        self.ax.clear()
+        self.ax.imshow(self.timelapse_image, cmap='gray')  # Redisplay the original image
+        self.ax.set_title("Crop mode: Drag to select, Enter to confirm, Esc to cancel.")
+
+        # Redraw the canvas
+        plt.draw()
+
+        # Ensure the RectangleSelector is active again for the next selection
+        self.rect_selector.set_active(False)
+        self.rect_selector.set_active(True)  # Reactivate to allow a new crop
+
+    def confirm_deletion(self):
         """Apply deletions to the selected data and reapply calibrated axis ticks if applicable."""
         for area in self.deletion_areas:
             x_start, x_end, y_start, y_end = area
@@ -820,6 +672,89 @@ class Motion_Analysis_Window:
         # Redraw the updated plot
         plt.draw()
 
+    def cancel_deletion(self):
+        """Cancel the current deletion selection and reset any marked areas."""
+        # Clear the list of deletion areas
+        self.deletion_areas = []
+
+        # Clear any displayed deletion rectangles from the plot
+        self.ax.clear()
+        self.ax.imshow(self.cropped_image, cmap='gray')  # Redisplay the cropped image after clearing
+
+        # Reapply wave line overlays and labels, if needed
+        colors = plt.cm.rainbow(np.linspace(0, 1, len(self.wave_lines)))
+        for idx, wave_line in enumerate(self.wave_lines):
+            y_coords = [point[0] for point in wave_line]
+            x_coords = [point[1] for point in wave_line]
+            self.ax.plot(x_coords, y_coords, color=colors[idx], label=f"Wave {idx + 1}")
+
+        # Set labels and title back to deletion mode
+        self.ax.set_title("Deletion mode: Drag to select, Enter to confirm, Esc to cancel.")
+        self.ax.set_xlabel("X-axis")
+        self.ax.set_ylabel("Y-axis")
+
+        # Redraw the canvas
+        plt.draw()
+
+        # Ensure the RectangleSelector is active again for new selections
+        self.rect_selector.set_active(False)
+        self.rect_selector.set_active(True)  # Reactivate for new deletion selections
+
+    def on_select_crop(self, eclick, erelease):
+        """Callback for when the cropping rectangle is selected."""
+        x_start, y_start = int(eclick.xdata), int(eclick.ydata)
+        x_end, y_end = int(erelease.xdata), int(erelease.ydata)
+        self.crop_area = (x_start, x_end, y_start, y_end)
+        print(f"Crop area selected: {self.crop_area}")
+
+    def on_select_delete(self, eclick, erelease):
+        """Callback for when the deletion rectangle is selected."""
+        x_start, y_start = int(eclick.xdata), int(eclick.ydata)
+        x_end, y_end = int(erelease.xdata), int(erelease.ydata)
+        deletion_area = (x_start, x_end, y_start, y_end)
+        self.deletion_areas.append(deletion_area)
+        print(f"Deletion area selected: {deletion_area}")
+    
+        # Draw a rectangle on the plot to show the selected area
+        rect = plt.Rectangle((x_start, y_start), x_end - x_start, y_end - y_start,
+                             linewidth=1, edgecolor='r', facecolor='none')
+        self.ax.add_patch(rect)
+        plt.draw()
+
+    def run_analysis(self):
+        """Run the analysis on the cropped image."""
+        # Perform analysis on the cropped image
+        self.wave_lines = tracking.analyze_and_append_waves(self.cropped_image)
+
+        # Visualize the results and enable data deletion
+        self.visualize_wave_centerlines(self.cropped_image, self.wave_lines)
+
+    def visualize_wave_centerlines(self, image, wave_lines):
+        """Visualize and enable deletion on the results with calibrated x-axis ticks if calibration is available."""
+        # First, create the figure and axis
+        self.fig, self.ax = plt.subplots(figsize=Motion_Analysis_Window.FIGURE_SIZE)
+        self.ax.imshow(image, cmap='gray')
+
+        # Plot the wave lines
+        colors = plt.cm.rainbow(np.linspace(0, 1, len(wave_lines)))
+        for idx, wave_line in enumerate(wave_lines):
+            y_coords = [point[0] for point in wave_line]
+            x_coords = [point[1] for point in wave_line]
+            self.ax.plot(x_coords, y_coords, color=colors[idx], label=f"Wave {idx + 1}")
+
+        # ... [rest of your plotting code] ...
+
+        # Now, connect the key press event handler for deletion mode
+        self.fig.canvas.mpl_connect('key_press_event', self.handle_key_press)
+
+        # Initialize RectangleSelector for deletion
+        self.rect_selector = RectangleSelector(self.ax, self.on_select_delete, useblit=True, interactive=False)
+
+        self.deletion_areas = []  # Store deletion areas
+        self.fig.canvas.mpl_connect('close_event', self.on_close)
+
+        plt.show()
+
     def on_close(self, event):
         """Save the modified wave lines when the window is closed."""
         self.save_wave_centerlines_to_csv(self.wave_lines, self.output_filename)
@@ -862,7 +797,7 @@ class Motion_Analysis_Window:
         except Exception as e:
             print(f"Error saving wave centerlines to CSV: {e}")
 
-class Calibration_Window:
+class Wavelength_Calibration_Window:
     def __init__(self, file_path, callback):
         self.file_path = file_path
         self.callback = callback
@@ -1088,6 +1023,270 @@ class Calibration_Window:
         print(calibration_equation)
         self.callback(calibration_equation)
         self.window.destroy() 
+
+class Mica_Thickness_Calibration_Window: 
+    def __init__(self, calibration_parameters, callback):
+        self.calibration_parameters = calibration_parameters
+        self.callback = callback
+        self.selected_waves = []
+        
+        # Prompt the user to select a TIFF file
+        file_path = filedialog.askopenfilename(filetypes=[("TIFF files", "*.tif")])
+        if not file_path:
+            print("No file selected. Aborting.")
+            return
+
+        # Set up crop area variables
+        self.crop_area = None
+        self.cropping_complete = False
+        self.draw_rectangle = True
+        self.mode = 'crop'
+        self.cropped_frame = None
+        self.cropped_frame_display = None
+        self.scale_factor = .75
+
+        self.selected_wavelengths = []
+        
+        # Load and scale the TIFF file
+        self.tiff_image = Image.open(file_path)
+        self.frames = [tracking.scale_frame(frame.copy(), self.scale_factor) for frame in ImageSequence.Iterator(self.tiff_image)]
+        
+        # Create a window
+        self.window = tk.Toplevel()
+        self.window.title("Calibrate Mica Thickness")
+
+        # Create instructional label above the canvas
+        self.instruction_label = tk.Label(self.window, text="Step 1: Select the region to crop (y-axis only). Use mouse drag, press Enter to confirm, or Esc to reset.")
+        self.instruction_label.grid(row=0, column=0, columnspan=2, sticky="ew", padx=10, pady=(10, 0))
+
+        # Create canvas and slider for frame selection
+        self.canvas = tk.Canvas(self.window, bg="white")
+        self.canvas.grid(row=1, column=0, columnspan=2, sticky="nsew")
+        
+        self.slider = ttk.Scale(self.window, from_=0, to=len(self.frames) - 1, orient="horizontal", command=self.update_frame)
+        self.slider.grid(row=2, column=0, columnspan=2, sticky="ew")
+
+        # Show the first frame
+        self.current_frame_index = 0
+        self.display_frame()
+
+        # Bind keyboard events
+        self.window.bind("<Escape>", self.reset_crop)
+        self.window.bind("<Return>", self.confirm_crop)
+        self.canvas.bind("<ButtonPress-1>", self.start_crop)
+
+    def update_instructions(self, text):
+        """Update the instructions label with the provided text."""
+        self.instruction_label.config(text=text)
+
+    def update_frame(self, value):
+        """Update the displayed frame based on the slider."""
+        self.current_frame_index = int(float(value))
+        self.display_frame()
+
+    def display_frame(self):
+        """Display the current frame on the canvas."""
+        if self.cropped_frame is None:
+            frame = self.frames[self.current_frame_index]
+        else:
+            frame = self.cropped_frame
+        # Ensure `frame` is a PIL Image
+        if isinstance(frame, np.ndarray):  # If frame is a NumPy array, convert it to a PIL image
+            frame = Image.fromarray(frame)
+
+        self.tk_image = ImageTk.PhotoImage(frame)
+        self.canvas.create_image(0, 0, anchor="nw", image=self.tk_image)
+        self.canvas.image = self.tk_image
+
+        frame_width, frame_height = frame.size
+        self.canvas.config(width=frame_width, height=frame_height)
+        self.window.geometry(f"{frame_width}x{frame_height + 100}")  # Adjust for label height
+
+    def start_crop(self, event):
+        """Begins the crop selection if in cropping mode."""
+        if self.mode == 'crop' and not self.cropping_complete:
+            self.crop_start_y = event.y
+            self.canvas.bind("<B1-Motion>", self.drag_crop)
+            self.canvas.bind("<ButtonRelease-1>", self.end_crop)
+
+    def drag_crop(self, event):
+        """Draw a rectangle to indicate the crop area."""
+        if not self.cropping_complete:
+            self.crop_end_y = event.y
+            self.canvas.delete("crop_rectangle")
+            self.canvas.create_rectangle(0, self.crop_start_y, self.tk_image.width(), self.crop_end_y, outline="red", width=2, tags="crop_rectangle")
+
+    def end_crop(self, event):
+        """Finalize the crop area."""
+        self.crop_end_y = event.y
+        self.crop_area = (min(self.crop_start_y, self.crop_end_y), max(self.crop_start_y, self.crop_end_y))
+        print(f"Crop area selected: {self.crop_area}")
+
+    def reset_crop(self, event=None):
+        """Reset the crop selection."""
+        self.cropping_complete = False
+        self.crop_area = None
+        self.cropped_frame = None
+        self.canvas.delete("crop_rectangle")
+        self.update_instructions("Step 1: Select the region to crop (y-axis only). Use mouse drag, press Enter to confirm, or Esc to reset.")
+        print("Crop selection reset.")
+
+    def confirm_crop(self, event=None):
+        """Confirm the crop selection, finalize the cropped image, and disable further cropping."""
+        if self.crop_area:
+            self.cropping_complete = True
+            y_start, y_end = self.crop_area
+            self.cropped_frame = np.array(self.frames[self.current_frame_index])[y_start:y_end, :]
+        
+            min_val = self.cropped_frame.min()
+            max_val = self.cropped_frame.max()
+
+            # Normalize the array to the range 0-255
+            normalized_frame = 255 * (self.cropped_frame - min_val) / (max_val - min_val)
+
+            # Convert to uint8 for display purposes
+            self.cropped_frame = normalized_frame.astype(np.uint8)
+
+            # Update the display with the cropped image
+            self.display_frame()
+            
+            # Disable further cropping by unbinding events and switching mode
+            self.canvas.unbind("<Button-1>")
+            self.canvas.unbind("<ButtonRelease-1>")
+            self.canvas.unbind("<B1-Motion>")
+            self.mode = 'select'  # Update the mode to stop cropping
+
+            # Process the cropped frame
+            self.slider.grid_forget()  # Hide the slider after cropping
+            self.update_instructions("Step 2: Select two wave lines by clicking on them.")
+            self.run_wave_detection()
+
+    def run_wave_detection(self):
+        """Detect and filter wave lines, then allow user to select two for calibration."""
+        self.wave_lines = tracking.analyze_and_append_waves(self.cropped_frame, wave_threshold=40, min_points_per_wave=10, min_wave_gap=10)
+        wave_averages = [np.mean([x for _, x in wave]) for wave in self.wave_lines]
+        
+        # Filter out clustered wave averages
+        filtered_averages = []
+        for avg in sorted(wave_averages):
+            if not filtered_averages or abs(filtered_averages[-1] - avg) > 5:
+                filtered_averages.append(avg)
+        
+        self.filtered_averages = filtered_averages
+        self.display_filtered_waves()
+
+    def display_filtered_waves(self):
+        """Display the cropped image with filtered wave averages overlaid for selection."""
+        
+        # Create an RGB version of the cropped frame to serve as the base for overlay
+        overlay_base = self.cropped_frame.copy()
+        if len(overlay_base.shape) == 2:  # If grayscale, convert to RGB
+            overlay_base = cv2.cvtColor(overlay_base, cv2.COLOR_GRAY2RGB)
+
+        # Overlay the lines on a copy of overlay_base, leaving self.cropped_frame unaltered
+        overlay_image = overlay_base.copy()
+        for avg_x in self.filtered_averages:
+            cv2.line(overlay_image, (int(avg_x), 0), (int(avg_x), overlay_image.shape[0]), (0, 255, 0), 2)
+
+        # Convert the overlay image to PIL format for Tkinter display
+        overlay_pil = Image.fromarray(overlay_image)
+        self.tk_overlay = ImageTk.PhotoImage(overlay_pil)
+        self.canvas.create_image(0, 0, anchor="nw", image=self.tk_overlay)
+        self.canvas.image = self.tk_overlay
+
+        # Bind click event for wave selection
+        self.canvas.bind("<Button-1>", self.select_wave_click)
+
+    def select_wave_click(self, event):
+        """Handles click events to select wave lines based on the average x-coordinate."""
+        x = event.x
+
+        # Find the closest wave based on the x-coordinate clicked
+        closest_wave = None
+        min_distance = float('inf')
+        for wave_x in self.filtered_averages:
+            distance = abs(wave_x - x)
+            if distance < min_distance:
+                min_distance = distance
+                closest_wave = wave_x
+
+        if closest_wave is not None:
+            # Check if the closest wave has already been selected; if not, add it
+            if closest_wave not in self.selected_waves:
+                self.selected_waves.append(closest_wave)
+
+            # Redraw the overlay to highlight all waves (green for unselected, red for selected)
+            self.update_overlay()
+
+            # Check if enough waves have been selected
+            if len(self.selected_waves) >= 2:
+                # Unbind click event to prevent further selections
+                self.canvas.unbind("<Button-1>")
+                self.update_instructions("Press Enter to confirm and calculate thickness.")
+                # Bind Enter key for wavelength conversion confirmation
+                self.window.bind("<Return>", self.convert_to_wavelengths)
+
+    def update_overlay(self):
+        """Redraw overlay with selected and unselected wave lines."""
+        overlay_image = self.cropped_frame.copy()
+        
+        # Convert to RGB if grayscale
+        if len(overlay_image.shape) == 2:
+            overlay_image = cv2.cvtColor(overlay_image, cv2.COLOR_GRAY2RGB)
+
+        # Draw all wave lines, red for selected and green for unselected
+        for avg_x in self.filtered_averages:
+            color = (0, 255, 0)  # Default to green for unselected waves
+            if avg_x in self.selected_waves:
+                color = (255, 0, 0)  # Change to red for selected waves
+            cv2.line(overlay_image, (int(avg_x), 0), (int(avg_x), overlay_image.shape[0]), color, 2)
+
+        overlay_pil = Image.fromarray(overlay_image.astype(np.uint8))
+        self.tk_overlay = ImageTk.PhotoImage(overlay_pil)
+        self.canvas.create_image(0, 0, anchor="nw", image=self.tk_overlay)
+        self.canvas.image = self.tk_overlay
+
+    def convert_to_wavelengths(self, event=None):
+        """Convert selected x-coordinates to wavelengths using calibration parameters."""
+        # Ensure calibration parameters are defined
+        if not self.calibration_parameters:
+            print("Calibration parameters not provided.")
+            return
+        
+        # Calculate wavelengths using slope and intercept
+        slope = self.calibration_parameters['slope']
+        intercept = self.calibration_parameters['intercept']
+        self.selected_wavelengths = [slope * (x * 4 / 3) + intercept for x in self.selected_waves]
+        
+        print(f"Selected wavelengths: {self.selected_wavelengths}")
+
+        thick = self.calculate_thickness()
+        self.callback(thick)
+        self.window.destroy()
+
+    def calculate_thickness(self):
+        """
+        Calculates mica thickness (T) using selected wavelengths and calibration parameters.
+        Requires exactly two selected wavelengths stored in `self.selected_waves`.
+        """
+        if len(self.selected_waves) != 2:
+            print("Please select exactly two wave points for calibration.")
+            return None
+
+        lambda_n_nm, lambda_n_minus_1_nm = self.selected_wavelengths
+        lambda_n_angstrom = lambda_n_nm * 10
+        lambda_n_minus_1_angstrom = lambda_n_minus_1_nm * 10
+
+        mu_mica = 1.5757 + (5.89 * 10**5) / (lambda_n_angstrom ** 2)
+
+        try:
+            T = (lambda_n_angstrom * lambda_n_minus_1_angstrom) / (4 * (lambda_n_minus_1_angstrom - lambda_n_angstrom) * mu_mica)
+            T_um = T / 10000
+            print(f"Calculated mica thickness (T): {T_um}")
+            return T_um
+        except ZeroDivisionError:
+            print("Error: The selected wavelengths are too close, leading to division by zero.")
+            return None
 
 if __name__ == "__main__":
     root = tk.Tk()
