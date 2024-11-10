@@ -1,9 +1,9 @@
+
 import cv2
 import csv
 import pprint
 import numpy as np
 import pandas as pd
-import screeninfo
 from scipy.interpolate import splprep, splev
 from scipy.optimize import curve_fit
 from scipy import stats
