@@ -9,7 +9,7 @@ import csv
 from PIL import Image, ImageTk, ImageSequence
 from enums import CalibrationValues
 
-import tracking  # Assuming this is a custom module for edge analysis
+import tracking  
 from exceptions import error_popup, warning_popup
 
 class SFA_FECO_UI:
@@ -33,7 +33,8 @@ class SFA_FECO_UI:
 
         self.split_frame_num = 0
         self.roi_offset= 0
-        self.analysis_offset = 0
+        self.analysis_x_offset = 0
+        self.analysis_y_offset = 0
         self.calibration_parameters = {}
 
         self.mica_thickness = '0'
@@ -224,6 +225,8 @@ class SFA_FECO_UI:
         # print(f"ROI Selected: Y-Start: {self.y_start}, Y-End: {self.y_end}, Offset: {self.offset}")
     
     def generate_motion_profile(self):
+        max_length = 15;
+
         # Ensure a file is selected before analyzing
         if self.raw_video_file_path:
             # Ask the user for a filename to save the data
@@ -233,7 +236,12 @@ class SFA_FECO_UI:
                     # Call the fine approximation function with the Y crop info
                     tracking.generate_motion_profile(self.raw_video_file_path, self.y_start, self.y_end, filename,)
                     self.motion_profile_file_path = filename
-                    self.data_file_label.config(text=f"Data saved: {self.motion_profile_file_path}")
+
+                    if len(self.motion_profile_file_path) > max_length:
+                        data_file_text = '...' + self.motion_profile_file_path[len(self.motion_profile_file_path) - max_length:]
+                        self.data_file_label.config(text=f"Using file: {data_file_text}")
+                    else: 
+                        self.data_file_label.config(text=f"Data saved: {self.motion_profile_file_path}")
                 else:
                     msg = "Please select a region of interest in the crop/preprocess window"
                     error_popup(msg)
@@ -294,10 +302,12 @@ class SFA_FECO_UI:
         check_file = filedialog.askopenfilename(filetypes=[("Tiff files", "*.tiff")])
         if(check_file): 
             self.motion_profile_file_path = check_file
-        if len(self.motion_profile_file_path) > max_length:
-            data_file_text = '...' + self.motion_profile_file_path[len(self.motion_profile_file_path) - max_length:]
-            self.data_file_label.config(text=f"Using file: {data_file_text}")
-
+            if len(self.motion_profile_file_path) > max_length:
+                data_file_text = '...' + self.motion_profile_file_path[len(self.motion_profile_file_path) - max_length:]
+                self.data_file_label.config(text=f"Using file: {data_file_text}")
+        else: 
+            msg = "No file selected, aborting"
+            error_popup(msg)
 
     def analyze(self):
         self.centerlines_csv_path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
@@ -311,22 +321,27 @@ class SFA_FECO_UI:
         Handle the offset data returned from the Motion_Analysis_Window.
         :param offsets: int of y offset
         """
-        self.analysis_offset = offsets
+        self.analysis_x_offset = offsets[0]
+        self.analysis_y_offset = offsets[1]
 
     def estimate_turnaround(self):
         # Ensure the output directory and filename components are handled separately
         # Assuming self.motion_profile_file_path holds the original file path
-        original_path = self.motion_profile_file_path
+        if(self.motion_profile_file_path):
+            original_path = self.motion_profile_file_path
 
-        # Separate the file directory, base name, and extension
-        file_dir = os.path.dirname(original_path)
-        base_name, ext = os.path.splitext(os.path.basename(original_path))
+            # Separate the file directory, base name, and extension
+            file_dir = os.path.dirname(original_path)
+            base_name, ext = os.path.splitext(os.path.basename(original_path))
 
-        # Append "_cropped" to the base name and reassemble the path
-        cropped_path = os.path.join(file_dir, f"{base_name}_cropped{ext}")
-        
-        self.split_frame_num = tracking.perform_turnaround_estimation(cropped_path, self.centerlines_csv_path, self.analysis_offset) 
-        self.split_var.set(str(self.split_frame_num))
+            # Append "_cropped" to the base name and reassemble the path
+            cropped_path = os.path.join(file_dir, f"{base_name}_cropped{ext}")
+
+            self.split_frame_num = tracking.perform_turnaround_estimation(cropped_path, self.centerlines_csv_path, self.analysis_x_offset, self.analysis_y_offset) 
+            self.split_var.set(str(self.split_frame_num))
+        else: 
+            msg = "No motion profile file selected"
+            error_popup(msg)
 
     def split(self):
         file_to_split = self.split_file_path
@@ -363,8 +378,7 @@ class SFA_FECO_UI:
         else:
             msg = "No spltting file selected, aborting"
             error_popup(msg)
-
-    
+ 
     def choose_split_file(self):
         max_length = 15;
         # Allow the user to choose an existing data file
@@ -581,7 +595,8 @@ class Motion_Analysis_Window:
         print(self.x_offset_start)
         print(self.x_offset_end)
         if self.offset_callback:
-            self.offset_callback(y_start)
+            offsets = (self.x_offset_start, self.y_offset)
+            self.offset_callback(offsets)
         self.cropped_image = self.timelapse_image[y_start:y_end, x_start:x_end]
         
         # Get the base name and extension of the original file
@@ -629,76 +644,21 @@ class Motion_Analysis_Window:
             for wave_line in self.wave_lines:
                 wave_line[:] = [(y, x) for (y, x) in wave_line if not (x_start <= x <= x_end and y_start <= y <= y_end)]
 
-        # Redraw the figure with the updated data
-        self.ax.clear()
-        
-        # Replot the image
-        self.ax.imshow(self.cropped_image, cmap='gray')
+        # Clear the deletion areas after applying deletions
+        self.deletion_areas = []
 
-        # Replot the wave lines
-        colors = plt.cm.rainbow(np.linspace(0, 1, len(self.wave_lines)))
-
-        for idx, wave_line in enumerate(self.wave_lines):
-            y_coords = [point[0] for point in wave_line]
-            x_coords = [point[1] for point in wave_line]
-            self.ax.plot(x_coords, y_coords, color=colors[idx], label=f"Wave {idx + 1}")
-
-        # Reapply title, labels, and legend
-        self.ax.set_title("Highlight data to delete it. Enter to accept, esc to cancel, exit window to save")
-        if(self.calibration_parameters):
-            plt.xlabel(r"Wavelength, $\lambda$ (nm)")
-        else:
-            plt.xlabel("Pixels")
-        self.ax.set_ylabel("Frame Number")
-        self.ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-
-        # Apply calibrated x-axis ticks if calibration parameters exist
-        if self.calibration_parameters:
-            original_ticks = self.ax.get_xticks()
-            calibrated_ticks = [
-                self.calibration_parameters['slope'] * tick + self.calibration_parameters['intercept']
-                for tick in original_ticks
-            ]
-
-            ticks = self.ax.get_xticks()  # Get original x-axis ticks
-
-            # Apply calibration to display ticks only
-            calibrated_ticks = [self.calibration_parameters['slope'] * (tick - self.x_offset_start) + self.calibration_parameters['intercept'] for tick in ticks]
-            self.ax.set_xticks(ticks)  # Original ticks for data
-            self.ax.set_xticklabels([f"{tick:.2f}" for tick in calibrated_ticks])  # Show calibrated labels
-
-            self.ax.set_xlim(0, self.x_offset_end-self.x_offset_start)
-
-        # Redraw the updated plot
-        plt.draw()
+        # Update the plot with the modified wave lines
+        self.update_plot()
 
     def cancel_deletion(self):
         """Cancel the current deletion selection and reset any marked areas."""
         # Clear the list of deletion areas
         self.deletion_areas = []
 
-        # Clear any displayed deletion rectangles from the plot
-        self.ax.clear()
-        self.ax.imshow(self.cropped_image, cmap='gray')  # Redisplay the cropped image after clearing
-
-        # Reapply wave line overlays and labels, if needed
-        colors = plt.cm.rainbow(np.linspace(0, 1, len(self.wave_lines)))
-        for idx, wave_line in enumerate(self.wave_lines):
-            y_coords = [point[0] for point in wave_line]
-            x_coords = [point[1] for point in wave_line]
-            self.ax.plot(x_coords, y_coords, color=colors[idx], label=f"Wave {idx + 1}")
-
-        # Set labels and title back to deletion mode
-        self.ax.set_title("Deletion mode: Drag to select, Enter to confirm, Esc to cancel.")
-        self.ax.set_xlabel("X-axis")
-        self.ax.set_ylabel("Y-axis")
-
-        # Redraw the canvas
-        plt.draw()
+        self.update_plot()
 
         # Ensure the RectangleSelector is active again for new selections
-        self.rect_selector.set_active(False)
-        self.rect_selector.set_active(True)  # Reactivate for new deletion selections
+        self.rect_selector.set_active(True)
 
     def on_select_crop(self, eclick, erelease):
         """Callback for when the cropping rectangle is selected."""
@@ -714,12 +674,16 @@ class Motion_Analysis_Window:
         deletion_area = (x_start, x_end, y_start, y_end)
         self.deletion_areas.append(deletion_area)
         print(f"Deletion area selected: {deletion_area}")
-    
+
         # Draw a rectangle on the plot to show the selected area
         rect = plt.Rectangle((x_start, y_start), x_end - x_start, y_end - y_start,
-                             linewidth=1, edgecolor='r', facecolor='none')
+                            linewidth=1, edgecolor='r', facecolor='none')
         self.ax.add_patch(rect)
         plt.draw()
+
+        # Reset the RectangleSelector
+        self.rect_selector.set_active(False)
+        self.rect_selector.set_active(True)
 
     def run_analysis(self):
         """Run the analysis on the cropped image."""
@@ -731,33 +695,90 @@ class Motion_Analysis_Window:
 
     def visualize_wave_centerlines(self, image, wave_lines):
         """Visualize and enable deletion on the results with calibrated x-axis ticks if calibration is available."""
-        # First, create the figure and axis
-        self.fig, self.ax = plt.subplots(figsize=Motion_Analysis_Window.FIGURE_SIZE)
-        self.ax.imshow(image, cmap='gray')
+        # Store the image and wave lines
+        self.cropped_image = image
+        self.wave_lines = wave_lines
 
-        # Plot the wave lines
-        colors = plt.cm.rainbow(np.linspace(0, 1, len(wave_lines)))
-        for idx, wave_line in enumerate(wave_lines):
-            y_coords = [point[0] for point in wave_line]
-            x_coords = [point[1] for point in wave_line]
-            self.ax.plot(x_coords, y_coords, color=colors[idx], label=f"Wave {idx + 1}")
-
-        # ... [rest of your plotting code] ...
-
-        # Now, connect the key press event handler for deletion mode
-        self.fig.canvas.mpl_connect('key_press_event', self.handle_key_press)
-
-        # Initialize RectangleSelector for deletion
-        self.rect_selector = RectangleSelector(self.ax, self.on_select_delete, useblit=True, interactive=False)
-
-        self.deletion_areas = []  # Store deletion areas
-        self.fig.canvas.mpl_connect('close_event', self.on_close)
-
+        # Use the new update_plot method to plot everything
+        self.update_plot()
+        
         plt.show()
 
+    def update_plot(self):
+        """Update the plot with the current wave lines and apply calibration if necessary."""
+        # Check if the figure and axis already exist
+        if not hasattr(self, 'fig') or not hasattr(self, 'ax') or not plt.fignum_exists(self.fig.number):
+            # Create the figure and axis with the desired frame size
+            self.fig, self.ax = plt.subplots(figsize=(10, 4))
+            
+            # Connect event handlers
+            self.fig.canvas.mpl_connect('key_press_event', self.handle_key_press)
+            self.fig.canvas.mpl_connect('close_event', self.on_close)
+            
+            # Initialize RectangleSelector for deletion
+            self.rect_selector = RectangleSelector(self.ax, self.on_select_delete, useblit=True, interactive=False)
+        
+        self.ax.clear()
+        
+        # Replot the image
+        self.ax.imshow(self.cropped_image, cmap='gray')
+
+        # Replot the wave lines
+        colors = plt.cm.rainbow(np.linspace(0, 1, len(self.wave_lines)))
+
+        for idx, wave_line in enumerate(self.wave_lines):
+            if wave_line:  # Ensure the wave_line is not empty
+                y_coords = [point[0] for point in wave_line]
+                x_coords = [point[1] for point in wave_line]
+                self.ax.plot(x_coords, y_coords, color=colors[idx], label=f"Wave {idx + 1}")
+
+        # Reapply title, labels, and legend
+        self.ax.set_title("Highlight data to delete it. Enter to accept, Esc to cancel, close window to save.")
+        if self.calibration_parameters:
+            self.ax.set_xlabel(r"Wavelength, $\lambda$ (nm)")
+        else:
+            self.ax.set_xlabel("Pixels")
+        self.ax.set_ylabel("Frame Number")
+        self.ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+
+        # Apply calibrated x-axis ticks if calibration parameters exist
+        if self.calibration_parameters:
+            ticks = self.ax.get_xticks()  # Get original x-axis ticks
+
+            # Apply calibration to display ticks only
+            calibrated_ticks = [
+                self.calibration_parameters['slope'] * (tick - self.x_offset_start) + self.calibration_parameters['intercept']
+                for tick in ticks
+            ]
+            self.ax.set_xticks(ticks)  # Original ticks for data
+            self.ax.set_xticklabels([f"{tick:.2f}" for tick in calibrated_ticks])  # Show calibrated labels
+
+            self.ax.set_xlim(0, self.x_offset_end - self.x_offset_start)
+
+        # Redraw the updated plot
+        plt.draw()
+
+        # Adjust the layout to include all elements
+        self.fig.tight_layout()
+
     def on_close(self, event):
-        """Save the modified wave lines when the window is closed."""
+        """Save the modified wave lines and the figure when the window is closed."""
+        # Save the wave centerlines to CSV
         self.save_wave_centerlines_to_csv(self.wave_lines, self.output_filename)
+        
+        # Update the plot title to a proper name
+        self.ax.set_title("Final Wave Centerlines")
+        
+        # Force an immediate redraw of the figure
+        self.fig.canvas.draw()
+        
+        # Save the figure as a PDF
+        pdf_filename = "last_centerline_visualization.pdf"
+        try:
+            self.fig.savefig(pdf_filename, format='pdf', bbox_inches='tight')
+            print(f"Figure saved as '{pdf_filename}'")
+        except Exception as e:
+            print(f"Error saving figure as PDF: {e}")
 
     def save_wave_centerlines_to_csv(self, wave_lines, output_filename):
         """Save the wave centerlines to a CSV file, with an optional calibrated CSV if parameters are available."""

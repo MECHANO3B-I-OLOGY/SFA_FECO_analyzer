@@ -42,95 +42,6 @@ def scale_frame(frame, scale_factor=0.9):
 
     return scaled_frame
 
-def detect_edges(frame, smoothing_factor=500):
-    if frame.dtype != np.uint8:
-        # Normalize if necessary
-        if np.issubdtype(frame.dtype, np.floating):
-            frame = (frame * 255).astype(np.uint8)
-        elif frame.dtype == np.uint16:
-            frame = (frame / 256).astype(np.uint8)
-        else:
-            frame = frame.astype(np.uint8)
-
-    # Convert to grayscale if needed
-    if len(frame.shape) == 3 and frame.shape[2] == 3:
-        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    else:
-        gray_frame = frame
-
-    # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
-    clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
-    contrast_enhanced = clahe.apply(gray_frame)
-
-    # Apply Gaussian Blurring to reduce noise
-    blurred_image = cv2.GaussianBlur(contrast_enhanced, (0, 5), 5)
-
-    # Calculate the mean pixel intensity
-    mean_intensity = np.mean(blurred_image)
-
-    # Apply thresholding using the mean intensity as the threshold value
-    _, thresholded_image = cv2.threshold(blurred_image, mean_intensity * 1.15, 255, cv2.THRESH_BINARY)
-
-    # Use Canny edge detection to find edges
-    edges = cv2.Canny(thresholded_image, 50, 150)
-
-    # Find contours in the edge-detected image
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    # Smooth the contours
-    smoothed_contours_img = np.zeros_like(edges)
-
-    for contour in contours:
-        contour = contour.reshape(-1, 2)
-
-        if len(contour) > 3:
-            try:
-                # Spline approximation
-                tck, _ = splprep([contour[:, 0], contour[:, 1]], s=smoothing_factor)
-                x_new, y_new = splev(np.linspace(0, 1, 1000), tck)
-                smooth_contour = np.vstack((x_new, y_new)).T
-                smooth_contour = np.round(smooth_contour).astype(int)
-
-                # Draw the smooth contour on the smoothed_contours_img
-                for i in range(len(smooth_contour) - 1):
-                    cv2.line(smoothed_contours_img, tuple(smooth_contour[i]), tuple(smooth_contour[i + 1]), 255, 1)
-            except Exception as e:
-                print(f"Error fitting spline to contour: {e}")
-
-    return smoothed_contours_img
-
-def rough_approx_poi(frame):
-    # Get the edges from the core function
-    edges = detect_edges(frame)
-
-    # Find contours in the edge-detected image
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    # Initialize variables to store the leftmost points
-    leftmost_points = []
-
-    # Buffer distance to ignore points that are too close to previously detected ones
-    buffer_distance = 100
-
-    # List to store all potential leftmost points before filtering
-    all_leftmost_points = []
-
-    for contour in contours:
-        # Get the leftmost point of the contour
-        leftmost_point = tuple(contour[contour[:, :, 0].argmin()][0])
-        all_leftmost_points.append(leftmost_point)
-
-    # Sort points by their x-coordinate to ensure left-to-right processing
-    all_leftmost_points.sort(key=lambda pt: pt[0])
-
-    # Filter points to keep only those that are sufficiently far from the last detected one
-    for point in all_leftmost_points:
-        if not leftmost_points or abs(point[0] - leftmost_points[-1][0]) > buffer_distance:
-            leftmost_points.append(point)
-    # print(leftmost_points)
-    # Return the list of filtered leftmost points
-    return leftmost_points
-
 def generate_motion_profile(file_path, y_start, y_end, filename):
     """
     Processes the TIFF video by performing vertical summing and normalization,
@@ -293,77 +204,7 @@ def analyze_and_append_waves(image,
 
     return wave_lines
 
-def display_edges(frame):
-    # Normalize the frame to the correct range and type if needed
-    if frame.dtype != np.uint8:
-        # Normalize to 0-255 range if it's a floating point type
-        if np.issubdtype(frame.dtype, np.floating):
-            frame = (frame * 255).astype(np.uint8)
-        # Convert 16-bit to 8-bit by normalizing
-        elif frame.dtype == np.uint16:
-            frame = (frame / 256).astype(np.uint8)
-        else:
-            frame = frame.astype(np.uint8)  # Fallback to direct conversion
-
-
-    smoothed_edges = detect_edges(frame)
-
-    # Call rough_approx_poi to get the leftmost points
-    leftmost_points = rough_approx_poi(frame)
-
-    # Convert smoothed edges to BGR for display
-    edges_colored = cv2.cvtColor(smoothed_edges, cv2.COLOR_GRAY2BGR)
-
-    # Convert frame to BGR if it's a single channel (grayscale)
-    if len(frame.shape) == 2:  # Grayscale image
-        frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
-
-    # Ensure both images are the same size
-    if frame.shape[:2] != edges_colored.shape[:2]:
-        edges_colored_resized = cv2.resize(edges_colored, (frame.shape[1], frame.shape[0]))
-    else:
-        edges_colored_resized = edges_colored
-
-    # Check that edges_colored_resized is also uint8
-    if edges_colored_resized.dtype != np.uint8:
-        edges_colored_resized = edges_colored_resized.astype(np.uint8)
-
-    # Normalize the frame to the range 0-255
-    frame = cv2.normalize(frame, None, 0, 255, cv2.NORM_MINMAX)
-
-    # Blend the smoothed edges with the original frame
-    edge_blended_frame = cv2.addWeighted(frame, 0.7, edges_colored_resized, 0.3, 10)  # Try different gamma values
-
-    # Draw vertical lines at the leftmost points
-    for point in leftmost_points:
-        if 0 <= point[0] < frame.shape[1]:  # Ensure the point is within the image width
-            cv2.line(edge_blended_frame, (point[0], 0), (point[0], frame.shape[0]), (0, 0, 255), 2)
-
-    # Convert the result to PIL Image
-    pil_image = Image.fromarray(cv2.cvtColor(edge_blended_frame, cv2.COLOR_BGR2RGB))
-
-    return pil_image
-
-def save_data_as_csv(data, filename):
-    """
-    Save data to a CSV file.
-
-    :param data: List of dictionaries, each containing data for a frame
-    :param filename: Desired filename (without extension)
-    """
-    # Get the field names from the first dictionary in the list
-    fieldnames = data[0].keys()
-
-    # Write data to CSV file
-    with open(f"{filename}.csv", mode="w", newline='') as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-        writer.writeheader()  # Write column headers
-        for row in data:
-            writer.writerow(row)
-
-    print(f"Data saved to {filename}.csv")
-
-def perform_turnaround_estimation(motion_profile_file_path, centerline_csv_path, y_offset = 0):
+def perform_turnaround_estimation(motion_profile_file_path, centerline_csv_path, x_offset = 0, y_offset = 0):
     """
     Estimate the turnaround points for each wave by performing leftward and rightward 
     linear fits, calculating their intersection points, and plotting the results.
@@ -407,8 +248,8 @@ def perform_turnaround_estimation(motion_profile_file_path, centerline_csv_path,
 
         # pprint(wave_data)
 
-        x_coords = [point[2] for point in wave_data]  # Extract the x-coordinates (third value in each tuple)
-        y_coords = [point[1] for point in wave_data]  # Extract the y-coordinates (second value in each tuple)
+        x_coords = [point[2] - x_offset for point in wave_data]  # Extract the x-coordinates (third value in each tuple)
+        y_coords = [point[1] - y_offset for point in wave_data]  # Extract the y-coordinates (second value in each tuple)
     
         # Appending leftward points
         pointNum = 5
