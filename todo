@@ -1,4 +1,22 @@
 existing bugs to patch:
 
+- centerlines offset bug
 
 future plans:
+
+- scale window to screen (the right way?)
+
+finished:
+
+- scale window to screen bug
+- mica thickness value output in textbox
+- ignore Y axis for point placement
+  - bin across whole X
+- user picks frame, pick peaks of interest, analysis records x location of peaks from first frame to last frame for that/those peak(s)
+- do frame/pixel line/analysis
+- accept double waves
+- readme
+- linear approximation and interpolation of turning point
+- add option to split frame around turnaround
+- add option to manually enter turnaround point
+- use mercury calibration file to identify x coords of known wavelengths, extrapolate a translation of pixels to wavelength
