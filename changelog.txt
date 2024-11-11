@@ -1,3 +1,38 @@
+11/10/24 - Isaac
+- massive overhaul of the main file functions SFA_FECO_UI, Frame_Prep_Window, and Motion_Analysis_Window for readability, various bugs, and good practices
+
+10/30/24 - Isaac
+- got calibration finished
+- got image to display final result
+- got first version of mica thickness calibration
+
+10/28/24 - Isaac
+- cleaned up hardcoded values
+- work on getting calibration values functional in output plots
+
+10/23/24 - Isaac
+- calibration function finished
+
+10/21/24 - Isaac
+- Got split cleaned up
+- Manual split location
+- started calibration implementation  
+
+10/12/24 - Isaac
+- Cleaned up code
+- Got Readme updated
+- Scaling fixed
+
+10/7/24 - Isaac
+- got linear approximation of motion working
+- got center split
+
+10/2/24 - Isaac
+- added pre-analysis image cropping and post-analysis data removal
+- updated readme
+
+9/30/24 - Isaac
+- V3 working, motion profiler working
 
 9/8/24 - Isaac
 - Got crop and frame select slider to work 
