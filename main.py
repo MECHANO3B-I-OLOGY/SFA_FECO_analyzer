@@ -1,4 +1,5 @@
 import os
+import sys
 import cv2
 import numpy as np
 import tkinter as tk
@@ -8,6 +9,7 @@ from matplotlib.widgets import RectangleSelector
 import csv
 from PIL import Image, ImageTk, ImageSequence
 from enums import CalibrationValues
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 import tracking  
 from exceptions import error_popup, warning_popup
@@ -36,8 +38,10 @@ class SFA_FECO_UI:
         self.analysis_x_offset = 0
         self.analysis_y_offset = 0
         self.calibration_parameters = {}
-
         self.mica_thickness = '0'
+
+        # Set protocol for window close to ensure full exit
+        self.root.protocol("WM_DELETE_WINDOW", self.exit_application)
 
         # Get screen width and height
         screen_width = root.winfo_screenwidth()
@@ -183,6 +187,19 @@ class SFA_FECO_UI:
         # Add a vertical separator between columns
         vertical_separator = ttk.Separator(root, orient="vertical")
         vertical_separator.grid(row=0, column=1, rowspan=6, sticky='ns', padx=10)
+
+    def exit_application(self):
+        """Cleanly exit the application."""
+        # Close all matplotlib figures
+        plt.close('all')
+
+        # Destroy the Tkinter root window
+        self.root.quit()  # This stops the Tkinter main loop
+        self.root.destroy()
+
+        # Exit the program forcefully to ensure no lingering processes
+        sys.exit()
+
 
     def setup_styles(self):
         self.btn_style = ttk.Style()
@@ -833,74 +850,93 @@ class Wavelength_Calibration_Window:
         self.crop_rectangle = None
         self.waves = None
         self.stage = 1
-        self.scale_factor = 0.75
+        self.scale_factor = 1
         self.cropped_image = None
         self.wave_x_avgs = []
         self.selected_waves = [] 
         self.num_waves = 3
+        self.crop_start_y = None
+        self.crop_end_y = None
 
         # Create instruction label
         self.instruction_label = ttk.Label(self.window, text="Step 1: Select the region to crop (y-axis only).")
         self.instruction_label.pack(pady=5)
 
-        # Create UI elements
-        self.canvas = tk.Canvas(self.window)
-        self.canvas.pack(fill="both", expand=True)
-        self.slider = ttk.Scale(self.window, from_=0, to=self.image.n_frames - 1, orient="horizontal", command=self.update_frame)
-        self.slider.pack(fill="x")
+        # Create Matplotlib figure and axes
+        self.fig, self.ax = plt.subplots(figsize=(10, 8))
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.window)
+        self.canvas.get_tk_widget().pack(fill="both", expand=True)
+
+        # Create a slider for selecting frames if the image has multiple frames
+        if hasattr(self.image, "n_frames"):
+            self.slider = ttk.Scale(self.window, from_=0, to=self.image.n_frames - 1, orient="horizontal", command=self.update_frame)
+            self.slider.pack(fill="x")
+        else:
+            self.slider = None
+
+        # Load and display the initial frame
+        self.update_frame(0)
 
         # Bind events
-        self.canvas.bind("<Button-1>", self.click_start_crop)
-        self.canvas.bind("<ButtonRelease-1>", self.end_crop)
+        self.fig.canvas.mpl_connect("button_press_event", self.click_start_crop)
+        self.fig.canvas.mpl_connect("button_release_event", self.end_crop)
         self.window.bind("<Escape>", self.cancel_crop)
         self.window.bind("<Return>", self.confirm_crop)
+        self.fig.canvas.mpl_connect('close_event', self.on_close)
 
-        # Load the initial frame
-        self.update_frame(0)
+    def on_close(self, event):
+        plt.close('all')
 
     def update_frame(self, value):
         """Updates the displayed frame based on the slider value."""
         current_frame_index = int(float(value))
         self.image.seek(current_frame_index)
-        scaled_frame = tracking.scale_frame(self.image, self.scale_factor)
+        scaled_frame = self.scale_image(self.image)
         self.display_image(scaled_frame)
 
+    def scale_image(self, image):
+        """Scales the image by the specified factor."""
+        # Convert the image to RGB if it’s not already in a compatible mode
+        if image.mode not in ("RGB", "L"):
+            image = image.convert("RGB")  # You can use "L" if you want grayscale
+
+        width, height = image.size
+        return image.resize((int(width * self.scale_factor), int(height * self.scale_factor)), Image.LANCZOS)
+
     def display_image(self, image):
-        """Displays a PIL image on the canvas."""
-        self.photo = ImageTk.PhotoImage(image)
-        self.canvas.create_image(0, 0, anchor="nw", image=self.photo)
-        
-        frame_width, frame_height = image.size
-        self.canvas.config(width=frame_width, height=frame_height)
-        self.window.geometry(f"{frame_width}x{frame_height + 80}")
+        """Displays a PIL image using Matplotlib."""
+        self.ax.clear()
+        self.ax.imshow(image, cmap='gray')
+        self.canvas.draw()
 
     def click_start_crop(self, event):
         """Begins the crop selection (only y-axis)."""
-        if self.stage == 1:  # Only allow cropping in step 1    
-            self.crop_start_y = event.y
-            if self.crop_rectangle:
-                self.canvas.delete(self.crop_rectangle)
+        if self.stage == 1:  # Only allow cropping in step 1
+            # If there is an existing crop, clear it before starting a new one
+            if self.crop_start_y is not None and self.crop_end_y is not None:
+                self.cancel_crop(event=None)  # Clear existing crop
+            self.crop_start_y = int(event.ydata)
         elif self.stage == 2:
             self.select_wave_click(event)
 
     def end_crop(self, event):
         """Draws the cropping line (only y-axis)."""
-        
-        if self.stage == 1:  # Only allow cropping in step 1 
-            self.crop_end_y = event.y
-            width = self.image.width  # Use the entire width of the image
-            self.crop_rectangle = self.canvas.create_rectangle(0, self.crop_start_y, width, self.crop_end_y, outline="red", width=2)
+        if self.stage == 1:  # Only allow cropping in step 1
+            self.crop_end_y = int(event.ydata)
+            self.ax.axhline(y=self.crop_start_y, color='red')
+            self.ax.axhline(y=self.crop_end_y, color='red')
+            self.canvas.draw()
 
     def cancel_crop(self, event):
         """Cancels the cropping selection."""
-        if self.stage == 1:  # Only allow cropping in step 1 
-            if self.crop_rectangle:
-                self.canvas.delete(self.crop_rectangle)
+        if self.stage == 1:  # Only allow cropping in step 1
             self.crop_start_y = None
             self.crop_end_y = None
+            self.ax.clear()
+            self.display_image(self.scale_image(self.image))
         elif self.stage == 2:
             self.selected_waves = []
-            self.update_overlay
+            self.update_overlay()
 
     def confirm_crop(self, event):
         """Confirms the crop and proceeds to analyze waves."""
@@ -908,17 +944,18 @@ class Wavelength_Calibration_Window:
             y1 = min(self.crop_start_y, self.crop_end_y)
             y2 = max(self.crop_start_y, self.crop_end_y)
             cropped_frame = self.image.crop((0, y1, self.image.width, y2))
-            self.canvas.delete(self.crop_rectangle)
             self.cropped_image = cropped_frame
 
             # Hide the slider after step 1 is complete
-            self.slider.pack_forget()
+            if self.slider:
+                self.slider.pack_forget()
             self.stage = 2
-        
+
             # Update instructions
             self.instruction_label.config(text="Step 2: Select 3 wave lines.")
         
             self.run_wave_analysis(cropped_frame)
+            # self.display_image(self.cropped_image)
 
     def run_wave_analysis(self, image):
         """Runs the wave analysis on the cropped image."""
@@ -926,124 +963,94 @@ class Wavelength_Calibration_Window:
         self.display_waves()
 
     def display_waves(self):
-        """Displays the waves over the cropped image."""
+        """Displays the waves over the cropped image using Matplotlib."""
         if self.waves and self.cropped_image is not None:
             # Ensure the cropped image is in RGB mode
             if self.cropped_image.mode != 'RGB':
                 self.cropped_image = self.cropped_image.convert('RGB')
                 
-            # Convert the PIL image to a numpy array for OpenCV processing
-            overlay = np.array(self.cropped_image).copy()
+            # Clear the axes and display the cropped image
+            self.ax.clear()
+            self.ax.imshow(self.cropped_image, cmap='gray')
 
-            # Print out the waves for debugging
             print(f"Number of waves: {len(self.waves)}")
             for wave_index, wave in enumerate(self.waves):
                 # Calculate the average x position for the wave
                 average_x = int(np.mean([point[1] for point in wave]))
-                self.wave_x_avgs.append(average_x)
-                print(f"Wave {wave_index} average x-position: {average_x}")
 
-                # Ensure the average_x is within the image boundaries
-                if 0 <= average_x < overlay.shape[1]:
-                    # Draw a vertical line at the average x position
-                    cv2.line(overlay, (average_x, 0), (average_x, overlay.shape[0]), (0, 255, 0), 2)
-                else:
-                    print(f"Wave {wave_index} average x-position is out of bounds and will not be drawn.")
+                # Check if this average x is already in the list to prevent duplicates
+                if average_x not in self.wave_x_avgs:
+                    self.wave_x_avgs.append(average_x)
+                    print(f"Wave {wave_index} average x-position: {average_x}")
 
-            # Convert back to a PIL image if needed or continue processing with OpenCV
-            overlay_pil = Image.fromarray(overlay)
-            scaled_overlay = tracking.scale_frame(overlay_pil, self.scale_factor)
-            self.display_image(scaled_overlay)
+                # Draw a vertical line at the average x position
+                if 0 <= average_x < self.cropped_image.width:
+                    self.ax.axvline(x=average_x, color="lime", linestyle="-")
 
-            # DEBUG: Display the frame using OpenCV for debugging
-            debug_frame = cv2.cvtColor(np.array(overlay), cv2.COLOR_RGB2BGR)  # Convert to BGR for OpenCV
-            # self.display_image_with_pixel_scale(debug_frame)
-
-            # Convert the numpy array back to a PIL image
-            overlay_pil = Image.fromarray(debug_frame)
-            
-            # Scale the overlay image
-            scaled_overlay = tracking.scale_frame(overlay_pil, self.scale_factor)
-            
-            # Display the scaled image
-            self.display_image(scaled_overlay)
-            
-            # Bind the return key for wave selection confirmation
+            self.canvas.draw()
             self.window.bind("<Return>", self.confirm_wave_selection)
 
     def confirm_wave_selection(self, event):
         """Allows the user to select 3 wave lines and calculate the calibration equation."""
-        if len(self.waves) < 3:
+        if len(self.selected_waves) < 3:
             print("Select at least 3 wave lines")
             return
-        self.select_waves(3)
-
-    def select_waves(self, num_waves):
-        """Allows the user to select a number of wave lines by clicking on the canvas."""
-        self.num_waves = num_waves
-        self.canvas.bind("<Button-1>", self.select_wave_click)
-
-        # Instructions for the user
-        self.instructions_label = ttk.Label(self.window, text=f"Click to select {self.num_waves} wave lines.")
-        self.instructions_label.pack(pady=5)
+        self.calculate_transformation(event)
 
     def select_wave_click(self, event):
         """Handles click events to select wave lines based on the average x-coordinate."""
-        x = event.x / self.scale_factor
+        x = int(event.xdata)
 
         # Find the closest wave based on the x-coordinate clicked
         closest_wave = None
         min_distance = float('inf')
         for wave_x in self.wave_x_avgs:
             distance = abs(wave_x - x)
-            # print(wave_x, " wave pixel")
-            # print(distance, " distance")
-            # print()
             if distance < min_distance:
                 min_distance = distance
                 closest_wave = wave_x
 
-        if closest_wave is not None:
-            # Check if the closest wave has already been selected; if not, add it
-            if closest_wave not in self.selected_waves:
-                self.selected_waves.append(closest_wave)
-
-            # Redraw the overlay to highlight all waves (green for unselected, red for selected)
+        if closest_wave is not None and closest_wave not in self.selected_waves:
+            self.selected_waves.append(closest_wave)
             self.update_overlay()
 
             # Check if enough waves have been selected
             if len(self.selected_waves) >= self.num_waves:
-                self.canvas.unbind("<Button-1>")
                 self.instruction_label.config(text="Wave selection complete. Press Enter to proceed.")
-                self.window.bind("<Return>", self.calculate_transformation)
+                self.window.bind("<Return>", self.confirm_wave_selection)
 
     def update_overlay(self):
         """Updates the overlay to highlight selected and unselected waves."""
-        # Create an overlay image
-        overlay = np.array(self.cropped_image).copy()
-
-        # Draw all waves: green for unselected and red for selected
+        self.ax.clear()
+        self.ax.imshow(self.cropped_image, cmap='gray')
         for wave_x in self.wave_x_avgs:
-            color = (0, 255, 0)  # Default color is green
-            if wave_x in self.selected_waves:
-                color = (255, 0, 0)  # Change to red for selected waves
-            cv2.line(overlay, (int(wave_x), 0), (int(wave_x), overlay.shape[0]), color, 2)
-
-        # Convert the overlay back to PIL format and scale it
-        overlay_pil = Image.fromarray(overlay)
-        scaled_overlay = tracking.scale_frame(overlay_pil, self.scale_factor)
-        self.display_image(scaled_overlay)
-
+            color = "red" if wave_x in self.selected_waves else "lime"
+            self.ax.axvline(x=wave_x, color=color, linestyle="-")
+        self.canvas.draw()
 
     def calculate_transformation(self, event):
         """Calculates the calibration equation using the selected waves."""
-        x_values = self.wave_x_avgs
-        y_values = [CalibrationValues.HG_GREEN.value, CalibrationValues.HG_YELLOW_1.value, CalibrationValues.HG_YELLOW_2.value]
+        if len(self.selected_waves) < 3:
+            print("Select at least 3 wave lines")
+            return
+
+        # Sort the selected wave positions to ensure proper order for calibration
+        x_values = sorted(self.selected_waves)
+        y_values = [
+            CalibrationValues.HG_GREEN.value,
+            CalibrationValues.HG_YELLOW_1.value,
+            CalibrationValues.HG_YELLOW_2.value
+        ]
+
+        # Calculate linear fit (slope and intercept)
         coefficients = np.polyfit(x_values, y_values, 1)
         calibration_equation = {"slope": coefficients[0], "intercept": coefficients[1]}
         print(calibration_equation)
+
+        # Send the calibration equation to the callback
         self.callback(calibration_equation)
-        self.window.destroy() 
+        self.window.destroy()
+
 
 class Mica_Thickness_Calibration_Window: 
     def __init__(self, calibration_parameters, callback):
