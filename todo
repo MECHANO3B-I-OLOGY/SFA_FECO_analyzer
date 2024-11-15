@@ -1,13 +1,17 @@
 existing bugs to patch:
 
-- centerlines offset bug
-
 future plans:
 
+- rename generate to save and generate
+- get everything using matplotlib
+- calibration instructions, readme and in-ui
+- unified file selection strategy, in and out (analysis?)
 - scale window to screen (the right way?)
 
 finished:
 
+- calibration wave selection (? hard to test)
+- centerlines offset bug
 - scale window to screen bug
 - mica thickness value output in textbox
 - ignore Y axis for point placement
