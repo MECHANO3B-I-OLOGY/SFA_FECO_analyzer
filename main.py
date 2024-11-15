@@ -916,6 +916,11 @@ class Wavelength_Calibration_Window:
             if self.crop_start_y is not None and self.crop_end_y is not None:
                 self.cancel_crop(event=None)  # Clear existing crop
             self.crop_start_y = int(event.ydata)
+
+            # Draw a temporary horizontal line at the start position
+            self.temp_crop_line = self.ax.axhline(y=self.crop_start_y, color='red', linestyle='-')
+            self.canvas.draw()
+
         elif self.stage == 2:
             self.select_wave_click(event)
 
@@ -926,6 +931,11 @@ class Wavelength_Calibration_Window:
             self.ax.axhline(y=self.crop_start_y, color='red')
             self.ax.axhline(y=self.crop_end_y, color='red')
             self.canvas.draw()
+
+            # Remove the temporary line
+            if hasattr(self, 'temp_crop_line'):
+                self.temp_crop_line.remove()
+                del self.temp_crop_line
 
     def cancel_crop(self, event):
         """Cancels the cropping selection."""
