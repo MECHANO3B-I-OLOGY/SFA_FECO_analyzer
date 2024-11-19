@@ -1,3 +1,7 @@
+11/18/24 - Isaac
+- converting everything to use MatPlotLib instead of Tkinter windows
+    - calibration windows
+
 11/10/24 - Isaac
 - massive overhaul of the main file functions SFA_FECO_UI, Frame_Prep_Window, and Motion_Analysis_Window for readability, various bugs, and good practices
 
