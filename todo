@@ -2,14 +2,13 @@ existing bugs to patch:
 
 future plans:
 
-- rename generate to save and generate
-- get everything using matplotlib
 - calibration instructions, readme and in-ui
-- unified file selection strategy, in and out (analysis?)
+- unified file selection strategy, in and out (and finish error catching)
 - scale window to screen (the right way?)
 
 finished:
 
+- get everything using matplotlib (KEEP AN EYE ON THIS ONE FOR BUGS)
 - calibration wave selection (? hard to test)
 - centerlines offset bug
 - scale window to screen bug

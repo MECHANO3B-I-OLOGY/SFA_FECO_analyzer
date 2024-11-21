@@ -225,7 +225,7 @@ def perform_turnaround_estimation(motion_profile_file_path, centerline_csv_path,
     wave_lines = []
     with open(centerline_csv_path, 'r') as csvfile:
         csvreader = csv.reader(csvfile)
-        header = next(csvreader)  # Skip the first row, which is likely the header
+        _ = next(csvreader)  # Skip the first row, which is likely the header
         for row in csvreader:
             wave_lines.append([(int(row[0]), int(row[1]), float(row[2]))])
 
