@@ -24,9 +24,9 @@ class SFA_FECO_UI:
 
         # Constants for window sizing and positioning
         self.DEFAULT_WIDTH_RATIO = 0.35
-        self.DEFAULT_HEIGHT_RATIO = 0.7
+        self.DEFAULT_HEIGHT_RATIO = 0.35
 
-        self.MAX_FILE_DISP_LENGTH = 15
+        self.MAX_FILE_DISP_LENGTH = 20
 
         # Initialize file paths and parameters
         self.raw_video_file_path = None
@@ -69,57 +69,19 @@ class SFA_FECO_UI:
         self.root.grid_columnconfigure(0, weight=1)
         self.root.grid_columnconfigure(1, weight=0)
         self.root.grid_columnconfigure(2, weight=1)
+        self.root.grid_columnconfigure(3, weight=0)
+        self.root.grid_columnconfigure(4, weight=1)
 
-        # Step 1: Prep
-        prep_label = ttk.Label(self.root, text="STEP 1: Prep", style='Step.TLabel', font=20)
-        prep_label.grid(row=0, column=0, sticky='ew', padx=10)
 
-        # Subframe for Raw Video selection
-        self.raw_video_subframe = ttk.Frame(self.root)
-        self.raw_video_subframe.grid(row=1, column=0, sticky='ew')
+        # region Subframe for Calibration
+        prep_label = ttk.Label(self.root, text="STEP 0: Calibrate", style='Step.TLabel', font=20)
+        prep_label.grid(row=0, column=0, sticky='new', padx=10)
 
-        self.raw_video_subframe.columnconfigure(0, weight=1)
-
-        # Raw video data select button
-        self.select_raw_button = ttk.Button(self.raw_video_subframe, text="Select Raw Video File", command=self.select_raw_video, style='Regular.TButton')
-        self.select_raw_button.grid(row=0, column=0, sticky='ew', padx=10, pady=5)
-
-        # Label to display the selected file's name
-        self.raw_file_label = ttk.Label(self.raw_video_subframe, text="No file selected", style='Regular.TLabel')
-        self.raw_file_label.grid(row=1, column=0, sticky='ew', padx=10)
-
-        # Crop/Preprocess button
-        self.crop_button = ttk.Button(self.raw_video_subframe, text="Crop/Preprocess", command=self.open_crop_preprocess_window, style='Regular.TButton')
-        self.crop_button.grid(row=2, column=0, sticky='ew', padx=10, pady=5)
-
-        # Subframe for Generate Motion Profile
-        self.motion_profile_subframe = ttk.Frame(self.root)
-        self.motion_profile_subframe.grid(row=2, column=0, sticky='ew')
-
-        self.motion_profile_subframe.columnconfigure(0, weight=1)
-
-        # Output file selection button for Generate Motion Profile
-        self.select_motion_output_button = ttk.Button(self.motion_profile_subframe, text="Select Motion Profile Output File", command=self.select_motion_output_file, style='Regular.TButton')
-        self.select_motion_output_button.grid(row=0, column=0, sticky='ew', padx=10, pady=5)
-
-        # Label to display the selected output file's name
-        self.motion_output_file_label = ttk.Label(self.motion_profile_subframe, text="No output file selected", style='Regular.TLabel')
-        self.motion_output_file_label.grid(row=1, column=0, sticky='ew', padx=10)
-
-        # Generate motion profile button
-        self.generate_motion_button = ttk.Button(self.motion_profile_subframe, text="Generate Motion Profile", command=self.generate_motion_profile, style='Regular.TButton')
-        self.generate_motion_button.grid(row=2, column=0, sticky='ew', padx=10, pady=5)
-
-        # Subframe for Calibration
         self.calibration_subframe = ttk.Frame(self.root)
-        self.calibration_subframe.grid(row=3, column=0, sticky='new')
+        self.calibration_subframe.grid(row=1, column=0, rowspan=2, sticky='ew')
 
         # Configure the column of the subframe to expand
         self.calibration_subframe.columnconfigure(0, weight=1)
-
-        # Calibration labels and buttons
-        self.split_label = ttk.Label(self.calibration_subframe, text="Calibration", font=10)
-        self.split_label.grid(row=0, column=0, pady=(0, 5), sticky='w')
 
         # Select wavelength calibration video file
         self.select_calibration_file_button = ttk.Button(self.calibration_subframe, text="Select Wavelength Calibration Video", command=self.select_wavelength_calibration_file, style='Regular.TButton')
@@ -127,7 +89,7 @@ class SFA_FECO_UI:
 
         # Label to display the selected wavelength calibration video file's name
         self.wavelength_calibration_file_label = ttk.Label(self.calibration_subframe, text="No file selected", style='Regular.TLabel')
-        self.wavelength_calibration_file_label.grid(row=2, column=0, sticky='new', padx=10)
+        self.wavelength_calibration_file_label.grid(row=2, column=0, sticky='ew', padx=10)
 
         # Calibrate Wavelengths button
         self.execute_wavelength_calibration = ttk.Button(self.calibration_subframe, text="Calibrate Wavelengths", command=self.run_wavelength_calibration, style='Regular.TButton')
@@ -162,17 +124,64 @@ class SFA_FECO_UI:
 
         # Set the text widget to be read-only
         self.thickness_display.config(state="disabled")
+        # endregion
+        
+        # Add a vertical separator between columns
+        vertical_separator = ttk.Separator(self.root, orient="vertical")
+        vertical_separator.grid(row=0, column=1, rowspan=7, sticky='ns', padx=10)
 
+        # region Step 1: Prep
+        prep_label = ttk.Label(self.root, text="STEP 1: Prep", style='Step.TLabel', font=20)
+        prep_label.grid(row=0, column=2, sticky='ew', padx=10)
 
+        # Subframe for Raw Video selection
+        self.raw_video_subframe = ttk.Frame(self.root)
+        self.raw_video_subframe.grid(row=1, column=2, sticky='ew')
 
+        self.raw_video_subframe.columnconfigure(0, weight=1)
 
-        # Step 2: Analyze
+        # Raw video data select button
+        self.select_raw_button = ttk.Button(self.raw_video_subframe, text="Select Raw Video File", command=self.select_raw_video, style='Regular.TButton')
+        self.select_raw_button.grid(row=0, column=0, sticky='ew', padx=10, pady=5)
+
+        # Label to display the selected file's name
+        self.raw_file_label = ttk.Label(self.raw_video_subframe, text="No file selected", style='Regular.TLabel')
+        self.raw_file_label.grid(row=1, column=0, sticky='ew', padx=10)
+
+        # Crop/Preprocess button
+        self.crop_button = ttk.Button(self.raw_video_subframe, text="Crop/Preprocess", command=self.open_crop_preprocess_window, style='Regular.TButton')
+        self.crop_button.grid(row=2, column=0, sticky='ew', padx=10, pady=5)
+
+        # Subframe for Generate Motion Profile
+        self.motion_profile_subframe = ttk.Frame(self.root)
+        self.motion_profile_subframe.grid(row=2, column=2, sticky='ew')
+
+        self.motion_profile_subframe.columnconfigure(0, weight=1)
+
+        # Output file selection button for Generate Motion Profile
+        self.select_motion_output_button = ttk.Button(self.motion_profile_subframe, text="Select Motion Profile Output File", command=self.select_motion_output_file, style='Regular.TButton')
+        self.select_motion_output_button.grid(row=0, column=0, sticky='ew', padx=10, pady=5)
+
+        # Label to display the selected output file's name
+        self.motion_output_file_label = ttk.Label(self.motion_profile_subframe, text="No output file selected", style='Regular.TLabel')
+        self.motion_output_file_label.grid(row=1, column=0, sticky='ew', padx=10)
+
+        # Generate motion profile button
+        self.generate_motion_button = ttk.Button(self.motion_profile_subframe, text="Generate Motion Profile", command=self.generate_motion_profile, style='Regular.TButton')
+        self.generate_motion_button.grid(row=2, column=0, sticky='ew', padx=10, pady=5)
+        # endregion
+
+        # Add a vertical separator between columns
+        vertical_separator = ttk.Separator(self.root, orient="vertical")
+        vertical_separator.grid(row=0, column=3, rowspan=7, sticky='ns', padx=10)
+
+        # region Step 2: Analyze
         step3_label = ttk.Label(self.root, text="STEP 2: Analyze", style='Step.TLabel', font=20)
-        step3_label.grid(row=0, column=2, sticky='ew', padx=10)
+        step3_label.grid(row=0, column=4, sticky='ew', padx=10)
 
-        # Subframe for Data File Selection
+        # region Subframe for Data File Selection
         self.motion_profile_file_subframe = ttk.Frame(self.root)
-        self.motion_profile_file_subframe.grid(row=1, column=2, sticky='ew')
+        self.motion_profile_file_subframe.grid(row=1, column=4, sticky='ew')
 
         self.motion_profile_file_subframe.columnconfigure(0, weight=1)
 
@@ -183,10 +192,11 @@ class SFA_FECO_UI:
         # File field for the data file
         self.motion_profile_file_label = ttk.Label(self.motion_profile_file_subframe, text="No file selected", style='Regular.TLabel')
         self.motion_profile_file_label.grid(row=1, column=0, sticky='enw', padx=10)
+        # endregion
 
-        # Subframe for Analyze
+        # region Subframe for Analyze
         self.analyze_subframe = ttk.Frame(self.root)
-        self.analyze_subframe.grid(row=2, column=2, sticky='ew')
+        self.analyze_subframe.grid(row=2, column=4, sticky='ew')
 
         self.analyze_subframe.columnconfigure(0, weight=1)
 
@@ -205,19 +215,20 @@ class SFA_FECO_UI:
         # Estimate Turnaround button
         self.estimate_turnaround_button = ttk.Button(self.analyze_subframe, text="Estimate Turnaround of Output", command=self.estimate_turnaround, style='Regular.TButton')
         self.estimate_turnaround_button.grid(row=3, column=0, sticky='ew', padx=10, pady=5)
+        # endregion
 
-        # Subframe for Split functionality
+        # region Subframe for Split functionality
         self.split_subframe = ttk.Frame(self.root)
-        self.split_subframe.grid(row=3, column=2, sticky='ew')
+        self.split_subframe.grid(row=3, column=4, sticky='ew')
 
         self.split_subframe.columnconfigure(0, weight=1)
 
         # Adding a label to the frame
-        self.split_label = ttk.Label(self.split_subframe, text="Output Split on Turnaround:")
+        self.split_label = ttk.Label(self.split_subframe, text="Split output on Turnaround:")
         self.split_label.grid(row=0, column=0, columnspan=2, pady=(0, 5), sticky='w')
 
         # Button to choose an existing data file to split
-        self.choose_split_file_button = ttk.Button(self.split_subframe, text="Choose File to Split", command=self.choose_split_file, style='Regular.TButton')
+        self.choose_split_file_button = ttk.Button(self.split_subframe, text="Choose File to Split", command=self.select_split_file, style='Regular.TButton')
         self.choose_split_file_button.grid(row=1, column=0, columnspan=2, sticky='ew', padx=10)
 
         # File field for the file to split
@@ -226,6 +237,10 @@ class SFA_FECO_UI:
 
         # Creating a StringVar to hold and control the value of the entry box
         self.split_var = tk.StringVar(value=str(self.split_frame_num))
+
+        # Turnaround frame label
+        self.split_frame_num_label = ttk.Label(self.split_subframe, text="Turnaround frame #: ", style='Regular.TLabel')
+        self.split_frame_num_label.grid(row=2, column=0, columnspan=2, sticky='e', padx=10, pady=(0, 5))
 
         # Number-entry box
         self.split_entry = ttk.Entry(self.split_subframe, textvariable=self.split_var, validate='key', validatecommand=vcmd)
@@ -238,11 +253,9 @@ class SFA_FECO_UI:
         # Configure columns in split_subframe
         self.split_subframe.columnconfigure(0, weight=1)
         self.split_subframe.columnconfigure(1, weight=1)
-
-        # Add a vertical separator between columns
-        vertical_separator = ttk.Separator(self.root, orient="vertical")
-        vertical_separator.grid(row=0, column=1, rowspan=7, sticky='ns', padx=10)
-
+        # endregion
+        # endregion
+    
     def exit_application(self):
         """Cleanly exit the application."""
         # Close all matplotlib figures
@@ -256,6 +269,9 @@ class SFA_FECO_UI:
         sys.exit()
 
     def setup_styles(self):
+        """
+            function for defining the styles to be used in the base UI
+        """
         self.btn_style = ttk.Style()
         self.btn_style.configure(
             "Regular.TButton",
@@ -264,89 +280,16 @@ class SFA_FECO_UI:
             width=10
         )
 
-    def select_raw_video(self):
-        # Open a file dialog to select a TIFF file
-        """file_path = filedialog.askopenfilename(
-            initialdir=os.path.join(os.getcwd()),
-            title='Browse for TIFF file',
-            filetypes=[("TIFF Files", "*.tif *.tiff")]
-        )"""
-        file_path = "FR1-P1-bis.tif" # hardcoded
-        if file_path:
-            # Save the selected file path
-            self.raw_video_file_path = file_path
-            
-            # Update the label to display the file name
-            if len(self.raw_video_file_path) > self.MAX_FILE_DISP_LENGTH:
-                data_file_text = '...' + self.raw_video_file_path[len(self.raw_video_file_path) - self.MAX_FILE_DISP_LENGTH:]
-                self.raw_file_label.config(text=data_file_text)
-            else:
-                self.raw_file_label.config(text=self.raw_video_file_path)
-
-            # Check if the file exists
-            if not os.path.isfile(self.raw_video_file_path):
-                msg = "Invalid file"
-                error_popup(msg)
-
-    def open_crop_preprocess_window(self):
-        if(not self.raw_video_file_path): 
-            msg = "Please select an input file"
-            error_popup(msg)
-            return
-        Frame_Prep_Window(self.raw_video_file_path, self.callback_handle_roi_selection)
-        
-    def callback_handle_roi_selection(self, roi_data):
-        """
-        Handle the ROI data returned from the Frame_Prep_Window.
-        :param roi_data: Tuple containing (y_start, y_end, offset, frame).
-        """
-        self.y_start, self.y_end, self.roi_offset, cropped_frame = roi_data 
-    
-    def select_motion_output_file(self):
-        """Select output file for Generate Motion Profile."""
-        self.motion_output_file_path = filedialog.asksaveasfilename(defaultextension=".tif", filetypes=[("tiff files", "*.tif")])
-        if self.motion_output_file_path:
-            if len(self.motion_output_file_path) > self.MAX_FILE_DISP_LENGTH:
-                data_file_text = '...' + self.motion_output_file_path[len(self.motion_output_file_path) - self.MAX_FILE_DISP_LENGTH:]
-                self.motion_output_file_label.config(text=data_file_text)
-            else: 
-                self.motion_output_file_label.config(text=self.motion_output_file_path) 
-
-    def generate_motion_profile(self):
-        max_length = 15;
-
-        # Ensure a file is selected before analyzing
-        if self.raw_video_file_path:
-            # Ask the user for a filename to save the data
-            filename = self.motion_output_file_path
-            if filename:
-                if hasattr(self, 'y_start') and hasattr(self, 'y_end'):
-                    # Call the fine approximation function with the Y crop info
-                    tracking.generate_motion_profile(self.raw_video_file_path, self.y_start, self.y_end, filename,)
-
-                    if len(self.motion_output_file_path) > max_length:
-                        data_file_text = '...' + self.motion_output_file_path[len(self.motion_output_file_path) - max_length:]
-                        self.motion_profile_file_label.config(text=f"Using file: {data_file_text}")
-                    else: 
-                        self.motion_profile_file_label.config(text=f"Data saved: {self.motion_output_file_path}")
-                else:
-                    msg = "Please select a region of interest in the crop/preprocess window"
-                    error_popup(msg)
-            else: 
-                msg = "Please select an output file"
-                error_popup(msg)
-        else:
-            msg = "Please select an input file"
-            error_popup(msg)
-        return
-
     def select_wavelength_calibration_file(self):
+        """
+            Function for selecting wavelength calibration input file. Checks for validity and updates label. 
+        """
         # Open a file dialog to select a TIFF file
-        """file_path = filedialog.askopenfilename(
-            initialdir=os.path.join(os.getcwd()),
-            title='Browse for TIFF file',
-            filetypes=[("TIFF Files", "*.tif *.tiff")]
-        )"""
+        # file_path = filedialog.askopenfilename(
+        #     initialdir=os.path.join(os.getcwd()),
+        #     title='Browse for TIFF file',
+        #     filetypes=[("TIFF Files", "*.tif *.tiff")]
+        # )
         file_path = "mica_gold.tif" # HARDCODED
         if file_path:
             # Save the selected file path
@@ -366,18 +309,27 @@ class SFA_FECO_UI:
                 error_popup(msg)
 
     def run_wavelength_calibration(self):
+        """
+            Function to open the wavelength calibration window. Checks for input file. 
+        """
         if(not self.wavelength_calibration_video_file_path): 
             msg = "Please select an input file"
             error_popup(msg)
             return
         Wavelength_Calibration_Window(self.wavelength_calibration_video_file_path, self.callback_get_wavelength_calibration)
 
-    def callback_get_wavelength_calibration(self, values):
+    def callback_get_wavelength_calibration(self, parameters):
+        """
+        Handles the callback for retrieving the parameters of the pixel -> wavelength conversion
+        
+        Args:
+            values (float, float): a tuple containing the slope and intercept of the linear equation converting pixels to um
+        """
         self.calibration_completion_label.config(text="Calibration completed")
-        self.calibration_parameters = values
+        self.calibration_parameters = parameters
     
     def select_thickness_file(self):
-        """Select input file for Calibrate Thickness."""
+        """Select input file for Calibrate Thickness. Updates label."""
         self.thickness_input_file_path = filedialog.askopenfilename(filetypes=[("TIFF files", "*.tif")])
         if self.thickness_input_file_path:
             if len(self.thickness_input_file_path) > self.MAX_FILE_DISP_LENGTH:
@@ -387,6 +339,9 @@ class SFA_FECO_UI:
                 self.thickness_file_label.config(text=self.thickness_input_file_path) 
 
     def run_thickness_calibration(self):
+        """
+            Function for running the thickness calibration window. Checks for input first. 
+        """
         if(not self.thickness_input_file_path): 
             msg = "Please select an input file"
             error_popup(msg)
@@ -394,6 +349,12 @@ class SFA_FECO_UI:
         Mica_Thickness_Calibration_Window(self.calibration_parameters, self.thickness_input_file_path, self.callback_get_thickness_value)
 
     def callback_get_thickness_value(self, thickness):
+        """
+            Function for retrieving the thickness of the mica in um
+
+        Args:
+            thickness (float): thickness of the mica in um
+        """
         self.mica_thickness = thickness       
         
         # Enable the widget to update the text
@@ -406,9 +367,95 @@ class SFA_FECO_UI:
         # Disable the widget again to make it read-only
         self.thickness_display.config(state="disabled")
 
+    def select_raw_video(self):
+        """
+            Function for the user to select a file for the input. Updates the label and checks for validity.
+        """
+        # Open a file dialog to select a TIFF file
+        # file_path = filedialog.askopenfilename(
+        #     initialdir=os.path.join(os.getcwd()),
+        #     title='Browse for TIFF file',
+        #     filetypes=[("TIFF Files", "*.tif *.tiff")]
+        # )
+        file_path = "FR1-P1-bis.tif" # hardcoded
+        if file_path:
+            # Save the selected file path
+            self.raw_video_file_path = file_path
+            
+            # Update the label to display the file name
+            if len(self.raw_video_file_path) > self.MAX_FILE_DISP_LENGTH:
+                data_file_text = '...' + self.raw_video_file_path[len(self.raw_video_file_path) - self.MAX_FILE_DISP_LENGTH:]
+                self.raw_file_label.config(text=data_file_text)
+            else:
+                self.raw_file_label.config(text=self.raw_video_file_path)
+
+            # Check if the file exists
+            if not os.path.isfile(self.raw_video_file_path):
+                msg = "Invalid file"
+                error_popup(msg)
+
+    def open_crop_preprocess_window(self):
+        """
+            Function to open crop/preprocess window. Checks for valid input first.         
+        """
+        if(not self.raw_video_file_path): 
+            msg = "Please select an input file"
+            error_popup(msg)
+            return
+        Frame_Prep_Window(self.raw_video_file_path, self.callback_handle_roi_selection)
+        
+    def callback_handle_roi_selection(self, roi_data):
+        """
+        Handle the ROI data returned from the Frame_Prep_Window.
+        :param roi_data: Tuple containing (y_start, y_end, offset, frame).
+        """
+        self.y_start, self.y_end, self.roi_offset, cropped_frame = roi_data 
+    
+    def select_motion_output_file(self):
+        """Select output file for Generate Motion Profile. Also updates the label."""
+        self.motion_output_file_path = filedialog.asksaveasfilename(defaultextension=".tif", filetypes=[("tiff files", "*.tif")])
+        if self.motion_output_file_path:
+            if len(self.motion_output_file_path) > self.MAX_FILE_DISP_LENGTH:
+                data_file_text = '...' + self.motion_output_file_path[len(self.motion_output_file_path) - self.MAX_FILE_DISP_LENGTH:]
+                self.motion_output_file_label.config(text=data_file_text)
+            else: 
+                self.motion_output_file_label.config(text=self.motion_output_file_path) 
+
+    def generate_motion_profile(self):
+        """
+            Function for calling tracking.generate_motion_profile. Checks for valid input and output files. 
+        """
+        # Ensure a file is selected before analyzing
+        if self.raw_video_file_path:
+            # Ask the user for a filename to save the data
+            filename = self.motion_output_file_path
+            if filename:
+                if hasattr(self, 'y_start') and hasattr(self, 'y_end'):
+                    # Call the fine approximation function with the Y crop info
+                    tracking.generate_motion_profile(self.raw_video_file_path, self.y_start, self.y_end, filename,)
+
+                    if len(self.motion_output_file_path) > self.MAX_FILE_DISP_LENGTH:
+                        data_file_text = '...' + self.motion_output_file_path[len(self.motion_output_file_path) - self.MAX_FILE_DISP_LENGTH :]
+                        self.motion_profile_file_label.config(text=f"Using file: {data_file_text}")
+                    else: 
+                        self.motion_profile_file_label.config(text=f"Data saved: {self.motion_output_file_path}")
+                else:
+                    msg = "Please select a region of interest in the crop/preprocess window"
+                    error_popup(msg)
+            else: 
+                msg = "Please select an output file"
+                error_popup(msg)
+        else:
+            msg = "Please select an input file"
+            error_popup(msg)
+        return
+
     # STEP 2
 
     def select_analysis_input_image_file(self):
+        """
+            Function for the user to select a file for analysis. Updates label accordingly. 
+        """
         # Allow the user to choose an existing data file
         check_file = filedialog.askopenfilename(filetypes=[("Tiff files", "*.tiff")])
         if(check_file): 
@@ -423,7 +470,7 @@ class SFA_FECO_UI:
             error_popup(msg)
 
     def select_analyze_output_file(self):
-        """Select output file for Analyze."""
+        """Select output file for Analyze. Updates label as well."""
         self.analyze_output_file_path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
         if self.analyze_output_file_path:
             if len(self.analyze_output_file_path) > self.MAX_FILE_DISP_LENGTH:
@@ -433,7 +480,9 @@ class SFA_FECO_UI:
                 self.analyze_output_file_label.config(text=self.analyze_output_file_path) 
 
     def analyze(self):
-        
+        """
+            Function for opening the analysis window. Checks for input and output file validity. 
+        """
         if not self.motion_output_file_path:
             msg = "Please select an input file"
             error_popup(msg)
@@ -446,13 +495,17 @@ class SFA_FECO_UI:
 
     def callback_handle_crop_offset(self, offsets):
         """
-        Handle the offset data returned from the Motion_Analysis_Window.
-        :param offsets: int of y offset
+            Handle the offset data returned from the Motion_Analysis_Window.
+            :param offsets: int of y offset
         """
         self.analysis_x_offset = offsets[0]
         self.analysis_y_offset = offsets[1]
 
     def estimate_turnaround(self):
+        """
+            Function to call tracking.perform_turnaround_estimation. Checks for previous step w/ warning and input w/ error
+        """
+
         # Ensure the output directory and filename components are handled separately
         # Assuming self.motion_profile_file_path holds the original file path
         if(not self.analysis_x_offset):
@@ -476,7 +529,15 @@ class SFA_FECO_UI:
             error_popup(msg)
 
     def split(self):
+        """
+            Simple function to split a given CSV file along the centerline given. Checks for input.
+        """
         file_to_split = self.split_file_path
+
+        if(not self.split_frame_num):
+            msg = "No split frame selected, aborting"
+            error_popup(msg)
+            return
 
         if(file_to_split):
             # Open the CSV file
@@ -508,10 +569,13 @@ class SFA_FECO_UI:
 
             print(f"CSV files saved as {in_file_path} and {out_file_path}")
         else:
-            msg = "No spltting file selected, aborting"
+            msg = "No splitting file selected, aborting"
             error_popup(msg)
  
-    def choose_split_file(self):
+    def select_split_file(self):
+        """
+            Select output file for splitting. Updates label as well.
+        """
         max_length = 15;
         # Allow the user to choose an existing data file
         self.split_file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
@@ -521,8 +585,8 @@ class SFA_FECO_UI:
         else: 
             self.split_file_label.config(text=f"Using file: {self.split_file_path}")
 
-    def update_entry(self, *args):
-        # Automatically update split_frame_num when split_var changes
+    def update_split_frame_entry(self, *args):
+        """Automatically update split_frame_num when split_var changes"""
         try:
             self.split_frame_num = int(self.split_var.get())
         except ValueError:
@@ -533,6 +597,35 @@ class SFA_FECO_UI:
         return value.isdigit() or value == ""
     
 class Frame_Prep_Window:
+    """
+        A GUI-based tool for preparing and processing frames from a TIFF file.
+
+        This class provides functionality to:
+        - Load and display frames from a multi-frame TIFF file.
+        - Dynamically crop a region of interest (ROI) using mouse interaction.
+        - Scale frames for display and processing.
+        - Navigate through frames using a slider.
+
+        Attributes:
+            raw_video_file_path (str): Path to the input TIFF file.
+            roi_callback (function): Callback function to handle the selected ROI.
+            cropped_frame (PIL.Image or None): The cropped frame after ROI selection.
+            frames (list): List of frames extracted from the TIFF file.
+            current_frame_index (int): Index of the currently displayed frame.
+            crop_start_y (int): Starting y-coordinate of the crop area.
+            self.crop_rectangle = rectangle for crop display
+            self.motion_event_id: motion event handler
+
+        Methods:
+            on_key_press(self, event): routing function for button functionality
+            update_frame(value): Updates the displayed frame based on the slider value.
+            display_frame(): Resets and displays the current frame on the canvas.
+            start_crop(event): Handles the start of ROI selection.
+            drag_crop(event): Dynamically draws a rectangle for the ROI during dragging.
+            end_crop(event): Finalizes the ROI selection.
+            cancel_crop(event): Resets the ROI selection.
+            confirm_crop(event): Confirms the ROI selection and processes the cropped frame.
+    """
     SCALE_FACTOR = 0.75
 
     def __init__(self, file_path, roi_callback=None):
@@ -972,6 +1065,51 @@ class Wavelength_Calibration_Window:
         plt.close(self.fig)  # Close the specific figure 
 
 class Mica_Thickness_Calibration_Window:
+    """
+    A GUI-based tool for calibrating mica thickness using wave analysis from a TIFF file.
+
+    This class allows users to:
+    - Load a multi-frame TIFF file and navigate through its frames.
+    - Dynamically crop a region of interest (ROI) using mouse interaction.
+    - Analyze wave lines in the cropped region.
+    - Select specific wave lines for calibration.
+    - Calculate mica thickness using calibration parameters.
+
+    Attributes:
+        calibration_parameters (dict): Parameters for calibration, including slope and intercept.
+        callback (function): Callback function to handle the calculated thickness value.
+        selected_waves (list): List of x-coordinates for user-selected wave lines.
+        crop_start_y (float or None): Starting y-coordinate of the crop area.
+        crop_end_y (float or None): Ending y-coordinate of the crop area.
+        temp_crop_rectangle (matplotlib.patches.Rectangle or None): Temporary rectangle for dynamic crop visualization.
+        mode (str): Current mode of the tool, e.g., 'crop'.
+        cropped_frame (numpy.ndarray or None): The cropped frame after ROI selection.
+        scale_factor (float): Scaling factor for frame display.
+        stage (int): Current stage of the workflow (1 for cropping, 2 for wave selection).
+        selected_wavelengths (list): List of wavelengths corresponding to selected wave lines.
+        image (PIL.Image): Loaded TIFF image for analysis.
+        fig (matplotlib.figure.Figure): Matplotlib figure for displaying frames and ROI.
+        ax (matplotlib.axes.Axes): Matplotlib axes for rendering the current frame.
+
+    Methods:
+        handle_key_press(event): Handles keyboard events for crop confirmation or cancellation.
+        handle_click(event): Routes mouse click events based on the current stage.
+        update_frame(value): Updates the displayed frame based on the slider value.
+        update_instructions(text): Updates the instruction text displayed above the plot.
+        scale_image(image): Scales the image by the specified factor.
+        display_image(image): Displays the current frame in the Matplotlib axes.
+        click_start_crop(event): Handles the start of ROI selection.
+        drag_crop(event): Dynamically draws a rectangle for the ROI during dragging.
+        end_crop(event): Finalizes the ROI selection.
+        confirm_crop(): Confirms the crop selection and proceeds to wave analysis.
+        cancel_crop(): Cancels the cropping selection.
+        run_wave_detection(): Detects and analyzes wave lines in the cropped frame.
+        display_filtered_waves(): Displays the cropped image with detected wave lines for selection.
+        select_wave_click(event): Handles user selection of specific wave lines.
+        update_overlay(): Redraws the overlay to highlight selected and unselected wave lines.
+        convert_to_wavelengths(event): Converts selected x-coordinates to wavelengths using calibration parameters.
+        calculate_thickness(): Calculates mica thickness based on selected wavelengths and calibration parameters.
+    """
     def __init__(self, calibration_parameters, input_file_path, callback):
         self.calibration_parameters = calibration_parameters
         self.callback = callback
@@ -1363,6 +1501,7 @@ class Motion_Analysis_Window:
             self.cancel_deletion()
 
     def confirm_crop(self): 
+        """Confirms the crop selection and proceeds to wave analysis."""
         self.cropping_complete = True
 
         # Perform the crop

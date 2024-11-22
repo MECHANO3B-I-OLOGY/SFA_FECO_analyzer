@@ -1,3 +1,6 @@
+11/21/24 - Isaac 
+- even more code cleanup and changing calibration to step 0
+
 11/20/24 - Isaac
 - UI cleanup
 - readme update
