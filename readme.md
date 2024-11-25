@@ -40,8 +40,10 @@
 git clone https://github.com/yourusername/wave-motion-analyzer.git
 cd wave-motion-analyzer
 
-#### 2. Install dependencies:
+#### 2. Install dependencies and set up virtual environment:
 
+python -m venv venv
+.\env\Scripts\activate
 pip install -r requirements.txt
 
 # Usage
@@ -56,23 +58,7 @@ python main.py
 
 Function buttons which require input/output files will have buttons for selecting these.
 
-### Step 1: Prep
-
-This stage allows you to prepare the input TIFF file for further analysis by cropping it and viewing the frames.
-
-#### Select Raw Video File
-
-The tool prompts you to select a TIFF video for analysis.
-
-#### Crop/Preprocess
-
-Tool for selecting an area of the video to run future analysis on. Select an area that is quite narrow and as vertically uniform as possible. The more "tilted" a wave is within the area, the poorer the quality of the results.
-
-#### Generate Motion Profile:
-
-This button will take the cropped video and run a series of operations on it to create a single image, the "motion profile." This is done by computing the video's vertical "center of intensity" via analysis of pixel brightness. This center is becomes the center axis of a "region of interest" for each frame of the video. The brightness of the pixel rows in this region are summed and normalized, then filtered for low-intensity noise. The now one-dimensional frame is "stacked" on top of all other frames' one-dimensional summary. This creates a single frame which shows the profile of motion over the duration of the video. The result is automatically selected for the next step.
-
-### Step 1.5: Calibrate (optional)
+### Step 0: Calibrate (optional)
 
 Here the user has the opprotunity calibrate two parts of the physical experiment; the conversion from digital length to physical wavelength, and the thickness of the mica sheets being used.
 
@@ -89,6 +75,22 @@ To find the conversion equation from pixels to nanometers.
 Once the user has selected a tiff video, they will be able to select a frame and an area they would like to use to detect the calibration markers. This area should contain the markers and as little else as possible, and should be fairly narrow. Once a crop area is selected the program will run a line detection function to find all of the lines in the image. The user will need to select 2 to serve as markers.
 
 I don't know how this works so I'm leaving it like this for now.
+
+### Step 1: Prep
+
+This stage allows you to prepare the input TIFF file for further analysis by cropping it and viewing the frames.
+
+#### Select Raw Video File
+
+The tool prompts you to select a TIFF video for analysis.
+
+#### Crop/Preprocess
+
+Tool for selecting an area of the video to run future analysis on. Select an area that is quite narrow and as vertically uniform as possible. The more "tilted" a wave is within the area, the poorer the quality of the results.
+
+#### Generate Motion Profile:
+
+This button will take the cropped video and run a series of operations on it to create a single image, the "motion profile." This is done by computing the video's vertical "center of intensity" via analysis of pixel brightness. This center is becomes the center axis of a "region of interest" for each frame of the video. The brightness of the pixel rows in this region are summed and normalized, then filtered for low-intensity noise. The now one-dimensional frame is "stacked" on top of all other frames' one-dimensional summary. This creates a single frame which shows the profile of motion over the duration of the video. The result is automatically selected for the next step.
 
 ### Step 2: Analyze
 
