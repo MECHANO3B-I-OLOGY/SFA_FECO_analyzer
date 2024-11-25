@@ -285,12 +285,12 @@ class SFA_FECO_UI:
             Function for selecting wavelength calibration input file. Checks for validity and updates label. 
         """
         # Open a file dialog to select a TIFF file
-        # file_path = filedialog.askopenfilename(
-        #     initialdir=os.path.join(os.getcwd()),
-        #     title='Browse for TIFF file',
-        #     filetypes=[("TIFF Files", "*.tif *.tiff")]
-        # )
-        file_path = "mica_gold.tif" # HARDCODED
+        file_path = filedialog.askopenfilename(
+            initialdir=os.path.join(os.getcwd()),
+            title='Browse for TIFF file',
+            filetypes=[("TIFF Files", "*.tif *.tiff")]
+        )
+        # file_path = "mica_gold.tif" # HARDCODED
         if file_path:
             # Save the selected file path
             self.wavelength_calibration_video_file_path = file_path
@@ -372,12 +372,12 @@ class SFA_FECO_UI:
             Function for the user to select a file for the input. Updates the label and checks for validity.
         """
         # Open a file dialog to select a TIFF file
-        # file_path = filedialog.askopenfilename(
-        #     initialdir=os.path.join(os.getcwd()),
-        #     title='Browse for TIFF file',
-        #     filetypes=[("TIFF Files", "*.tif *.tiff")]
-        # )
-        file_path = "FR1-P1-bis.tif" # hardcoded
+        file_path = filedialog.askopenfilename(
+            initialdir=os.path.join(os.getcwd()),
+            title='Browse for TIFF file',
+            filetypes=[("TIFF Files", "*.tif *.tiff")]
+        )
+        # file_path = "FR1-P1-bis.tif" # hardcoded
         if file_path:
             # Save the selected file path
             self.raw_video_file_path = file_path
