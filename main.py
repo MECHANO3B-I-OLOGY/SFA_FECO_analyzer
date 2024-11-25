@@ -23,8 +23,8 @@ class SFA_FECO_UI:
         self.root.title("SFA FECO Analyzer")
 
         # Constants for window sizing and positioning
-        self.DEFAULT_WIDTH_RATIO = 0.35
-        self.DEFAULT_HEIGHT_RATIO = 0.35
+        self.DEFAULT_WIDTH_RATIO = 0.5
+        self.DEFAULT_HEIGHT_RATIO = 0.5
 
         self.MAX_FILE_DISP_LENGTH = 20
 
