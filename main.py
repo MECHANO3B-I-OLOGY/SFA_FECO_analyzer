@@ -7,9 +7,8 @@ from tkinter import ttk, filedialog
 import matplotlib.pyplot as plt
 from matplotlib.widgets import RectangleSelector, Slider
 import csv
-from PIL import Image, ImageTk, ImageSequence
-from enums import CalibrationValues
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from PIL import Image, ImageSequence
+from enums import CalibrationValues 
 
 import tracking  
 from exceptions import error_popup, warning_popup
@@ -75,7 +74,7 @@ class SFA_FECO_UI:
 
         # region Subframe for Calibration
         prep_label = ttk.Label(self.root, text="STEP 0: Calibrate", style='Step.TLabel', font=20)
-        prep_label.grid(row=0, column=0, sticky='new', padx=10)
+        prep_label.grid(row=0, column=0, sticky='ew', padx=10)
 
         self.calibration_subframe = ttk.Frame(self.root)
         self.calibration_subframe.grid(row=1, column=0, rowspan=2, sticky='ew')
@@ -149,7 +148,7 @@ class SFA_FECO_UI:
         self.raw_file_label.grid(row=1, column=0, sticky='ew', padx=10)
 
         # Crop/Preprocess button
-        self.crop_button = ttk.Button(self.raw_video_subframe, text="Crop/Preprocess", command=self.open_crop_preprocess_window, style='Regular.TButton')
+        self.crop_button = ttk.Button(self.raw_video_subframe, text="Crop", command=self.open_crop_preprocess_window, style='Regular.TButton')
         self.crop_button.grid(row=2, column=0, sticky='ew', padx=10, pady=5)
 
         # Subframe for Generate Motion Profile
@@ -158,13 +157,24 @@ class SFA_FECO_UI:
 
         self.motion_profile_subframe.columnconfigure(0, weight=1)
 
-        # Output file selection button for Generate Motion Profile
-        self.select_motion_output_button = ttk.Button(self.motion_profile_subframe, text="Select Motion Profile Output File", command=self.select_motion_output_file, style='Regular.TButton')
-        self.select_motion_output_button.grid(row=0, column=0, sticky='ew', padx=10, pady=5)
+        # Subframe for motion output file selection
+        self.motion_output_subframe = ttk.Frame(self.motion_profile_subframe)
+        self.motion_output_subframe.grid(row=0, column=0, sticky='ew', padx=10, pady=5)
 
-        # Label to display the selected output file's name
-        self.motion_output_file_label = ttk.Label(self.motion_profile_subframe, text="No output file selected", style='Regular.TLabel')
-        self.motion_output_file_label.grid(row=1, column=0, sticky='ew', padx=10)
+        # Label for the motion output file
+        self.motion_output_label = ttk.Label(self.motion_output_subframe, text="Output File:")
+        self.motion_output_label.grid(row=0, column=0, sticky='w')
+
+        # Textbox for file name entry
+        self.motion_output_file_var = tk.StringVar()
+        self.motion_output_file_var.set("motion_profile_output")  # Default file name
+        self.motion_output_entry = ttk.Entry(
+            self.motion_output_subframe, 
+            textvariable=self.motion_output_file_var, 
+            width=30,  # Adjust width as needed
+            style='Regular.TEntry'
+        )
+        self.motion_output_entry.grid(row=0, column=1, sticky='ew') 
 
         # Generate motion profile button
         self.generate_motion_button = ttk.Button(self.motion_profile_subframe, text="Generate Motion Profile", command=self.generate_motion_profile, style='Regular.TButton')
@@ -200,13 +210,16 @@ class SFA_FECO_UI:
 
         self.analyze_subframe.columnconfigure(0, weight=1)
 
-        # Output file selection button for Analyze
-        self.select_analyze_output_button = ttk.Button(self.analyze_subframe, text="Select Output File", command=self.select_analyze_output_file, style='Regular.TButton')
-        self.select_analyze_output_button.grid(row=0, column=0, sticky='ew', padx=10, pady=5)
+        # Output file selection textbox for Analyzes
+        self.analyze_output_file_frame = ttk.Frame(self.analyze_subframe)
+        self.analyze_output_file_label = ttk.Label(self.analyze_output_file_frame, text="Output File Name:", style='Regular.TLabel')
+        self.analyze_output_file_label.pack(side="left", padx=(0, 5))
 
-        # Label to display the selected output file's name
-        self.analyze_output_file_label = ttk.Label(self.analyze_subframe, text="No output file selected", style='Regular.TLabel')
-        self.analyze_output_file_label.grid(row=1, column=0, sticky='ew', padx=10)
+        self.analyze_output_file_var = tk.StringVar(value="analysis_output")
+        self.analyze_output_file_textbox = ttk.Entry(self.analyze_output_file_frame, textvariable=self.analyze_output_file_var, style='Regular.TEntry')
+        self.analyze_output_file_textbox.pack(side="left", fill="x", expand=True)
+
+        self.analyze_output_file_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=5)
 
         # Analyze button
         self.analyze_button = ttk.Button(self.analyze_subframe, text="Analyze", command=self.analyze, style='Regular.TButton')
@@ -285,12 +298,12 @@ class SFA_FECO_UI:
             Function for selecting wavelength calibration input file. Checks for validity and updates label. 
         """
         # Open a file dialog to select a TIFF file
-        # file_path = filedialog.askopenfilename(
-        #     initialdir=os.path.join(os.getcwd()),
-        #     title='Browse for TIFF file',
-        #     filetypes=[("TIFF Files", "*.tif *.tiff")]
-        # )
-        file_path = "mica_gold.tif" # HARDCODED
+        file_path = filedialog.askopenfilename(
+            initialdir=os.path.join(os.getcwd()),
+            title='Browse for TIFF file',
+            filetypes=[("TIFF Files", "*.tif *.tiff")]
+        )
+        # file_path = "mica_gold.tif" # HARDCODED
         if file_path:
             # Save the selected file path
             self.wavelength_calibration_video_file_path = file_path
@@ -362,7 +375,7 @@ class SFA_FECO_UI:
         
         # Clear the current content and insert the new value
         self.thickness_display.delete("1.0", "end")
-        self.thickness_display.insert("1.0", str(abs(thickness)) + 'um')
+        self.thickness_display.insert("1.0", str(abs(thickness)) + ' um')
         
         # Disable the widget again to make it read-only
         self.thickness_display.config(state="disabled")
@@ -372,12 +385,12 @@ class SFA_FECO_UI:
             Function for the user to select a file for the input. Updates the label and checks for validity.
         """
         # Open a file dialog to select a TIFF file
-        # file_path = filedialog.askopenfilename(
-        #     initialdir=os.path.join(os.getcwd()),
-        #     title='Browse for TIFF file',
-        #     filetypes=[("TIFF Files", "*.tif *.tiff")]
-        # )
-        file_path = "FR1-P1-bis.tif" # hardcoded
+        file_path = filedialog.askopenfilename(
+            initialdir=os.path.join(os.getcwd()),
+            title='Browse for TIFF file',
+            filetypes=[("TIFF Files", "*.tif *.tiff")]
+        )
+        # file_path = "FR1-P1-bis.tif" # hardcoded
         if file_path:
             # Save the selected file path
             self.raw_video_file_path = file_path
@@ -410,44 +423,41 @@ class SFA_FECO_UI:
         :param roi_data: Tuple containing (y_start, y_end, offset, frame).
         """
         self.y_start, self.y_end, self.roi_offset, cropped_frame = roi_data 
-    
-    def select_motion_output_file(self):
-        """Select output file for Generate Motion Profile. Also updates the label."""
-        self.motion_output_file_path = filedialog.asksaveasfilename(defaultextension=".tif", filetypes=[("tiff files", "*.tif")])
-        if self.motion_output_file_path:
-            if len(self.motion_output_file_path) > self.MAX_FILE_DISP_LENGTH:
-                data_file_text = '...' + self.motion_output_file_path[len(self.motion_output_file_path) - self.MAX_FILE_DISP_LENGTH:]
-                self.motion_output_file_label.config(text=data_file_text)
-            else: 
-                self.motion_output_file_label.config(text=self.motion_output_file_path) 
 
     def generate_motion_profile(self):
         """
-            Function for calling tracking.generate_motion_profile. Checks for valid input and output files. 
+        Function for calling tracking.generate_motion_profile. Checks for valid input and output files.
         """
-        # Ensure a file is selected before analyzing
+        # Ensure an input file is selected
         if self.raw_video_file_path:
-            # Ask the user for a filename to save the data
-            filename = self.motion_output_file_path
-            if filename:
+            # Ensure the output file path is valid
+            if self.motion_output_file_var.get():  # Get the filename from the textbox
+                output_folder = os.path.join(os.getcwd(), "Output")
+                os.makedirs(output_folder, exist_ok=True)  # Ensure the Output folder exists
+
+                # Ensure the extension is added
+                file_name = self.motion_output_file_var.get()
+                if not file_name.endswith(".tif"):
+                    file_name = f"{file_name}.tif"
+                filename = os.path.join(output_folder, file_name)
+                self.motion_output_file_path = filename  # Update the output file path
+
+                # Validate that crop information exists
                 if hasattr(self, 'y_start') and hasattr(self, 'y_end'):
                     # Call the fine approximation function with the Y crop info
-                    tracking.generate_motion_profile(self.raw_video_file_path, self.y_start, self.y_end, filename,)
+                    tracking.generate_motion_profile(self.raw_video_file_path, self.y_start, self.y_end, filename)
 
-                    if len(self.motion_output_file_path) > self.MAX_FILE_DISP_LENGTH:
-                        data_file_text = '...' + self.motion_output_file_path[len(self.motion_output_file_path) - self.MAX_FILE_DISP_LENGTH :]
-                        self.motion_profile_file_label.config(text=f"Using file: {data_file_text}")
-                    else: 
-                        self.motion_profile_file_label.config(text=f"Data saved: {self.motion_output_file_path}")
+                    # Display the saved file path
+                    display_text = f"Data saved: {filename}"
+                    if len(filename) > self.MAX_FILE_DISP_LENGTH:
+                        display_text = '...' + filename[len(filename) - self.MAX_FILE_DISP_LENGTH:]
+                    self.motion_profile_file_label.config(text=display_text)
                 else:
-                    msg = "Please select a region of interest in the crop/preprocess window"
-                    error_popup(msg)
-            else: 
-                msg = "Please select an output file"
-                error_popup(msg)
+                    error_popup("Please select a region of interest in the crop/preprocess window.")
+            else:
+                error_popup("Please enter a valid output file name.")
         else:
-            msg = "Please select an input file"
-            error_popup(msg)
+            error_popup("Please select an input file.")
         return
 
     # STEP 2
@@ -457,7 +467,7 @@ class SFA_FECO_UI:
             Function for the user to select a file for analysis. Updates label accordingly. 
         """
         # Allow the user to choose an existing data file
-        check_file = filedialog.askopenfilename(filetypes=[("Tiff files", "*.tiff")])
+        check_file = filedialog.askopenfilename(filetypes=[("Tiff files", "*.tif")])
         if(check_file): 
             self.motion_output_file_path = check_file
             if len(self.motion_output_file_path) > self.MAX_FILE_DISP_LENGTH:
@@ -468,30 +478,36 @@ class SFA_FECO_UI:
         else: 
             msg = "No file selected, aborting"
             error_popup(msg)
-
-    def select_analyze_output_file(self):
-        """Select output file for Analyze. Updates label as well."""
-        self.analyze_output_file_path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
-        if self.analyze_output_file_path:
-            if len(self.analyze_output_file_path) > self.MAX_FILE_DISP_LENGTH:
-                data_file_text = '...' + self.analyze_output_file_path[len(self.analyze_output_file_path) - self.MAX_FILE_DISP_LENGTH:]
-                self.analyze_output_file_label.config(text=data_file_text)
-            else: 
-                self.analyze_output_file_label.config(text=self.analyze_output_file_path) 
-
+ 
     def analyze(self):
         """
-            Function for opening the analysis window. Checks for input and output file validity. 
+        Function for opening the analysis window. Checks for input and output file validity.
         """
+        # Ensure input file is selected
         if not self.motion_output_file_path:
-            msg = "Please select an input file"
-            error_popup(msg)
+            error_popup("Please select an input file.")
             return
-        if not self.analyze_output_file_path:
-            msg = "Please select an output file"
-            error_popup(msg)
-            return
-        Motion_Analysis_Window(self.motion_output_file_path, self.calibration_parameters, self.analyze_output_file_path, self.callback_handle_crop_offset)
+
+        # Ensure output file name is valid
+        if self.analyze_output_file_var.get():
+            output_folder = os.path.join(os.getcwd(), "Output")
+            os.makedirs(output_folder, exist_ok=True)  # Ensure the Output folder exists
+
+            # Ensure the extension is added
+            file_name = self.analyze_output_file_var.get()
+            if not file_name.endswith(".csv"):
+                file_name = f"{file_name}.csv"
+            self.analyze_output_file_path = os.path.join(output_folder, file_name)
+
+            # Open the analysis window
+            Motion_Analysis_Window(
+                self.motion_output_file_path,
+                self.calibration_parameters,
+                self.analyze_output_file_path,
+                self.callback_handle_crop_offset,
+            )
+        else:
+            error_popup("Please enter a valid output file name.")
 
     def callback_handle_crop_offset(self, offsets):
         """
@@ -1525,7 +1541,7 @@ class Motion_Analysis_Window:
         cropped_pil_image.save(cropped_file_path)
 
         # Deactivate the cropping RectangleSelector
-        self.rect_selector.set_active(False)
+        self.rect_selector.set_active(False) 
 
         # Switch to deletion mode after cropping is complete
         self.mode = Motion_Analysis_Window.DELETION_MODE
@@ -1696,7 +1712,7 @@ class Motion_Analysis_Window:
             # Ensure the output directory and filename components are handled separately
             output_dir = os.path.dirname(output_filename)
             base_filename = os.path.basename(output_filename)
-
+ 
             # Save the original CSV
             with open(output_filename, mode='w', newline='') as file:
                 writer = csv.writer(file)
@@ -1710,7 +1726,7 @@ class Motion_Analysis_Window:
             # Generate calibrated CSV if calibration parameters exist
             if self.calibration_parameters:
                 # Construct the calibrated filename in the same directory as the original file
-                calibrated_filename = os.path.join(f"calibrated_{base_filename}")
+                calibrated_filename = os.path.join(output_dir, f"calibrated_{base_filename}")
                 with open(calibrated_filename, mode='w', newline='') as file:
                     writer = csv.writer(file)
                     writer.writerow(["Wave Index", "Frame Number", "Calibrated Center of Mass X Coord"])

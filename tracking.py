@@ -8,9 +8,9 @@ from scipy.interpolate import splprep, splev
 from scipy.optimize import curve_fit
 from scipy import stats
 from PIL import Image, ImageTk, ImageSequence
-from pprint import pprint
-# temp?
+from pprint import pprint 
 import matplotlib.pyplot as plt
+import os
 
 from enums import *
 from exceptions import error_popup, warning_popup
@@ -319,8 +319,15 @@ def perform_turnaround_estimation(motion_profile_file_path, centerline_csv_path,
     ax.set_ylabel("Y (rows)")
     ax.legend(loc='upper left', fontsize='small')
 
+    # Ensure the Output folder exists
+    output_folder = os.path.join(os.getcwd(), "Output")
+    os.makedirs(output_folder, exist_ok=True)
+
+    # Construct the PDF file path in the Output folder
+    output_pdf_name = os.path.basename(centerline_csv_path).replace(".csv", "_turnaround_estimation.pdf")
+    output_pdf_path = os.path.join(output_folder, output_pdf_name)
+
     # Save the resulting overlay as a PDF
-    output_pdf_path = centerline_csv_path.replace(".csv", "_turnaround_estimation.pdf")
     plt.savefig(output_pdf_path, format='pdf')
 
     # Display the plot
