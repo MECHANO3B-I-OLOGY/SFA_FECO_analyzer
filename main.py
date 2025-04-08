@@ -5,7 +5,7 @@ import numpy as np
 import tkinter as tk
 from tkinter import ttk, filedialog
 import matplotlib.pyplot as plt
-from matplotlib.widgets import RectangleSelector, Slider
+from matplotlib.widgets import RectangleSelector, Slider, Cursor
 import csv
 from PIL import Image, ImageSequence
 from enums import CalibrationValues 
@@ -23,7 +23,7 @@ class SFA_FECO_UI:
 
         # Constants for window sizing and positioning
         self.DEFAULT_WIDTH_RATIO = 0.5
-        self.DEFAULT_HEIGHT_RATIO = 0.5
+        self.DEFAULT_HEIGHT_RATIO = 0.75
 
         self.MAX_FILE_DISP_LENGTH = 20
 
@@ -32,6 +32,7 @@ class SFA_FECO_UI:
         self.motion_output_file_path = None
         self.wavelength_calibration_video_file_path = None
         self.thickness_input_file_path = None
+        self.radius_input_file_path = None
         self.split_file_path = None
         self.data_file_path = None
         self.analyze_output_file_path = None
@@ -42,6 +43,8 @@ class SFA_FECO_UI:
         self.analysis_y_offset = None
         self.calibration_parameters = {}
         self.mica_thickness = '0'
+        self.radius = tk.StringVar()
+        self.f = 1
 
         # Set protocol for window close to ensure full exit
         self.root.protocol("WM_DELETE_WINDOW", self.exit_application)
@@ -98,31 +101,68 @@ class SFA_FECO_UI:
         self.calibration_completion_label = ttk.Label(self.calibration_subframe, text="Calibration not completed", style='Regular.TLabel')
         self.calibration_completion_label.grid(row=4, column=0, sticky='new', padx=10, pady=(0, 20))
 
+        # Add a horizontal separator between rows
+        calibrate_separator1 = ttk.Separator(self.calibration_subframe, orient="horizontal")
+        calibrate_separator1.grid(row=5, column=0, sticky='ew', pady=10)
+
         # Select Thickness File button
         self.select_thickness_file_button = ttk.Button(self.calibration_subframe, text="Select Thickness Calibration Video", command=self.select_thickness_file, style='Regular.TButton')
-        self.select_thickness_file_button.grid(row=5, column=0, sticky='ew', padx=10, pady=5)
+        self.select_thickness_file_button.grid(row=6, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the selected thickness file's name
         self.thickness_file_label = ttk.Label(self.calibration_subframe, text="No file selected", style='Regular.TLabel')
-        self.thickness_file_label.grid(row=6, column=0, sticky='new', padx=10)
+        self.thickness_file_label.grid(row=7, column=0, sticky='new', padx=10)
 
         # Calibrate Thickness button
         self.execute_thickness_calibration = ttk.Button(self.calibration_subframe, text="Calibrate Thickness", command=self.run_thickness_calibration, style='Regular.TButton')
-        self.execute_thickness_calibration.grid(row=7, column=0, sticky='ew', padx=10, pady=5)
+        self.execute_thickness_calibration.grid(row=8, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the thickness
         self.calibration_thickness_label = ttk.Label(self.calibration_subframe, text="Mica thickness:", style='Regular.TLabel')
-        self.calibration_thickness_label.grid(row=8, column=0, sticky='sew', padx=10)
+        self.calibration_thickness_label.grid(row=9, column=0, sticky='sew', padx=10)
 
         # Thickness display
         self.thickness_display = tk.Text(self.calibration_subframe, height=1, width=10, wrap="none")
-        self.thickness_display.grid(row=9, column=0, sticky="esw", padx=10, pady=(5, 5))
+        self.thickness_display.grid(row=10, column=0, sticky="esw", padx=10, pady=(5, 5))
 
         # Insert the mica thickness value into the text widget
         self.thickness_display.insert("1.0", str(self.mica_thickness))
 
         # Set the text widget to be read-only
         self.thickness_display.config(state="disabled")
+
+        # Add a horizontal separator between rows
+        calibrate_separator2 = ttk.Separator(self.calibration_subframe, orient="horizontal")
+        calibrate_separator2.grid(row=11, column=0, sticky='ew', pady=10)
+
+        # Select radius File button
+        self.select_radius_file_button = ttk.Button(self.calibration_subframe, text="Select Radius Calibration Video", command=self.select_radius_file, style='Regular.TButton')
+        self.select_radius_file_button.grid(row=12, column=0, sticky='ew', padx=10, pady=5)
+
+        # Label to display the selected radius file's name
+        self.radius_file_label = ttk.Label(self.calibration_subframe, text="No file selected", style='Regular.TLabel')
+        self.radius_file_label.grid(row=13, column=0, sticky='new', padx=10)
+
+        # Label to display the f
+        self.calibration_f_label = ttk.Label(self.calibration_subframe, text="f value:", style='Regular.TLabel')
+        self.calibration_f_label.grid(row=14, column=0, sticky='sew', padx=10)
+
+        # f display
+        self.f_display = tk.Entry(self.calibration_subframe, textvariable = self.f, validate='key', validatecommand=vcmd)
+        self.f_display.grid(row=15, column=0, sticky="esw", padx=10, pady=(5, 5))
+
+        # Calibrate radius button
+        self.execute_radius_calibration = ttk.Button(self.calibration_subframe, text="Find Radius", command=self.run_radius_calibration, style='Regular.TButton')
+        self.execute_radius_calibration.grid(row=16, column=0, sticky='ew', padx=10, pady=5)
+
+        # Label to display the radius
+        self.calibration_radius_label = ttk.Label(self.calibration_subframe, text="Radius:", style='Regular.TLabel')
+        self.calibration_radius_label.grid(row=17, column=0, sticky='sew', padx=10)
+
+        # Radius display
+        self.radius_display = tk.Entry(self.calibration_subframe, textvariable = self.radius, validate='key', validatecommand=vcmd)
+        self.radius_display.grid(row=18, column=0, sticky="esw", padx=10, pady=(5, 5)) 
+
         # endregion
         
         # Add a vertical separator between columns
@@ -266,6 +306,8 @@ class SFA_FECO_UI:
         # Configure columns in split_subframe
         self.split_subframe.columnconfigure(0, weight=1)
         self.split_subframe.columnconfigure(1, weight=1)
+
+
         # endregion
         # endregion
     
@@ -379,6 +421,22 @@ class SFA_FECO_UI:
         
         # Disable the widget again to make it read-only
         self.thickness_display.config(state="disabled")
+
+    def select_radius_file(self):
+        """Select input file for radius. Updates label."""
+        self.radius_input_file_path = filedialog.askopenfilename(filetypes=[("TIFF files", "*.tif")])
+        if self.radius_input_file_path:
+            if len(self.radius_input_file_path) > self.MAX_FILE_DISP_LENGTH:
+                data_file_text = '...' + self.radius_input_file_path[len(self.radius_input_file_path) - self.MAX_FILE_DISP_LENGTH:]
+                self.radius_file_label.config(text=data_file_text)
+            else:
+                self.radius_file_label.config(text=self.radius_input_file_path) 
+
+    def run_radius_calibration(self): 
+        RadiusMeasurementWindow(self.radius_input_file_path, self.f, self.callback_radius)
+
+    def callback_radius(self, r):
+        self.radius.set(str(r))
 
     def select_raw_video(self):
         """
@@ -608,9 +666,16 @@ class SFA_FECO_UI:
         except ValueError:
             pass  # Ignore if the value isn't a valid integer
             
-    def validate_numeric_input(self, value):
-        # Allow only numbers (positive integers)
-        return value.isdigit() or value == ""
+    def validate_numeric_input(self, new_value):
+        """Allow only numbers (integers and floats) and an optional leading minus sign or decimal point."""
+        if new_value == "" or new_value == "-"  or new_value == "." or new_value == "-.":  # Allow empty field and leading '-'
+            return True
+        try:
+            float(new_value)  # Try converting to a float
+            return True
+        except ValueError:
+            error_popup("Invalid input, must be numeric")
+            return False  # Reject input if it’s not a number
     
 class Frame_Prep_Window:
     """
@@ -1741,6 +1806,108 @@ class Motion_Analysis_Window:
             msg = "Error while saving. See console for details."
             error_popup(msg)
             print(f"Error saving wave centerlines to CSV: {e}")
+
+class RadiusMeasurementWindow:
+    def __init__(self, image_path, magnification_factor, callback):
+        """
+        Opens a window for the user to select three points on a TIFF image to calculate the radius of curvature.
+
+        Args:
+            image_path (str): Path to the TIFF file.
+            magnification_factor (float): The magnification factor 'f'.
+            callback (function): Function to return the computed radius value.
+        """
+        self.image_path = image_path
+        self.f = magnification_factor
+        self.callback = callback
+        self.points = []  # Store selected points
+
+        # Load the image
+        self.image = Image.open(image_path)
+        self.image = np.array(self.image)
+
+        # Initialize the figure and axes
+        self.fig, self.ax = plt.subplots()
+        self.ax.imshow(self.image, cmap='gray')
+        self.update_title()
+
+        # Enable interactive zoom and pan
+        self.fig.canvas.mpl_connect("button_press_event", self.on_click)
+        self.fig.canvas.mpl_connect("key_press_event", self.on_key_press)
+
+        # Add a cursor for better accuracy
+        self.cursor = Cursor(self.ax, useblit=True, color='red', linewidth=1)
+
+        plt.show()
+
+    def update_title(self):
+        """Updates the title to reflect instructions and current state."""
+        title = f"Select 3 points (D1, Xtop, Xbottom) - Left Click to Add, Right Click to Undo, Enter to Confirm"
+        self.ax.set_title(title)
+        self.fig.canvas.draw()
+
+    def on_click(self, event):
+        """Handles user clicks to select and delete points."""
+        if event.xdata is None or event.ydata is None:
+            return  # Ignore clicks outside the image
+
+        if event.button == 1:  # Left-click to add a point
+            if len(self.points) < 3:
+                self.points.append((event.xdata, event.ydata))
+                self.ax.plot(event.xdata, event.ydata, 'ro')  # Mark the point
+                self.fig.canvas.draw()
+        elif event.button == 3:  # Right-click to remove the last placed point
+            if self.points:
+                self.points.pop()
+                self.redraw_points()
+
+    def redraw_points(self):
+        """Redraws points after deletion."""
+        self.ax.clear()
+        self.ax.imshow(self.image, cmap='gray')
+        self.update_title()
+        for x, y in self.points:
+            self.ax.plot(x, y, 'ro')
+        self.fig.canvas.draw()
+
+    def on_key_press(self, event):
+        """Handles key press events."""
+        if event.key == 'escape':  # Reset selection
+            self.points.clear()
+            self.redraw_points()
+            print("Selection reset.")
+        elif event.key == 'enter' and len(self.points) == 3:  # Confirm and process
+            self.process_points()
+
+    def process_points(self):
+        """Determines D1, Xtop, and Xbottom based on point locations and calculates the radius."""
+        x_sorted = sorted(self.points, key=lambda p: p[0])  # Sort by x-coordinate
+
+        # Compute x-distance pairs
+        dists = [abs(x_sorted[i][0] - x_sorted[j][0]) for i in range(3) for j in range(i + 1, 3)]
+        min_dist_idx = np.argsort(dists)[:2]  # Get indices of two smallest distances
+
+        # Assign Xtop and Xbottom based on their y-values
+        Xtop, Xbottom = sorted([self.points[min_dist_idx[0]], self.points[min_dist_idx[1]]], key=lambda p: p[1])
+
+        # Assign D1 as the remaining point
+        D1 = [p for p in self.points if p not in (Xtop, Xbottom)][0]
+
+        # Extract coordinates
+        x_top, y_top = Xtop
+        x_bottom, y_bottom = Xbottom
+        x_d1, y_d1 = D1
+
+        # Calculate X distance
+        X = abs(x_top - x_bottom)
+
+        # Compute radius using the formula
+        D_diff = abs(y_d1 - y_bottom)  # Only the difference matters
+        radius = (X / self.f) ** 2 / (8 * D_diff)
+
+        print(f"Calculated Radius: {radius:.4f}")
+        self.callback(radius)  # Return value via callback
+        plt.close(self.fig)  # Close the window after calculation
 
 if __name__ == "__main__":
     root = tk.Tk()
