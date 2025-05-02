@@ -9,6 +9,8 @@ from matplotlib.widgets import RectangleSelector, Slider, Cursor
 import csv
 from PIL import Image, ImageSequence
 from enums import CalibrationValues 
+import json
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 import tracking  
 from exceptions import error_popup, warning_popup
@@ -187,9 +189,13 @@ class SFA_FECO_UI:
         self.raw_file_label = ttk.Label(self.raw_video_subframe, text="No file selected", style='Regular.TLabel')
         self.raw_file_label.grid(row=1, column=0, sticky='ew', padx=10)
 
-        # Crop/Preprocess button
-        self.crop_button = ttk.Button(self.raw_video_subframe, text="Crop", command=self.open_crop_preprocess_window, style='Regular.TButton')
-        self.crop_button.grid(row=2, column=0, sticky='ew', padx=10, pady=5)
+        # Preprocess button
+        self.preprocess_button = ttk.Button(self.raw_video_subframe, text="Preprocess", command=self.frame_preprocessor, style='Regular.TButton')
+        self.preprocess_button.grid(row=2, column=0, sticky='ew', padx=10, pady=5)
+
+        # Crop/region button
+        self.crop_button = ttk.Button(self.raw_video_subframe, text="Select Region/crop", command=self.open_crop_region_window, style='Regular.TButton')
+        self.crop_button.grid(row=3, column=0, sticky='ew', padx=10, pady=5)
 
         # Subframe for Generate Motion Profile
         self.motion_profile_subframe = ttk.Frame(self.root)
@@ -335,6 +341,8 @@ class SFA_FECO_UI:
             width=10
         )
 
+    # STEP 0
+
     def select_wavelength_calibration_file(self):
         """
             Function for selecting wavelength calibration input file. Checks for validity and updates label. 
@@ -438,6 +446,8 @@ class SFA_FECO_UI:
     def callback_radius(self, r):
         self.radius.set(str(r))
 
+    # STEP 1
+
     def select_raw_video(self):
         """
             Function for the user to select a file for the input. Updates the label and checks for validity.
@@ -465,7 +475,15 @@ class SFA_FECO_UI:
                 msg = "Invalid file"
                 error_popup(msg)
 
-    def open_crop_preprocess_window(self):
+    def frame_preprocessor(self):
+        if self.video_path != "":
+            FramePreprocessor(self, self.video_path, self.preprocess_vals)
+        else:
+            msg = "Select a video before opening the video preprocessing tool"
+            error_popup(msg)
+
+
+    def open_crop_region_window(self):
         """
             Function to open crop/preprocess window. Checks for valid input first.         
         """
@@ -1908,6 +1926,277 @@ class RadiusMeasurementWindow:
         print(f"Calculated Radius: {radius:.4f}")
         self.callback(radius)  # Return value via callback
         plt.close(self.fig)  # Close the window after calculation
+
+class FramePreprocessor:
+    """
+    Details:
+        - Initializes a window where the user can adjust preprocessing parameters.
+        - Provides checkboxes and sliders for adjusting sharpness, contrast, and brightness.
+        - Allows the user to toggle each preprocessing option and adjust its strength using sliders.
+        - Loads live preview in-window to show changes
+
+    Args:
+        - self: 
+        - parent: 
+        - video_path: contains the path to the selected video
+        - prev_preprocess_vals: preprocessing values the parent had beforehand
+
+    returns:
+        - A dictionary with these values:
+            - sharpness: -100 to 100. If 0, no change made
+            - contrast: 1 to 100. If 0, no change made
+            - brightness: -100 to 100. If 0, no change made
+    """
+
+    def __init__(self, parent, video_path, prev_preprocess_vals=None):
+        self.root = parent.root
+        self.parent = parent
+        self.video_path = video_path
+        self.cap = cv2.VideoCapture(self.video_path)
+
+        # Read first frame
+        self.ret, self.first_frame = self.cap.read()
+        if not self.ret:
+            raise ValueError("Failed to read the video file.")
+
+        # Shrink and greyscale first frame, then copy for modification
+        self.first_frame, _ = tracking.scale_frame(cv2.cvtColor(self.first_frame, cv2.COLOR_BGR2GRAY), 0.9)
+        self.modded_frame = self.first_frame.copy()
+
+        self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        # Create the main window
+        self.window = tk.Toplevel(self.root) 
+        self.window.title("Preprocess Video")
+        self.window.iconphoto(False, tk.PhotoImage(file="ico/m3b_comp.png"))
+        self.window.bind("<Configure>", self.on_window_resize)
+
+        # Create frames for UI layout
+        self.basic_options_frame = ttk.Frame(self.window)
+        self.basic_options_frame.grid(row=1, column=0, columnspan=10, sticky="w", padx=10, pady=5)
+
+        self.advanced_options_frame = ttk.Frame(self.window)
+        self.advanced_options_frame.grid(row=2, column=0, columnspan=10, sticky="w", padx=10, pady=5)
+        self.advanced_options_frame.grid_remove()  # Hide initially
+        self.advanced_options_visible = False
+
+        # Instruction message
+        msg = ("In this window, you can adjust preprocessing settings. "
+               "Warning: Surface area tracking already applies internal preprocessing. "
+               "Adjusting settings may affect accuracy.")
+        self.instructions_label = ttk.Label(self.window, text=msg, wraplength=500)
+        self.instructions_label.grid(row=0, column=0, columnspan=10, padx=10, pady=10)
+
+        # Define checkbox variables
+        self.sharpness_var = tk.BooleanVar()
+        self.contrast_var = tk.BooleanVar()
+        self.brightness_var = tk.BooleanVar()
+        self.smoothness_var = tk.BooleanVar()
+        self.binarize_var = tk.BooleanVar()
+        self.denoise_sp_var = tk.BooleanVar()
+
+        # Create slider-checkbox pairs
+        self.sliders = {}
+        self.slider_labels = {}
+        self.create_checkbox_with_slider("Blur/Sharpness", self.sharpness_var, 1, -100, 100, self.basic_options_frame)
+        self.create_checkbox_with_slider("Contrast", self.contrast_var, 2, 1, 100, self.basic_options_frame)
+        self.create_checkbox_with_slider("Brightness", self.brightness_var, 3, -100, 100, self.basic_options_frame)
+
+        # Toggle Advanced Options Button
+        self.show_advanced_button = ttk.Button(self.window, text="Show Advanced", command=self.toggle_advanced_options)
+        self.show_advanced_button.grid(row=4, column=0, sticky=tk.W, padx=(0, 0))
+
+        self.create_checkbox_with_slider("Smoothness", self.smoothness_var, 1, 0, 100, self.advanced_options_frame)
+        self.create_checkbox_with_slider("Binarize", self.binarize_var, 2, 0, 1, self.advanced_options_frame)
+        self.create_checkbox_with_slider("Denoise: S&P", self.denoise_sp_var, 3, 0, 1, self.advanced_options_frame)
+
+
+        # Save & Load Buttons
+        ttk.Button(self.window, text="Save Options", command=self.save_options).grid(row=8, column=0, padx=5, pady=5)
+        ttk.Button(self.window, text="Load Options", command=self.load_options).grid(row=8, column=1, padx=5, pady=5)
+
+        # Frame Navigation Slider
+        self.frame_slider = ttk.Scale(self.window, from_=0, to=self.total_frames - 1, orient="horizontal", command=self.update_frame_from_slider)
+        self.frame_slider.grid(row=6, column=0, columnspan=10, sticky="ew", padx=10, pady=5)
+
+        # Setup Matplotlib Figure for preview
+        self.fig, self.ax = plt.subplots(figsize=(8, 8))
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.window)
+        self.canvas.get_tk_widget().grid(row=9, column=0, columnspan=6, pady=10, sticky="nsew")
+        
+        self.window.rowconfigure(9, weight=1)
+        self.window.columnconfigure(0, weight=1)
+
+        # Set previous values if provided
+        if prev_preprocess_vals:
+            self.set_preprocess_values(prev_preprocess_vals)
+
+        self.update_preview()
+        self.window.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def save_options(self):
+        filename = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON files", "*.json")])
+        if filename:
+            self.save_preprocess_options(filename)
+
+    def load_options(self):
+        filename = filedialog.askopenfilename(filetypes=[("JSON files", "*.json")])
+        if filename:
+            self.load_preprocess_options(filename)
+
+    def save_preprocess_options(self, filename):
+        preprocess_vals = {
+            "Blur/Sharpness": self.sliders["Blur/Sharpness"].get() if self.sharpness_var.get() else 0,
+            "Contrast": self.sliders["Contrast"].get() if self.contrast_var.get() else 0,
+            "Brightness": self.sliders["Brightness"].get() if self.brightness_var.get() else 0,
+            "Smoothness": self.sliders["Smoothness"].get() if self.smoothness_var.get() else 0,
+            "Binarize": self.binarize_var.get(),
+            "Denoise SP": self.denoise_sp_var.get()
+        }
+        with open(filename, 'w') as f:
+            json.dump(preprocess_vals, f)
+
+    def load_preprocess_options(self, filename):
+        with open(filename, 'r') as f:
+            preprocess_vals = json.load(f)
+        self.set_preprocess_values(preprocess_vals)
+        self.update_preview()
+
+    def set_preprocess_values(self, preprocess_vals):
+        self.sharpness_var.set(preprocess_vals["Blur/Sharpness"] != 0)
+        self.contrast_var.set(preprocess_vals["Contrast"] != 0)
+        self.brightness_var.set(preprocess_vals["Brightness"] != 0)
+        self.smoothness_var.set(preprocess_vals["Smoothness"] != 0)
+        self.binarize_var.set(preprocess_vals["Binarize"])
+        self.denoise_sp_var.set(preprocess_vals["Denoise SP"])
+        self.sliders["Blur/Sharpness"].set(preprocess_vals["Blur/Sharpness"])
+        self.sliders["Contrast"].set(preprocess_vals["Contrast"])
+        self.sliders["Brightness"].set(preprocess_vals["Brightness"])
+        self.sliders["Smoothness"].set(preprocess_vals["Smoothness"])
+
+    def create_checkbox_with_slider(self, text, variable, row, min_val, max_val, parent_frame):
+        """Creates a checkbox with an associated slider and live value display."""
+        checkbox = ttk.Checkbutton(parent_frame, text=text, variable=variable)
+        checkbox.grid(row=row, column=0, sticky=tk.W, padx=(10, 0))
+
+        if text == "Denoise: S&P":
+            # If the setting is "Binarize SP", only create the checkbox without a slider
+            self.sliders[text] = None
+            self.slider_labels[text] = None
+            variable.trace_add("write", lambda *args:self.update_preview())
+            return
+
+        min_label = ttk.Label(parent_frame, text=f"{min_val}")
+        min_label.grid(row=row, column=1, sticky="E")
+
+        slider = ttk.Scale(parent_frame, from_=min_val, to=max_val, orient=tk.HORIZONTAL)
+        slider.grid(row=row, column=2, padx=10, pady=5, sticky="ew")
+        slider.config(command=lambda value: self.on_slider_change(value, text))
+
+        max_label = ttk.Label(parent_frame, text=f"{max_val}")
+        max_label.grid(row=row, column=3)
+        value_label = ttk.Label(parent_frame, text=f"Value: {int(slider.get())}", width=10)
+        value_label.grid(row=row, column=4, padx=(10, 50))
+
+        self.sliders[text] = slider
+        self.slider_labels[text] = value_label
+
+        slider.grid_remove()
+        min_label.grid_remove()
+        max_label.grid_remove()
+        value_label.grid_remove()
+
+        variable.trace_add("write", lambda *args: self.toggle_slider(slider, variable, min_label, max_label, value_label))
+
+    def on_slider_change(self, value, text):
+        """Updates the value label and preview when a slider is moved."""
+        self.slider_labels[text].config(text=f"Value: {int(float(value))}")
+        self.update_preview()
+
+    def toggle_slider(self, slider, variable, min_label, max_label, value_label):
+        """Shows/hides sliders based on checkbox state."""
+        if slider is None:
+            return
+        if variable.get():
+            slider.grid()
+            min_label.grid()
+            max_label.grid()
+            value_label.grid()
+        else:
+            slider.grid_remove()
+            min_label.grid_remove()
+            max_label.grid_remove()
+            value_label.grid_remove()
+        self.update_preview()
+
+    def toggle_advanced_options(self):
+        """Toggles visibility of advanced options."""
+        if self.advanced_options_visible:
+            self.advanced_options_frame.grid_forget()
+            self.show_advanced_button.config(text="Show Advanced")
+        else:
+            self.advanced_options_frame.grid(row=5, column=0, columnspan=6, pady=10, sticky="w")
+            self.show_advanced_button.config(text="Hide Advanced")
+        self.advanced_options_visible = not self.advanced_options_visible
+
+    def update_frame_from_slider(self, value):
+        """Updates the displayed frame when the frame slider is moved."""
+        frame_index = int(float(value))
+        self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+        ret, frame = self.cap.read()
+
+        if ret:
+            self.first_frame, _ = tracking.scale_frame(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), 0.9)
+            self.modded_frame = self.first_frame.copy()
+            self.update_preview()
+
+    def update_preview(self):
+        """Updates the Matplotlib preview with the modified frame."""
+        if self.modded_frame is not None and self.modded_frame.size > 0:
+            self.modded_frame = tracking.preprocess_frame(
+                self.first_frame, self.get_preprocess_vals(), True
+            )
+            self.on_window_resize()
+            self.ax.clear()
+            self.ax.imshow(self.modded_frame, cmap="gray")
+            self.ax.axis("off")
+            self.fig.canvas.draw()
+
+    def get_preprocess_vals(self):
+        returnDict = {
+            "Blur/Sharpness": self.sliders["Blur/Sharpness"].get() if self.sharpness_var.get() else 0,
+            "Contrast": self.sliders["Contrast"].get() if self.contrast_var.get() else 0,
+            "Brightness": self.sliders["Brightness"].get() if self.brightness_var.get() else 0,
+            "Smoothness": self.sliders["Smoothness"].get() if self.smoothness_var.get() else 0,
+            "Binarize": self.binarize_var.get(),
+            "Denoise SP": self.denoise_sp_var.get()
+        }
+        return returnDict
+
+    def on_window_resize(self, event=None):
+        if self.modded_frame is None or self.modded_frame.size == 0:
+            return
+
+        new_height = self.canvas.get_tk_widget().winfo_height()
+        original_height, original_width = self.first_frame.shape
+
+        aspect_ratio = original_width / original_height
+        new_width = int(new_height * aspect_ratio)
+
+        resized_frame = cv2.resize(self.modded_frame, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
+
+        self.ax.clear()
+        self.ax.imshow(resized_frame, cmap="gray")
+        self.ax.axis("off")
+        self.fig.canvas.draw()
+
+
+    def on_close(self):
+        """Handles closing the window and releasing resources."""
+        self.parent.preprocess_vals = self.get_preprocess_vals()
+        self.cap.release()
+        self.window.destroy()
+
 
 if __name__ == "__main__":
     root = tk.Tk()

@@ -72,22 +72,37 @@ def generate_motion_profile(file_path, y_start, y_end, filename):
         # Crop the frame to the Region of Interest (RoI)
         cropped_frame = frame[y_start:y_end, :]
 
+        cropped_frame = cv2.medianBlur(cropped_frame, ksize=3)
+        
         # Sum the brightness values vertically (across the y-axis)
         vertical_sum = np.sum(cropped_frame, axis=0)
 
         # Normalize the summed values to the range [0, 255]
-        norm_sum = np.interp(vertical_sum, (vertical_sum.min(), vertical_sum.max()), (0, 255))
+        norm_sum = np.interp(vertical_sum, (vertical_sum.min(), vertical_sum.max()), (0, 255)).astype(np.uint8)
+            
+        med = cv2.medianBlur(norm_sum, ksize=3)
+
+        # morphological opening to knock out any little islands
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5,5))
+        opened = cv2.morphologyEx(med, cv2.MORPH_OPEN, kernel)
+
+        # light closing to solidify image
+        clean = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel)
+        clean = cv2.morphologyEx(clean, cv2.MORPH_CLOSE, kernel)
+        clean = cv2.morphologyEx(clean, cv2.MORPH_CLOSE, kernel)
+        clean = cv2.morphologyEx(clean, cv2.MORPH_CLOSE, kernel)
 
         # Filter out all pixels below intensity 150
-        norm_sum[norm_sum < 150] = 0
+        clean[clean < 150] = 0
 
         # Add the normalized line to the timelapse image
-        timelapse_image.append(norm_sum)
+        timelapse_image.append(clean)
 
         # Convert the timelapse array to a numpy array (for visualization)
         timelapse_array = np.array(timelapse_image)
 
         if visualize and i % 5 == 0:
+
             # Visualization: display progress after each frame
             plt.figure(figsize=(10, 5))
             plt.imshow(timelapse_array, cmap='gray', aspect='auto')
@@ -102,8 +117,7 @@ def generate_motion_profile(file_path, y_start, y_end, filename):
         i += 1
 
     # Once all frames are processed, save the final timelapse image
-    final_image = Image.fromarray(timelapse_array.astype(np.uint8))
-    final_image.save(filename)
+    cv2.imwrite(filename, timelapse_array)  
     print(f"Timelapse saved to {filename}")
 
 def analyze_and_append_waves(image, 
@@ -343,3 +357,205 @@ def perform_turnaround_estimation(motion_profile_file_path, centerline_csv_path,
     # print(estimated_turnaround)
 
     return estimated_turnaround
+
+def denoise_frame_saltpep(frame):
+    # Check if frame is already grayscale
+    if len(frame.shape) == 3 and frame.shape[2] == 3:
+        # Convert to grayscale
+        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    else:
+        gray_frame = frame
+    
+    # Apply median filter
+    median_filtered = cv2.medianBlur(gray_frame, 11)
+    
+    # Apply bilateral filter (optional)
+    bilateral_filtered = cv2.bilateralFilter(median_filtered, 9, 50, 50)
+    
+    gaussian = cv2.GaussianBlur(bilateral_filtered, (0, 0), 5)
+
+    # Adaptive thresholding
+    adaptive_thresh = cv2.adaptiveThreshold(gaussian, 255,
+                                            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                            cv2.THRESH_BINARY_INV, 11, 2)
+    # adaptive_thresh = gaussian
+    
+    # Morphological operations to connect blobs
+    kernel = np.ones((3, 3), np.uint8)
+    closing = cv2.morphologyEx(adaptive_thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
+    
+    # Dilation followed by erosion
+    dilated = cv2.dilate(closing, kernel, iterations=1)
+    eroded = cv2.erode(dilated, kernel, iterations=1)
+
+    return eroded
+
+def preprocess_frame(frame, preprocessing_vals, advanced):
+    """_summary_
+
+    Args:
+        frame (frame): frame to preprocess
+        preprocessing_vals (dict): dictionary containing the values
+        advanced (bool): whether to apply advanced preprocessing
+
+    Returns:
+        _type_: _description_
+    """    
+    # print("Preprocessing...")
+    # Initialize a variable to store the modified frame
+    modified_frame = frame.copy()
+
+    # Apply improved smooth
+
+    if preprocessing_vals["Smoothness"] != 0 and advanced:
+        modified_frame = improve_smoothing(modified_frame, preprocessing_vals["Smoothness"]/50+.1)
+
+    # Apply sharpening
+    if preprocessing_vals["Blur/Sharpness"] != 0:
+        modified_frame = sharpen_frame(modified_frame, preprocessing_vals["Blur/Sharpness"])
+
+    # Apply contrast enhancement
+    if preprocessing_vals["Contrast"] > 0:
+        modified_frame = enhance_contrast(modified_frame, preprocessing_vals["Contrast"])
+    
+    # Apply brightness adjustment
+    if preprocessing_vals["Brightness"] != 0:
+        modified_frame = adjust_gamma(modified_frame, preprocessing_vals["Brightness"])
+
+    if preprocessing_vals["Binarize"]  and advanced:
+        modified_frame = improve_binarization(modified_frame)
+
+    if preprocessing_vals["Denoise SP"]  and advanced:
+        modified_frame = denoise_frame_saltpep(modified_frame)
+
+    # modified_frame = cv2.adaptiveThreshold(modified_frame, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
+
+    # intermediate_frame_check("Preprocessing done", modified_frame)
+    # print("Preprocessing done")
+
+    return modified_frame
+
+def enhance_contrast(frame, strength=50):
+    # Define parameters for contrast enhancement
+    clip_limit = 3.0
+    tile_grid_size = (8, 8)
+    
+    # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
+    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
+    enhanced_frame = clahe.apply(frame)
+    
+    # Adjust contrast strength
+    enhanced_frame = cv2.addWeighted(frame, 1 + strength / 2, enhanced_frame, 0.0, 0.0)
+    
+    return enhanced_frame
+
+def sharpen_frame(frame, strength=1.0):
+    if strength > 0:
+        # Sharpening
+        scaled_strength = strength / 100
+        kernel = np.array([[0, -0.2, 0],
+                           [-0.2, 2 + 3 * scaled_strength, -0.2],
+                           [0, -0.2, 0]])
+    else:
+        # Blurring
+        scaled_strength = abs(strength) / 10
+        kernel_size = int(1 + 2 * scaled_strength)
+        if kernel_size % 2 == 0:  # Ensure the kernel size is odd
+            kernel_size += 1
+        blurred = cv2.GaussianBlur(frame, (kernel_size, kernel_size), 0)
+        return blurred
+
+    # Apply the kernel to the image
+    result = cv2.filter2D(frame, -1, kernel)
+    return result
+
+def adjust_gamma(frame, gamma=50.0):
+    # Apply gamma correction
+    if gamma > 0:
+        gamma=1-gamma/100
+    elif gamma < 0:
+        gamma=1-gamma/10
+    gamma_corrected = np.array(255 * (frame / 255) ** gamma, dtype='uint8')
+    return gamma_corrected
+
+def improve_binarization(frame):    
+    """
+    Enhances the binarization of a grayscale image using various image processing techniques. This function applies
+    CLAHE for contrast enhancement, background subtraction to highlight foreground objects, morphological operations
+    to refine the image, and edge detection to further define object boundaries.
+
+    Steps:
+        1. Apply Contrast Limited Adaptive Histogram Equalization (CLAHE) to boost the contrast of the image.
+        2. Perform background subtraction using a median blur to isolate foreground features.
+        3. Apply morphological closing to close small holes within the foreground objects.
+        4. Detect edges using the Canny algorithm, and dilate these edges to enhance their visibility.
+        5. Optionally adjust the edge thickness with additional morphological operations like dilation or erosion
+           depending on specific requirements (commented out in the code but can be adjusted as needed).
+
+    Note:
+        - This function is designed to work with grayscale images and expects a single-channel input.
+        - Adjustments to parameters like CLAHE limits, kernel sizes for morphological operations, and Canny thresholds
+          may be necessary depending on the specific characteristics of the input image.
+
+
+    Args:
+        frame (np.array): A single-channel (grayscale) image on which to perform binarization improvement.
+
+    Returns:
+        np.array: The processed image with enhanced binarization and clearer object definitions.
+
+    """
+
+    # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
+    # boosts contrast
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(12, 12))
+    equalized = clahe.apply(frame)
+    
+    # Perform Background Subtraction
+    # (Assuming a relatively uniform background)
+    background = cv2.medianBlur(equalized, 13)
+    subtracted = cv2.subtract(equalized, background)
+    
+    # Use morphological closing to close small holes inside the foreground
+    kernel = np.ones((3, 3), np.uint8)
+    closing = cv2.morphologyEx(subtracted, cv2.MORPH_CLOSE, kernel, iterations=2)
+    
+    # Use Canny edge detector to find edges and use it as a mask
+    edges = cv2.Canny(closing, 30, 140)
+    edges_dilated = cv2.dilate(edges, kernel, iterations=1)
+    result = cv2.bitwise_or(closing, edges_dilated)
+
+    # if edges too fine after result
+    #result = cv2.dilate(result, kernel, iterations=1)
+    # if edges too thick after result
+    kernel = np.ones((3, 3), np.uint8)
+    result = cv2.erode(result, kernel, iterations=1)
+
+    return result
+
+def improve_smoothing(frame, strength=0.9):
+    """
+    Enhances the input frame by applying Non-Local Means (NLM) denoising followed by a high-pass filter.
+    
+    NLM averages pixel intensity s.t. similar patches of the image (even far apart) contribute more to the average
+    
+
+    Args:
+    frame (numpy.ndarray): The input image in grayscale.
+
+    Returns:
+    numpy.ndarray: The processed image with improved smoothing and enhanced details.
+    """
+    noise_level = np.std(frame)
+    denoised = cv2.fastNlMeansDenoising(frame, None, h=noise_level*strength, templateWindowSize=7, searchWindowSize=25)
+    
+    # highlights cental pixel and reduces neighboring pixels
+    # passes high frequencies and attenuates low frequencies
+    # this kernel represents a discrete ver of the laplacian operator, approximating 2nd order derivative of image
+    laplacian_kernel = np.array([[-1, -1, -1],
+                             [-1,  8, -1],
+                             [-1, -1, -1]])
+
+    # Apply the high-pass filter using convolution
+    high_pass = cv2.filter2D(denoised, -1, laplacian_kernel)
+    return high_pass
