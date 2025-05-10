@@ -16,31 +16,12 @@ from enums import *
 from exceptions import error_popup, warning_popup
 
 def scale_frame(frame, scale_factor=0.9):
-    """Scales a PIL image based on monitor resolution and provided scale factor.
-    
-    Args:
-        frame (PIL.Image): Frame of the video (PIL image) to be scaled.
-        scale_factor (float, optional): Fraction of monitor resolution to scale the image. Defaults to 0.9.
+    height, width = frame.shape[:2]
+    new_width = int(scale_factor * width)
+    new_height = int(scale_factor * height)
+    resized = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
+    return resized
 
-    Returns:
-        scaled_frame (PIL.Image): Scaled version of the PIL image.
-    """    
-
-    # Get width and height of the original PIL image
-    width, height = frame.size
-
-    # Calculate scale factors for height and width
-    scale_factor_height = scale_factor * height
-    scale_factor_width = scale_factor * width
-
-    # Resize the image using the minimum scale factor
-    new_width = int(scale_factor_width)
-    new_height = int(scale_factor_height)
-
-    # Resize the image using PIL's resize method
-    scaled_frame = frame.resize((new_width, new_height))
-
-    return scaled_frame
 
 def generate_motion_profile(file_path, y_start, y_end, filename):
     """

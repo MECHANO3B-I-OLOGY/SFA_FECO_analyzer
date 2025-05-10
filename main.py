@@ -38,6 +38,7 @@ class SFA_FECO_UI:
         self.split_file_path = None
         self.data_file_path = None
         self.analyze_output_file_path = None
+        self.preprocessing_vals = {}
 
         self.split_frame_num = 0
         self.roi_offset = 0
@@ -476,12 +477,17 @@ class SFA_FECO_UI:
                 error_popup(msg)
 
     def frame_preprocessor(self):
-        if self.video_path != "":
-            FramePreprocessor(self, self.video_path, self.preprocess_vals)
+        if self.raw_video_file_path != "":
+            FramePreprocessor(self.root, self.raw_video_file_path, self.callback_get_preprocessing_vals)
         else:
             msg = "Select a video before opening the video preprocessing tool"
             error_popup(msg)
 
+    def callback_get_preprocessing_vals(self, values):
+        """
+            Function for retrieving the preprocessing values from the FramePreprocessor window.
+        """
+        self.preprocessing_vals = values
 
     def open_crop_region_window(self):
         """
@@ -1948,27 +1954,17 @@ class FramePreprocessor:
             - brightness: -100 to 100. If 0, no change made
     """
 
-    def __init__(self, parent, video_path, prev_preprocess_vals=None):
-        self.root = parent.root
-        self.parent = parent
+    def __init__(self, root, video_path, prev_preprocess_vals=None, save_callback=None):
+        self.root = root
+        self.save_callback = save_callback
         self.video_path = video_path
-        self.cap = cv2.VideoCapture(self.video_path)
+        self.load_tiff_stack()
 
-        # Read first frame
-        self.ret, self.first_frame = self.cap.read()
-        if not self.ret:
-            raise ValueError("Failed to read the video file.")
-
-        # Shrink and greyscale first frame, then copy for modification
-        self.first_frame, _ = tracking.scale_frame(cv2.cvtColor(self.first_frame, cv2.COLOR_BGR2GRAY), 0.9)
-        self.modded_frame = self.first_frame.copy()
-
-        self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.total_frames = len(self.frames)
 
         # Create the main window
         self.window = tk.Toplevel(self.root) 
         self.window.title("Preprocess Video")
-        self.window.iconphoto(False, tk.PhotoImage(file="ico/m3b_comp.png"))
         self.window.bind("<Configure>", self.on_window_resize)
 
         # Create frames for UI layout
@@ -2142,16 +2138,15 @@ class FramePreprocessor:
     def update_frame_from_slider(self, value):
         """Updates the displayed frame when the frame slider is moved."""
         frame_index = int(float(value))
-        self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
-        ret, frame = self.cap.read()
+        if 0 <= frame_index < len(self.frames):
+            self.first_frame = self.frames[frame_index].copy()
 
-        if ret:
-            self.first_frame, _ = tracking.scale_frame(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), 0.9)
-            self.modded_frame = self.first_frame.copy()
-            self.update_preview()
+        self.modded_frame = self.first_frame.copy()
+        self.update_preview()
 
     def update_preview(self):
         """Updates the Matplotlib preview with the modified frame."""
+        # print("Updating preview...")
         if self.modded_frame is not None and self.modded_frame.size > 0:
             self.modded_frame = tracking.preprocess_frame(
                 self.first_frame, self.get_preprocess_vals(), True
@@ -2161,6 +2156,8 @@ class FramePreprocessor:
             self.ax.imshow(self.modded_frame, cmap="gray")
             self.ax.axis("off")
             self.fig.canvas.draw()
+        else:
+            print("Error. No frame to display.")
 
     def get_preprocess_vals(self):
         returnDict = {
@@ -2190,11 +2187,27 @@ class FramePreprocessor:
         self.ax.axis("off")
         self.fig.canvas.draw()
 
+    def load_tiff_stack(self):
+        from PIL import Image
+        self.frames = []
+        img = Image.open(self.video_path)
+
+        try:
+            while True:
+                frame = np.array(img.copy().convert("L"))  # grayscale
+                frame = tracking.scale_frame(frame, 0.9)
+                self.frames.append(frame)
+                img.seek(img.tell() + 1)
+        except EOFError:
+            pass
+
+        self.total_frames = len(self.frames)
+        self.first_frame = self.frames[0].copy()
+        self.modded_frame = self.first_frame.copy()
 
     def on_close(self):
-        """Handles closing the window and releasing resources."""
-        self.parent.preprocess_vals = self.get_preprocess_vals()
-        self.cap.release()
+        if self.save_callback:
+            self.save_callback(self.get_preprocess_vals()) 
         self.window.destroy()
 
 
