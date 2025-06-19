@@ -1,6 +1,7 @@
 import os
 import sys
 import cv2
+import subprocess
 import numpy as np
 import tkinter as tk
 from tkinter import ttk, filedialog
@@ -8,7 +9,7 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import RectangleSelector, Slider, Cursor
 import csv
 from PIL import Image, ImageSequence
-from enums import CalibrationValues 
+from enums import CalibrationValues
 
 import tracking  
 from exceptions import error_popup, warning_popup
@@ -445,11 +446,17 @@ class SFA_FECO_UI:
         # Open a file dialog to select a TIFF file
         file_path = filedialog.askopenfilename(
             initialdir=os.path.join(os.getcwd()),
-            title='Browse for TIFF file',
-            filetypes=[("TIFF Files", "*.tif *.tiff")]
+            title='Browse for image file',
+            filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd")]
         )
         # file_path = "FR1-P1-bis.tif" # hardcoded
         if file_path:
+
+            if(file_path.lower().endswith(".cxd")):
+                command = ['./bfconverter/bfconvert', file_path, f"{file_path[:-4]}.tiff"]
+                subprocess.run(command)
+                file_path = file_path[:-4] + ".tiff"
+
             # Save the selected file path
             self.raw_video_file_path = file_path
             
