@@ -1,0 +1,25 @@
+existing bugs to patch:
+
+future plans:
+
+- calibration instructions, readme and in-ui
+- unified file selection strategy, in and out (and finish error catching)
+- scale window to screen (the right way?)
+
+finished:
+
+- get everything using matplotlib (KEEP AN EYE ON THIS ONE FOR BUGS)
+- calibration wave selection (? hard to test)
+- centerlines offset bug
+- scale window to screen bug
+- mica thickness value output in textbox
+- ignore Y axis for point placement
+  - bin across whole X
+- user picks frame, pick peaks of interest, analysis records x location of peaks from first frame to last frame for that/those peak(s)
+- do frame/pixel line/analysis
+- accept double waves
+- readme
+- linear approximation and interpolation of turning point
+- add option to split frame around turnaround
+- add option to manually enter turnaround point
+- use mercury calibration file to identify x coords of known wavelengths, extrapolate a translation of pixels to wavelength
