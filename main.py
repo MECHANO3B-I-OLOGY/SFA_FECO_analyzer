@@ -995,7 +995,9 @@ class Wavelength_Calibration_Window:
 
     def run_wave_detection(self, image):
         """Runs the wave analysis on the cropped image."""
-        self.waves = tracking.analyze_and_append_waves(np.array(image), wave_threshold=110)
+        #UNDO
+        #self.waves = tracking.analyze_and_append_waves(np.array(image), wave_threshold=110)
+        self.waves = tracking.new_analyze_and_append_waves(np.array(image))
         self.display_waves()
 
     def display_waves(self):
@@ -1291,12 +1293,16 @@ class Mica_Thickness_Calibration_Window:
         normalized_image = normalized_image.astype(np.uint8)
         
         # Run wave detection on the normalized image
+        # UNDO
+        """
         self.waves = tracking.analyze_and_append_waves(
             normalized_image,
             wave_threshold=40,
             min_points_per_wave=10,
             min_wave_gap=10
         )
+        """
+        self.waves = tracking.new_analyze_and_append_waves(normalized_image)
         
         # Proceed with filtering and displaying waves
         wave_averages = [np.mean([x for _, x in wave]) for wave in self.waves]
@@ -1599,8 +1605,9 @@ class Motion_Analysis_Window:
     def run_analysis(self):
         """Run the analysis on the cropped image."""
         # Perform analysis on the cropped image
-        self.wave_lines = tracking.analyze_and_append_waves(self.cropped_image)
-
+        #UNDO
+        #self.wave_lines = tracking.analyze_and_append_waves(self.cropped_image)
+        self.wave_lines = tracking.new_analyze_and_append_waves(self.cropped_image)
         # Visualize the results and enable data deletion
         self.visualize_wave_centerlines(self.cropped_image, self.wave_lines)
 
@@ -1638,7 +1645,7 @@ class Motion_Analysis_Window:
         colors = plt.cm.rainbow(np.linspace(0, 1, len(self.wave_lines)))
 
         for idx, wave_line in enumerate(self.wave_lines):
-            if wave_line:  # Ensure the wave_line is not empty
+            if len(wave_line) != 0:  # Ensure the wave_line is not empty
                 y_coords = [point[0] for point in wave_line]
                 x_coords = [point[1] for point in wave_line]
                 self.ax.plot(x_coords, y_coords, color=colors[idx], label=f"Wave {idx + 1}")

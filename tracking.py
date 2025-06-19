@@ -106,6 +106,81 @@ def generate_motion_profile(file_path, y_start, y_end, filename):
     final_image.save(filename)
     print(f"Timelapse saved to {filename}")
 
+def new_analyze_and_append_waves(image,
+                        wave_threshold=0,
+                        min_wave_gap=15,
+                        horizontal_proximity_threshold=15,
+                        vertical_proximity_threshold=1,
+                        max_missing_rows=2,
+                        min_points_per_wave=50,
+                        num_Scale=4):
+
+    # width, height = image.size 
+    # width *= 2
+    # height *= 2
+
+    height, width = image.shape[:2] 
+    newImage = np.zeros((height*num_Scale, width*num_Scale))
+
+    for i in range(height):
+        for j in range(width):
+            for x in range(num_Scale):
+                for y in range(num_Scale):
+                    newImage[i*num_Scale+x][j*num_Scale+y] = image[i][j]
+
+    temp = analyze_and_append_waves(newImage,
+                        wave_threshold=wave_threshold,
+                        min_wave_gap=min_wave_gap,
+                        horizontal_proximity_threshold=horizontal_proximity_threshold * (2/3) * num_Scale,
+                        vertical_proximity_threshold=vertical_proximity_threshold * (2/4) * num_Scale,
+                        max_missing_rows=max_missing_rows * (3/4) * num_Scale,
+                        min_points_per_wave=min_points_per_wave * (1/2) * num_Scale)
+
+    for i in range(len(temp)):
+        for j in range(len(temp[i])):
+            temp[i][j] = tuple(x // num_Scale for x in temp[i][j])
+
+    # return analyze_and_append_waves(Image,
+    #                     wave_threshold=wave_threshold,
+    #                     min_wave_gap=min_wave_gap,
+    #                     horizontal_proximity_threshold=horizontal_proximity_threshold,
+    #                     vertical_proximity_threshold=vertical_proximity_threshold,
+    #                     max_missing_rows=max_missing_rows,
+    #                     min_points_per_wave=min_points_per_wave)
+
+    return temp
+
+
+def testing_analyze_and_append_waves(image,
+                        wave_threshold=0,
+                        min_wave_gap=15,
+                        horizontal_proximity_threshold=15,
+                        vertical_proximity_threshold=1,
+                        max_missing_rows=2,
+                        min_points_per_wave=50):
+    
+    
+
+    #canny = cv2.Canny(image, 200, 255)
+
+    #cnts, _ = cv2.findContours(canny, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+    #drawing Contours
+    #radius = 1
+    #color = (255,255,255)
+    #cv2.drawContours(canny, cnts, -1,color , radius)
+
+    #skel = cv2.ximgproc.thinning(canny)
+
+    skel = cv2.ximgproc.thinning(image)
+
+    cnts = analyze_and_append_waves(skel, horizontal_proximity_threshold = 10, vertical_proximity_threshold=2)
+
+    #cv2.imshow("really", canny)
+    #cv2.waitKey()
+    #cv2.destroyAllWindows()
+    return cnts
+
 def analyze_and_append_waves(image, 
                              wave_threshold=0, 
                              min_wave_gap=15, 
