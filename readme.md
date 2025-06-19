@@ -145,6 +145,10 @@ Tkinter: Used for UI
 
 Feel free to open an issue or submit a pull request if you want to contribute to the project.
 
+### Acknowledgements  
+
+[Bioformats](https://github.com/ome/bioformats?tab=readme-ov-file), a java library for reading and writing life sciences image formats, is used and packaged under the GPL 2.0 to convert .cxd files to .tiff files for ease of use.
+
 ### License
 
 This project is licensed under the MIT License. See the LICENSE file for details.
