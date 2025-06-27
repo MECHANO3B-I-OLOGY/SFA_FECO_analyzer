@@ -43,7 +43,9 @@ cd wave-motion-analyzer
 #### 2. Install dependencies and set up virtual environment:
 
 python -m venv venv
-.\env\Scripts\activate
+
+.\venv\Scripts\activate
+
 pip install -r requirements.txt
 
 # Usage
