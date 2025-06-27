@@ -10,6 +10,7 @@ from matplotlib.widgets import RectangleSelector, Slider, Cursor
 import csv
 from PIL import Image, ImageSequence
 from enums import CalibrationValues
+from sys import platform
 
 import tracking  
 from exceptions import error_popup, warning_popup
@@ -453,7 +454,10 @@ class SFA_FECO_UI:
         if file_path:
 
             if(file_path.lower().endswith(".cxd")):
-                command = ['./bfconverter/bfconvert', file_path, f"{file_path[:-4]}.tiff"]
+                if platform == "win32":
+                    command = ['.\\bfconverter\\bfconvert.bat', file_path, f"{file_path[:-4]}.tiff"]
+                else:
+                    command = ['./bfconverter/bfconvert', file_path, f"{file_path[:-4]}.tiff"]
                 subprocess.run(command)
                 file_path = file_path[:-4] + ".tiff"
 
