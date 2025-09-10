@@ -220,6 +220,23 @@ class SFA_FECO_UI:
         # Generate motion profile button
         self.generate_motion_button = ttk.Button(self.motion_profile_subframe, text="Generate Motion Profile", command=self.generate_motion_profile, style='Regular.TButton')
         self.generate_motion_button.grid(row=2, column=0, sticky='ew', padx=10, pady=5)
+
+        # Frame for radio buttons
+        self.mode_var = tk.StringVar(value="unimodal")  # default selection
+        self.mode_frame = ttk.Frame(self.motion_profile_subframe)
+        self.mode_frame.grid(row=1, column=0, sticky='w', padx=10, pady=5)
+
+        self.unimodal_radio = ttk.Radiobutton(
+            self.mode_frame, text="Unimodal",
+            variable=self.mode_var, value="unimodal"
+        )
+        self.unimodal_radio.grid(row=0, column=0, sticky='w')
+
+        self.bimodal_radio = ttk.Radiobutton(
+            self.mode_frame, text="Bimodal",
+            variable=self.mode_var, value="bimodal"
+        )
+        self.bimodal_radio.grid(row=0, column=1, sticky='w')
         # endregion
 
         # Add a vertical separator between columns
@@ -573,6 +590,9 @@ class SFA_FECO_UI:
             )
         else:
             error_popup("Please enter a valid output file name.")
+
+    def get_mode(self):
+        return self.mode_var.get()
 
     def callback_handle_crop_offset(self, offsets):
         """
@@ -1083,7 +1103,7 @@ class Wavelength_Calibration_Window:
 
     def run_wave_detection(self, image):
         """Runs the wave analysis on the cropped image."""
-        self.waves = tracking.analyze_and_append_waves(np.array(image), wave_threshold=110)
+        self.waves = tracking.new_analyze_and_append_waves(np.array(image), wave_threshold=110,modality=app.mode_var.get())
         self.display_waves()
 
     def display_waves(self):
@@ -1379,11 +1399,12 @@ class Mica_Thickness_Calibration_Window:
         normalized_image = normalized_image.astype(np.uint8)
         
         # Run wave detection on the normalized image
-        self.waves = tracking.analyze_and_append_waves(
+        self.waves = tracking.new_analyze_and_append_waves(
             normalized_image,
             wave_threshold=40,
             min_points_per_wave=10,
-            min_wave_gap=10
+            min_wave_gap=10,
+            modality=app.mode_var.get()
         )
         
         # Proceed with filtering and displaying waves
@@ -1687,7 +1708,7 @@ class Motion_Analysis_Window:
     def run_analysis(self):
         """Run the analysis on the cropped image."""
         # Perform analysis on the cropped image
-        self.wave_lines = tracking.analyze_and_append_waves(self.cropped_image)
+        self.wave_lines = tracking.new_analyze_and_append_waves(self.cropped_image,modality=app.mode_var.get())
 
         # Visualize the results and enable data deletion
         self.visualize_wave_centerlines(self.cropped_image, self.wave_lines)

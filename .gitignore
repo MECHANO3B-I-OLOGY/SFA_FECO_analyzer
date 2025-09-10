@@ -50,3 +50,8 @@ csvtemp.csv
 temp_cropped.tif
 temp.tif
 v1.zip
+
+
+CXD_data/*
+Output/*
+__pycache__/*

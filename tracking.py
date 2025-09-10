@@ -7,7 +7,7 @@ import pandas as pd
 from scipy.interpolate import splprep, splev
 from scipy.optimize import curve_fit
 from scipy import stats
-from PIL import Image, ImageTk, ImageSequence
+from PIL import Image, ImageTk, ImageSequence, ImageFilter
 from pprint import pprint 
 import matplotlib.pyplot as plt
 import os
@@ -106,6 +106,121 @@ def generate_motion_profile(file_path, y_start, y_end, filename):
     final_image.save(filename)
     print(f"Timelapse saved to {filename}")
 
+def new_analyze_and_append_waves(image, 
+                             wave_threshold=0, 
+                             min_wave_gap=45, 
+                             horizontal_proximity_threshold=45, 
+                             vertical_proximity_threshold=1, 
+                             max_missing_rows=2,
+                             min_points_per_wave=50,
+                             modality="unimodal"):
+    """
+    Analyze waves in the image, calculate the center of mass for each wave, 
+    and append them to the correct wave line based on proximity to previously detected waves.
+    
+    Args:
+    - image: 2D array representing the RoI of the motion profile.
+    - wave_threshold: Intensity threshold for wave detection.
+    - min_wave_gap: Minimum distance to separate different waves within a row.
+    - horizontal_proximity_threshold: Maximum allowable horizontal distance to append a new center point to an existing wave.
+    - vertical_proximity_threshold: Maximum allowable vertical distance between rows for a wave to be considered continuous.
+    - max_missing_rows: Maximum number of consecutive rows where a wave can be missing before terminating it.
+    - min_points_per_wave: Minimum number of points for a wave line to be considered valid.
+    
+    Returns:
+    - wave_lines: List of wave lines, each being a list of (y, x_center) points.
+    """
+
+    if modality != "unimodal":
+        horizontal_proximity_threshold = 25
+
+    height, width = image.shape
+    wave_lines = []  # Initialize list to store wave lines
+    wave_missing_counts = []  # Track how many rows each wave has been missing for
+
+    # Loop through each row
+    for y in range(height):
+        row = image[y, :]
+        
+        # Detect wave positions in the row (above threshold)
+        wave_positions = np.where(row > wave_threshold)[0]
+
+        if len(wave_positions) > 0:
+            # Cluster wave points based on proximity (min_wave_gap)
+            waves = []
+            current_wave = [wave_positions[0]]
+
+            for i in range(1, len(wave_positions)):
+                if wave_positions[i] - wave_positions[i - 1] > min_wave_gap:
+                    waves.append(current_wave)
+                    current_wave = [wave_positions[i]]
+                else:
+                    current_wave.append(wave_positions[i])
+
+            # Append the last wave
+            waves.append(current_wave)
+
+            # Calculate center of mass for each wave
+            center_of_mass_points = []
+            new_waves = []
+
+            if modality != "unimodal":
+                for wave in waves:
+                    new_waves.append(wave[:int(.5*len(wave))])
+                    new_waves.append(wave[int(.5*len(wave)):])
+
+            else:
+                new_waves = waves
+
+            for wave in new_waves:
+                wave_intensities = row[wave]
+                total_intensity = np.sum(wave_intensities)
+
+                if total_intensity > 0:
+                    positions = np.array(wave)
+                    center_of_mass = np.sum(positions * wave_intensities) / total_intensity
+                    center_of_mass_points.append((y, center_of_mass))
+
+            # Append center of mass points to the closest wave line
+            for (y, x_center) in center_of_mass_points:
+                added = False
+
+                # Compare to existing wave lines
+                for idx, wave_line in enumerate(wave_lines):
+                    last_y, last_x_center = wave_line[-1]
+
+                    # Check both horizontal and vertical proximity
+                    if abs(x_center - last_x_center) < horizontal_proximity_threshold and abs(y - last_y) <= vertical_proximity_threshold:
+                        wave_line.append((y, x_center))  # Append to existing wave line
+                        wave_missing_counts[idx] = 0  # Reset the missing row count for this wave
+                        added = True
+                        break
+
+                # If no match is found, start a new wave line
+                if not added:
+                    wave_lines.append([(y, x_center)])
+                    wave_missing_counts.append(0)  # Initialize missing row count for the new wave line
+
+        else:
+            # If no wave positions were found, increment the missing row count for each active wave line
+            for i in range(len(wave_missing_counts)):
+                wave_missing_counts[i] += 1
+
+        # Remove wave lines that have been missing for too many rows
+        wave_lines = [wave_line for idx, wave_line in enumerate(wave_lines) if wave_missing_counts[idx] < max_missing_rows]
+        wave_missing_counts = [count for count in wave_missing_counts if count < max_missing_rows]
+
+    # Remove wave lines that have fewer than the minimum required points
+    wave_lines = [wave_line for wave_line in wave_lines if len(wave_line) >= min_points_per_wave]
+    # pprint(wave_lines)
+    # Remove data too close to the edge
+    edge_threshold = 5
+    wave_lines = [[(y, x) for (y, x) in wave_line if edge_threshold <= x <= width - edge_threshold and edge_threshold <= y <= height - edge_threshold] for wave_line in wave_lines]
+
+    print(wave_lines)
+
+    return wave_lines
+
 def analyze_and_append_waves(image, 
                              wave_threshold=0, 
                              min_wave_gap=15, 
@@ -201,6 +316,8 @@ def analyze_and_append_waves(image,
     # Remove data too close to the edge
     edge_threshold = 5
     wave_lines = [[(y, x) for (y, x) in wave_line if edge_threshold <= x <= width - edge_threshold and edge_threshold <= y <= height - edge_threshold] for wave_line in wave_lines]
+
+    print(wave_lines)
 
     return wave_lines
 
