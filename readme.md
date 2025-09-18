@@ -4,7 +4,7 @@
 
 ## Features
 
-- Note: input multipage .tiff or .cxd (linux only) file
+- Note: input multipage .tiff or .cxd (requires java) file
 - Interactive Cropping: Allows users to click and drag on the - image to select a region of interest for analysis.
 - Wave Centerline Analysis: Detects and visualizes wave - centerlines across frames. Saves as TIFF imaage.
 - Post-Analysis Data Cleaning: Users can select areas to delete - broken or unnecessary data from the analysis results.
@@ -43,7 +43,9 @@ cd wave-motion-analyzer
 #### 2. Install dependencies and set up virtual environment:
 
 python -m venv venv
-.\env\Scripts\activate
+
+.\venv\Scripts\activate
+
 pip install -r requirements.txt
 
 # Usage
