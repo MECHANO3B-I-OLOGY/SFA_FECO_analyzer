@@ -37,14 +37,19 @@
 
 #### 1. Clone the repository:
 
-git clone https://github.com/yourusername/wave-motion-analyzer.git
+git clone https://github.com/MECHANO3B-I-OLOGY/SFA_FECO_analyzer.git
+
 cd wave-motion-analyzer
 
 #### 2. Install dependencies and set up virtual environment:
 
 python -m venv venv
 
+Windows:
 .\venv\Scripts\activate
+
+Other OSs:
+source ./venv/bin/activate
 
 pip install -r requirements.txt
 
