@@ -45,10 +45,10 @@ cd wave-motion-analyzer
 
 python -m venv venv
 
-Windows:
+**Windows:**
 .\venv\Scripts\activate
 
-Other OSs:
+**Other OSs:**
 source ./venv/bin/activate
 
 pip install -r requirements.txt
