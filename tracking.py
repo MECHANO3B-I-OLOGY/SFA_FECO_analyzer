@@ -226,6 +226,7 @@ def new_analyze_and_append_waves(image,
 
     return wave_lines
 
+@deprecated("Use new_analyze_and_append_waves instead, has modality check")
 def analyze_and_append_waves(image, 
                              wave_threshold=0, 
                              min_wave_gap=15, 
