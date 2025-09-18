@@ -78,7 +78,7 @@ class SFA_FECO_UI:
 
 
         # region Subframe for Calibration
-        prep_label = ttk.Label(self.root, text="STEP 0: Calibrate", style='Step.TLabel', font=20)
+        prep_label = ttk.Label(self.root, text="STEP 0: Dispersion Calibration", style='Step.TLabel', font=20)
         prep_label.grid(row=0, column=0, sticky='ew', padx=10)
 
         self.calibration_subframe = ttk.Frame(self.root)
@@ -88,44 +88,112 @@ class SFA_FECO_UI:
         self.calibration_subframe.columnconfigure(0, weight=1)
 
         # Select wavelength calibration video file
-        self.select_calibration_file_button = ttk.Button(self.calibration_subframe, text="Select Wavelength Calibration Video", command=self.select_wavelength_calibration_file, style='Regular.TButton')
+        self.select_calibration_file_button = ttk.Button(self.calibration_subframe, text="Select Hg Lines (No Mica) Video", command=self.select_wavelength_calibration_file, style='Regular.TButton')
         self.select_calibration_file_button.grid(row=1, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the selected wavelength calibration video file's name
         self.wavelength_calibration_file_label = ttk.Label(self.calibration_subframe, text="No file selected", style='Regular.TLabel')
         self.wavelength_calibration_file_label.grid(row=2, column=0, sticky='ew', padx=10)
 
+         # Checkbox frame (keeps them together neatly)
+        self.checkbox_frame = ttk.Frame(self.calibration_subframe)
+        self.checkbox_frame.grid(row=3, column=0, sticky='w', padx=10, pady=5)
+
+         # Instruction label inside the frame
+        self.checkbox_instruction = ttk.Label(
+            self.checkbox_frame,
+            text="If only using 2 Hg lines, select which you will use:",
+            style='Regular.TLabel'
+        )
+        self.checkbox_instruction.grid(row=0, column=0, columnspan=3, sticky='w', pady=(0, 5))
+
+
+        # Variables for checkboxes
+        self.green_var = tk.BooleanVar()
+        self.yellow1_var = tk.BooleanVar()
+        self.yellow2_var = tk.BooleanVar()
+
+        # Checkboxes
+        self.green_check = ttk.Checkbutton(self.checkbox_frame, text="Green", variable=self.green_var)
+        self.green_check.grid(row=1, column=0, sticky='w', padx=(0, 10))
+
+        self.yellow1_check = ttk.Checkbutton(self.checkbox_frame, text="Yellow 1", variable=self.yellow1_var)
+        self.yellow1_check.grid(row=1, column=1, sticky='w', padx=(0, 10))
+
+        self.yellow2_check = ttk.Checkbutton(self.checkbox_frame, text="Yellow 2", variable=self.yellow2_var)
+        self.yellow2_check.grid(row=1, column=2, sticky='w')
+
         # Calibrate Wavelengths button
         self.execute_wavelength_calibration = ttk.Button(self.calibration_subframe, text="Calibrate Wavelengths", command=self.run_wavelength_calibration, style='Regular.TButton')
-        self.execute_wavelength_calibration.grid(row=3, column=0, sticky='ew', padx=10, pady=5)
+        self.execute_wavelength_calibration.grid(row=3+1, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the wavelength calibration status
         self.calibration_completion_label = ttk.Label(self.calibration_subframe, text="Calibration not completed", style='Regular.TLabel')
-        self.calibration_completion_label.grid(row=4, column=0, sticky='new', padx=10, pady=(0, 20))
+        self.calibration_completion_label.grid(row=4+1, column=0, sticky='new', padx=10, pady=(0, 20))
+
+         # Subframe for dispersion values
+        self.dispersion_frame = ttk.Frame(self.calibration_subframe)
+        self.dispersion_frame.grid(row=self.calibration_subframe.grid_size()[1], column=0, sticky='ew', padx=10, pady=(5, 20))
+
+        # Dispersion 1
+        self.dispersion1_label = ttk.Label(self.dispersion_frame, text="Dispersion 1:", style='Regular.TLabel')
+        self.dispersion1_label.grid(row=0, column=0, sticky='w', pady=2, padx=(0, 5))
+        self.dispersion1_entry = ttk.Entry(self.dispersion_frame, width=15)
+        self.dispersion1_entry.grid(row=0, column=1, sticky='w', pady=2)
+
+        # Dispersion 2
+        self.dispersion2_label = ttk.Label(self.dispersion_frame, text="Dispersion 2:", style='Regular.TLabel')
+        self.dispersion2_label.grid(row=1, column=0, sticky='w', pady=2, padx=(0, 5))
+        self.dispersion2_entry = ttk.Entry(self.dispersion_frame, width=15)
+        self.dispersion2_entry.grid(row=1, column=1, sticky='w', pady=2)
+
+        # Dispersion 3
+        self.dispersion3_label = ttk.Label(self.dispersion_frame, text="Dispersion 3:", style='Regular.TLabel')
+        self.dispersion3_label.grid(row=2, column=0, sticky='w', pady=2, padx=(0, 5))
+        self.dispersion3_entry = ttk.Entry(self.dispersion_frame, width=15)
+        self.dispersion3_entry.grid(row=2, column=1, sticky='w', pady=2)
+
+        self.dispersionAvg_label = ttk.Label(self.dispersion_frame, text="Average Dispersion:", style='Regular.TLabel')
+        self.dispersionAvg_label.grid(row=3, column=0, sticky='w', pady=2, padx=(0, 5))
+        self.dispersionAvg_entry = ttk.Entry(self.dispersion_frame, width=15)
+        self.dispersionAvg_entry.grid(row=3, column=1, sticky='w', pady=2)
+
+        self.dispersionStd_label = ttk.Label(self.dispersion_frame, text="Standard Deviation:", style='Regular.TLabel')
+        self.dispersionStd_label.grid(row=4, column=0, sticky='w', pady=2, padx=(0, 5))
+        self.dispersionStd_entry = ttk.Entry(self.dispersion_frame, width=15)
+        self.dispersionStd_entry.grid(row=4, column=1, sticky='w', pady=2)
+
+        
+        self.dispersion1_entry.config(state="readonly")
+        self.dispersion2_entry.config(state="readonly")
+        self.dispersion3_entry.config(state="readonly")
+        self.dispersionAvg_entry.config(state="readonly")
+        self.dispersionStd_entry.config(state="readonly")
+        
 
         # Add a horizontal separator between rows
         calibrate_separator1 = ttk.Separator(self.calibration_subframe, orient="horizontal")
-        calibrate_separator1.grid(row=5, column=0, sticky='ew', pady=10)
+        calibrate_separator1.grid(row=5+2, column=0, sticky='ew', pady=10)
 
         # Select Thickness File button
-        self.select_thickness_file_button = ttk.Button(self.calibration_subframe, text="Select Thickness Calibration Video", command=self.select_thickness_file, style='Regular.TButton')
-        self.select_thickness_file_button.grid(row=6, column=0, sticky='ew', padx=10, pady=5)
+        self.select_thickness_file_button = ttk.Button(self.calibration_subframe, text="Select Mica Mica Contact (No Hg) Video", command=self.select_thickness_file, style='Regular.TButton')
+        self.select_thickness_file_button.grid(row=6+2, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the selected thickness file's name
         self.thickness_file_label = ttk.Label(self.calibration_subframe, text="No file selected", style='Regular.TLabel')
-        self.thickness_file_label.grid(row=7, column=0, sticky='new', padx=10)
+        self.thickness_file_label.grid(row=7+2, column=0, sticky='new', padx=10)
 
         # Calibrate Thickness button
-        self.execute_thickness_calibration = ttk.Button(self.calibration_subframe, text="Calibrate Thickness", command=self.run_thickness_calibration, style='Regular.TButton')
-        self.execute_thickness_calibration.grid(row=8, column=0, sticky='ew', padx=10, pady=5)
+        self.execute_thickness_calibration = ttk.Button(self.calibration_subframe, text="Calculate Mica Thickness", command=self.run_thickness_calibration, style='Regular.TButton')
+        self.execute_thickness_calibration.grid(row=8+2, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the thickness
         self.calibration_thickness_label = ttk.Label(self.calibration_subframe, text="Mica thickness:", style='Regular.TLabel')
-        self.calibration_thickness_label.grid(row=9, column=0, sticky='sew', padx=10)
+        self.calibration_thickness_label.grid(row=9+2, column=0, sticky='sew', padx=10)
 
         # Thickness display
         self.thickness_display = tk.Text(self.calibration_subframe, height=1, width=10, wrap="none")
-        self.thickness_display.grid(row=10, column=0, sticky="esw", padx=10, pady=(5, 5))
+        self.thickness_display.grid(row=10+2, column=0, sticky="esw", padx=10, pady=(5, 5))
 
         # Insert the mica thickness value into the text widget
         self.thickness_display.insert("1.0", str(self.mica_thickness))
@@ -135,35 +203,35 @@ class SFA_FECO_UI:
 
         # Add a horizontal separator between rows
         calibrate_separator2 = ttk.Separator(self.calibration_subframe, orient="horizontal")
-        calibrate_separator2.grid(row=11, column=0, sticky='ew', pady=10)
+        calibrate_separator2.grid(row=11+2, column=0, sticky='ew', pady=10)
 
         # Select radius File button
         self.select_radius_file_button = ttk.Button(self.calibration_subframe, text="Select Radius Calibration Video", command=self.select_radius_file, style='Regular.TButton')
-        self.select_radius_file_button.grid(row=12, column=0, sticky='ew', padx=10, pady=5)
+        self.select_radius_file_button.grid(row=12+2, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the selected radius file's name
         self.radius_file_label = ttk.Label(self.calibration_subframe, text="No file selected", style='Regular.TLabel')
-        self.radius_file_label.grid(row=13, column=0, sticky='new', padx=10)
+        self.radius_file_label.grid(row=13+2, column=0, sticky='new', padx=10)
 
         # Label to display the f
         self.calibration_f_label = ttk.Label(self.calibration_subframe, text="f value:", style='Regular.TLabel')
-        self.calibration_f_label.grid(row=14, column=0, sticky='sew', padx=10)
+        self.calibration_f_label.grid(row=14+2, column=0, sticky='sew', padx=10)
 
         # f display
         self.f_display = tk.Entry(self.calibration_subframe, textvariable = self.f, validate='key', validatecommand=vcmd)
-        self.f_display.grid(row=15, column=0, sticky="esw", padx=10, pady=(5, 5))
+        self.f_display.grid(row=15+2, column=0, sticky="esw", padx=10, pady=(5, 5))
 
         # Calibrate radius button
         self.execute_radius_calibration = ttk.Button(self.calibration_subframe, text="Find Radius", command=self.run_radius_calibration, style='Regular.TButton')
-        self.execute_radius_calibration.grid(row=16, column=0, sticky='ew', padx=10, pady=5)
+        self.execute_radius_calibration.grid(row=16+2, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the radius
         self.calibration_radius_label = ttk.Label(self.calibration_subframe, text="Radius:", style='Regular.TLabel')
-        self.calibration_radius_label.grid(row=17, column=0, sticky='sew', padx=10)
+        self.calibration_radius_label.grid(row=17+2, column=0, sticky='sew', padx=10)
 
         # Radius display
         self.radius_display = tk.Entry(self.calibration_subframe, textvariable = self.radius, validate='key', validatecommand=vcmd)
-        self.radius_display.grid(row=18, column=0, sticky="esw", padx=10, pady=(5, 5)) 
+        self.radius_display.grid(row=18+2, column=0, sticky="esw", padx=10, pady=(5, 5)) 
 
         # endregion
         
@@ -221,6 +289,23 @@ class SFA_FECO_UI:
         # Generate motion profile button
         self.generate_motion_button = ttk.Button(self.motion_profile_subframe, text="Generate Motion Profile", command=self.generate_motion_profile, style='Regular.TButton')
         self.generate_motion_button.grid(row=2, column=0, sticky='ew', padx=10, pady=5)
+
+        # Frame for radio buttons
+        self.mode_var = tk.StringVar(value="singlet")  # default selection
+        self.mode_frame = ttk.Frame(self.motion_profile_subframe)
+        self.mode_frame.grid(row=1, column=0, sticky='w', padx=10, pady=5)
+
+        self.singlet_radio = ttk.Radiobutton(
+            self.mode_frame, text="Singlet",
+            variable=self.mode_var, value="singlet"
+        )
+        self.singlet_radio.grid(row=0, column=0, sticky='w')
+
+        self.doublet_radio = ttk.Radiobutton(
+            self.mode_frame, text="Doublet",
+            variable=self.mode_var, value="doublet"
+        )
+        self.doublet_radio.grid(row=0, column=1, sticky='w')
         # endregion
 
         # Add a vertical separator between columns
@@ -336,7 +421,7 @@ class SFA_FECO_UI:
             relief="raised",
             width=10
         )
-
+    
     def select_wavelength_calibration_file(self):
         """
             Function for selecting wavelength calibration input file. Checks for validity and updates label. 
@@ -345,10 +430,13 @@ class SFA_FECO_UI:
         file_path = filedialog.askopenfilename(
             initialdir=os.path.join(os.getcwd()),
             title='Browse for TIFF file',
-            filetypes=[("TIFF Files", "*.tif *.tiff")]
+            filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")]
         )
         # file_path = "mica_gold.tif" # HARDCODED
         if file_path:
+
+            file_path = self.cdxToTiff(file_path)
+
             # Save the selected file path
             self.wavelength_calibration_video_file_path = file_path
             
@@ -384,11 +472,42 @@ class SFA_FECO_UI:
         """
         self.calibration_completion_label.config(text="Calibration completed")
         self.calibration_parameters = parameters
-    
+
+    def setDispersionEntries(self, d1,d2,d3,avg,std):
+        self.dispersion1_entry.config(state="normal")
+        self.dispersion2_entry.config(state="normal")
+        self.dispersion3_entry.config(state="normal")
+        self.dispersionAvg_entry.config(state="normal")
+        self.dispersionStd_entry.config(state="normal")
+
+        self.dispersion1_entry.delete(0, "end")
+        self.dispersion1_entry.insert(0, str(d1))
+
+        self.dispersion2_entry.delete(0, "end")
+        self.dispersion2_entry.insert(0, str(d2))
+
+        self.dispersion3_entry.delete(0, "end")
+        self.dispersion3_entry.insert(0, str(d3))
+
+        self.dispersionAvg_entry.delete(0, "end")
+        self.dispersionAvg_entry.insert(0, str(avg))
+
+        self.dispersionStd_entry.delete(0, "end")
+        self.dispersionStd_entry.insert(0, str(std))
+
+        self.dispersion1_entry.config(state="readonly")
+        self.dispersion2_entry.config(state="readonly")
+        self.dispersion3_entry.config(state="readonly")
+        self.dispersionAvg_entry.config(state="readonly")
+        self.dispersionStd_entry.config(state="readonly")
+
     def select_thickness_file(self):
         """Select input file for Calibrate Thickness. Updates label."""
-        self.thickness_input_file_path = filedialog.askopenfilename(filetypes=[("TIFF files", "*.tif")])
+        self.thickness_input_file_path = filedialog.askopenfilename(filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")])
         if self.thickness_input_file_path:
+
+            self.thickness_input_file_path = self.cdxToTiff(self.thickness_input_file_path)
+
             if len(self.thickness_input_file_path) > self.MAX_FILE_DISP_LENGTH:
                 data_file_text = '...' + self.thickness_input_file_path[len(self.thickness_input_file_path) - self.MAX_FILE_DISP_LENGTH:]
                 self.thickness_file_label.config(text=data_file_text)
@@ -419,15 +538,18 @@ class SFA_FECO_UI:
         
         # Clear the current content and insert the new value
         self.thickness_display.delete("1.0", "end")
-        self.thickness_display.insert("1.0", str(abs(thickness)) + ' um')
+        self.thickness_display.insert("1.0", str(abs(thickness))[:4] + ' um')
         
         # Disable the widget again to make it read-only
         self.thickness_display.config(state="disabled")
-
+    #HERE
     def select_radius_file(self):
         """Select input file for radius. Updates label."""
-        self.radius_input_file_path = filedialog.askopenfilename(filetypes=[("TIFF files", "*.tif")])
+        self.radius_input_file_path = filedialog.askopenfilename(filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")])
         if self.radius_input_file_path:
+
+            self.radius_input_file_path = self.cdxToTiff(self.radius_input_file_path)
+
             if len(self.radius_input_file_path) > self.MAX_FILE_DISP_LENGTH:
                 data_file_text = '...' + self.radius_input_file_path[len(self.radius_input_file_path) - self.MAX_FILE_DISP_LENGTH:]
                 self.radius_file_label.config(text=data_file_text)
@@ -448,18 +570,12 @@ class SFA_FECO_UI:
         file_path = filedialog.askopenfilename(
             initialdir=os.path.join(os.getcwd()),
             title='Browse for image file',
-            filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd")]
+            filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")]
         )
         # file_path = "FR1-P1-bis.tif" # hardcoded
         if file_path:
 
-            if(file_path.lower().endswith(".cxd")):
-                if platform == "win32":
-                    command = ['.\\bfconverter\\bfconvert.bat', file_path, f"{file_path[:-4]}.tiff"]
-                else:
-                    command = ['./bfconverter/bfconvert', file_path, f"{file_path[:-4]}.tiff"]
-                subprocess.run(command)
-                file_path = file_path[:-4] + ".tiff"
+            file_path = self.cdxToTiff(file_path)
 
             # Save the selected file path
             self.raw_video_file_path = file_path
@@ -578,6 +694,9 @@ class SFA_FECO_UI:
         else:
             error_popup("Please enter a valid output file name.")
 
+    def get_mode(self):
+        return self.mode_var.get()
+
     def callback_handle_crop_offset(self, offsets):
         """
             Handle the offset data returned from the Motion_Analysis_Window.
@@ -687,6 +806,16 @@ class SFA_FECO_UI:
         except ValueError:
             error_popup("Invalid input, must be numeric")
             return False  # Reject input if it’s not a number
+
+    def cdxToTiff(self, file):
+        if(file.lower().endswith(".cxd")):
+            if platform == "win32":
+                command = ['.\\bfconverter\\bfconvert.bat', file_path, f"{file_path[:-4]}.tiff"]
+            else:
+                command = ['./bfconverter/bfconvert', file_path, f"{file_path[:-4]}.tiff"]
+            subprocess.run(command)
+            file = file[:-4] + ".tiff"
+        return file
     
 class Frame_Prep_Window:
     """
@@ -934,6 +1063,14 @@ class Wavelength_Calibration_Window:
         self.selected_waves = []
         self.num_waves = 3
 
+        #  Output variables
+
+        self.dispersion1 = np.NaN
+        self.dispersion2 = np.NaN
+        self.dispersion3 = np.NaN
+        self.dispersionAvg = np.NaN
+        self.dispersionStd = np.NaN
+
         # Set up the Matplotlib figure
         self.fig, self.ax = plt.subplots(figsize=(8, 6))
         plt.subplots_adjust(bottom=0.2, top=.85)  # Leave space for the slider
@@ -1087,7 +1224,7 @@ class Wavelength_Calibration_Window:
 
     def run_wave_detection(self, image):
         """Runs the wave analysis on the cropped image."""
-        self.waves = tracking.analyze_and_append_waves(np.array(image), wave_threshold=110)
+        self.waves = tracking.new_analyze_and_append_waves(np.array(image), wave_threshold=110,modality=app.mode_var.get())
         self.display_waves()
 
     def display_waves(self):
@@ -1144,8 +1281,17 @@ class Wavelength_Calibration_Window:
         y_values = [
             CalibrationValues.HG_GREEN.value,
             CalibrationValues.HG_YELLOW_1.value,
-            CalibrationValues.HG_YELLOW_2.value,
+            CalibrationValues.HG_YELLOW_2.value
         ]
+
+        self.dispersion1 = (y_values[2] - y_values[1])/(x_values[2] - x_values[1])
+        self.dispersion2 = (y_values[1] - y_values[0])/(x_values[1] - x_values[0])
+        self.dispersion3 = (y_values[2] - y_values[0])/(x_values[2] - x_values[0])
+        self.dispersionAvg = np.average([self.dispersion1,self.dispersion2,self.dispersion3])
+        self.dispersionStd = np.std([self.dispersion1,self.dispersion2,self.dispersion3])
+
+        app.setDispersionEntries(self.dispersion1,self.dispersion2,self.dispersion3,self.dispersionAvg,self.dispersionStd)
+        
         coefficients = np.polyfit(x_values, y_values, 1)
         calibration_equation = {"slope": coefficients[0], "intercept": coefficients[1]}
         print(calibration_equation)
@@ -1383,11 +1529,12 @@ class Mica_Thickness_Calibration_Window:
         normalized_image = normalized_image.astype(np.uint8)
         
         # Run wave detection on the normalized image
-        self.waves = tracking.analyze_and_append_waves(
+        self.waves = tracking.new_analyze_and_append_waves(
             normalized_image,
             wave_threshold=40,
             min_points_per_wave=10,
-            min_wave_gap=10
+            min_wave_gap=10,
+            modality=app.mode_var.get()
         )
         
         # Proceed with filtering and displaying waves
@@ -1691,7 +1838,7 @@ class Motion_Analysis_Window:
     def run_analysis(self):
         """Run the analysis on the cropped image."""
         # Perform analysis on the cropped image
-        self.wave_lines = tracking.analyze_and_append_waves(self.cropped_image)
+        self.wave_lines = tracking.new_analyze_and_append_waves(self.cropped_image,modality=app.mode_var.get())
 
         # Visualize the results and enable data deletion
         self.visualize_wave_centerlines(self.cropped_image, self.wave_lines)
