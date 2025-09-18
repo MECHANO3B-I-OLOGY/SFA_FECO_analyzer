@@ -157,10 +157,18 @@ class SFA_FECO_UI:
         self.dispersionAvg_entry = ttk.Entry(self.dispersion_frame, width=15)
         self.dispersionAvg_entry.grid(row=3, column=1, sticky='w', pady=2)
 
-        self.dispersion1_entry.config(state="disabled")
-        self.dispersion2_entry.config(state="disabled")
-        self.dispersion3_entry.config(state="disabled")
-        self.dispersionAvg_entry.config(state="disabled")
+        self.dispersionStd_label = ttk.Label(self.dispersion_frame, text="Standard Deviation:", style='Regular.TLabel')
+        self.dispersionStd_label.grid(row=4, column=0, sticky='w', pady=2, padx=(0, 5))
+        self.dispersionStd_entry = ttk.Entry(self.dispersion_frame, width=15)
+        self.dispersionStd_entry.grid(row=4, column=1, sticky='w', pady=2)
+
+        
+        self.dispersion1_entry.config(state="readonly")
+        self.dispersion2_entry.config(state="readonly")
+        self.dispersion3_entry.config(state="readonly")
+        self.dispersionAvg_entry.config(state="readonly")
+        self.dispersionStd_entry.config(state="readonly")
+        
 
         # Add a horizontal separator between rows
         calibrate_separator1 = ttk.Separator(self.calibration_subframe, orient="horizontal")
@@ -175,7 +183,7 @@ class SFA_FECO_UI:
         self.thickness_file_label.grid(row=7+2, column=0, sticky='new', padx=10)
 
         # Calibrate Thickness button
-        self.execute_thickness_calibration = ttk.Button(self.calibration_subframe, text="Calibrate Mica Thickness", command=self.run_thickness_calibration, style='Regular.TButton')
+        self.execute_thickness_calibration = ttk.Button(self.calibration_subframe, text="Calculate Mica Thickness", command=self.run_thickness_calibration, style='Regular.TButton')
         self.execute_thickness_calibration.grid(row=8+2, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the thickness
@@ -460,6 +468,35 @@ class SFA_FECO_UI:
         """
         self.calibration_completion_label.config(text="Calibration completed")
         self.calibration_parameters = parameters
+
+    def setDispersionEntries(self, d1,d2,d3,avg,std):
+        self.dispersion1_entry.config(state="normal")
+        self.dispersion2_entry.config(state="normal")
+        self.dispersion3_entry.config(state="normal")
+        self.dispersionAvg_entry.config(state="normal")
+        self.dispersionStd_entry.config(state="normal")
+
+        self.dispersion1_entry.delete(0, "end")
+        self.dispersion1_entry.insert(0, str(d1))
+
+        self.dispersion2_entry.delete(0, "end")
+        self.dispersion2_entry.insert(0, str(d2))
+
+        self.dispersion3_entry.delete(0, "end")
+        self.dispersion3_entry.insert(0, str(d3))
+
+        self.dispersionAvg_entry.delete(0, "end")
+        self.dispersionAvg_entry.insert(0, str(avg))
+
+        self.dispersionStd_entry.delete(0, "end")
+        self.dispersionStd_entry.insert(0, str(std))
+
+        self.dispersion1_entry.config(state="readonly")
+        self.dispersion2_entry.config(state="readonly")
+        self.dispersion3_entry.config(state="readonly")
+        self.dispersionAvg_entry.config(state="readonly")
+        self.dispersionStd_entry.config(state="readonly")
+
     
     def select_thickness_file(self):
         """Select input file for Calibrate Thickness. Updates label."""
@@ -1010,6 +1047,14 @@ class Wavelength_Calibration_Window:
         self.selected_waves = []
         self.num_waves = 3
 
+        #  Output variables
+
+        self.dispersion1 = np.NaN
+        self.dispersion2 = np.NaN
+        self.dispersion3 = np.NaN
+        self.dispersionAvg = np.NaN
+        self.dispersionStd = np.NaN
+
         # Set up the Matplotlib figure
         self.fig, self.ax = plt.subplots(figsize=(8, 6))
         plt.subplots_adjust(bottom=0.2, top=.85)  # Leave space for the slider
@@ -1220,8 +1265,17 @@ class Wavelength_Calibration_Window:
         y_values = [
             CalibrationValues.HG_GREEN.value,
             CalibrationValues.HG_YELLOW_1.value,
-            CalibrationValues.HG_YELLOW_2.value,
+            CalibrationValues.HG_YELLOW_2.value
         ]
+
+        self.dispersion1 = (y_values[2] - y_values[1])/(x_values[2] - x_values[1])
+        self.dispersion2 = (y_values[1] - y_values[0])/(x_values[1] - x_values[0])
+        self.dispersion3 = (y_values[2] - y_values[0])/(x_values[2] - x_values[0])
+        self.dispersionAvg = np.average([self.dispersion1,self.dispersion2,self.dispersion3])
+        self.dispersionStd = np.std([self.dispersion1,self.dispersion2,self.dispersion3])
+
+        app.setDispersionEntries(self.dispersion1,self.dispersion2,self.dispersion3,self.dispersionAvg,self.dispersionStd)
+        
         coefficients = np.polyfit(x_values, y_values, 1)
         calibration_equation = {"slope": coefficients[0], "intercept": coefficients[1]}
         print(calibration_equation)
