@@ -10,6 +10,7 @@ from matplotlib.widgets import RectangleSelector, Slider, Cursor
 import csv
 from PIL import Image, ImageSequence
 from enums import CalibrationValues
+from sys import platform
 
 import tracking  
 from exceptions import error_popup, warning_popup
@@ -420,7 +421,7 @@ class SFA_FECO_UI:
             relief="raised",
             width=10
         )
-
+    
     def select_wavelength_calibration_file(self):
         """
             Function for selecting wavelength calibration input file. Checks for validity and updates label. 
@@ -429,10 +430,13 @@ class SFA_FECO_UI:
         file_path = filedialog.askopenfilename(
             initialdir=os.path.join(os.getcwd()),
             title='Browse for TIFF file',
-            filetypes=[("TIFF Files", "*.tif *.tiff")]
+            filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")]
         )
         # file_path = "mica_gold.tif" # HARDCODED
         if file_path:
+
+            file_path = self.cdxToTiff(file_path)
+
             # Save the selected file path
             self.wavelength_calibration_video_file_path = file_path
             
@@ -497,11 +501,13 @@ class SFA_FECO_UI:
         self.dispersionAvg_entry.config(state="readonly")
         self.dispersionStd_entry.config(state="readonly")
 
-    
     def select_thickness_file(self):
         """Select input file for Calibrate Thickness. Updates label."""
-        self.thickness_input_file_path = filedialog.askopenfilename(filetypes=[("TIFF files", "*.tif")])
+        self.thickness_input_file_path = filedialog.askopenfilename(filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")])
         if self.thickness_input_file_path:
+
+            self.thickness_input_file_path = self.cdxToTiff(self.thickness_input_file_path)
+
             if len(self.thickness_input_file_path) > self.MAX_FILE_DISP_LENGTH:
                 data_file_text = '...' + self.thickness_input_file_path[len(self.thickness_input_file_path) - self.MAX_FILE_DISP_LENGTH:]
                 self.thickness_file_label.config(text=data_file_text)
@@ -536,11 +542,14 @@ class SFA_FECO_UI:
         
         # Disable the widget again to make it read-only
         self.thickness_display.config(state="disabled")
-
+    #HERE
     def select_radius_file(self):
         """Select input file for radius. Updates label."""
-        self.radius_input_file_path = filedialog.askopenfilename(filetypes=[("TIFF files", "*.tif")])
+        self.radius_input_file_path = filedialog.askopenfilename(filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")])
         if self.radius_input_file_path:
+
+            self.radius_input_file_path = self.cdxToTiff(self.radius_input_file_path)
+
             if len(self.radius_input_file_path) > self.MAX_FILE_DISP_LENGTH:
                 data_file_text = '...' + self.radius_input_file_path[len(self.radius_input_file_path) - self.MAX_FILE_DISP_LENGTH:]
                 self.radius_file_label.config(text=data_file_text)
@@ -561,15 +570,12 @@ class SFA_FECO_UI:
         file_path = filedialog.askopenfilename(
             initialdir=os.path.join(os.getcwd()),
             title='Browse for image file',
-            filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd")]
+            filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")]
         )
         # file_path = "FR1-P1-bis.tif" # hardcoded
         if file_path:
 
-            if(file_path.lower().endswith(".cxd")):
-                command = ['./bfconverter/bfconvert', file_path, f"{file_path[:-4]}.tiff"]
-                subprocess.run(command)
-                file_path = file_path[:-4] + ".tiff"
+            file_path = self.cdxToTiff(file_path)
 
             # Save the selected file path
             self.raw_video_file_path = file_path
@@ -800,6 +806,16 @@ class SFA_FECO_UI:
         except ValueError:
             error_popup("Invalid input, must be numeric")
             return False  # Reject input if it’s not a number
+
+    def cdxToTiff(self, file):
+        if(file.lower().endswith(".cxd")):
+            if platform == "win32":
+                command = ['.\\bfconverter\\bfconvert.bat', file_path, f"{file_path[:-4]}.tiff"]
+            else:
+                command = ['./bfconverter/bfconvert', file_path, f"{file_path[:-4]}.tiff"]
+            subprocess.run(command)
+            file = file[:-4] + ".tiff"
+        return file
     
 class Frame_Prep_Window:
     """
