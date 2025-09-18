@@ -113,7 +113,8 @@ def new_analyze_and_append_waves(image,
                              vertical_proximity_threshold=1, 
                              max_missing_rows=2,
                              min_points_per_wave=50,
-                             modality="unimodal"):
+                             edge_bound=10,
+                             modality="singlet"):
     """
     Analyze waves in the image, calculate the center of mass for each wave, 
     and append them to the correct wave line based on proximity to previously detected waves.
@@ -131,7 +132,7 @@ def new_analyze_and_append_waves(image,
     - wave_lines: List of wave lines, each being a list of (y, x_center) points.
     """
 
-    if modality != "unimodal":
+    if modality != "singlet":
         horizontal_proximity_threshold = 25
 
     height, width = image.shape
@@ -164,7 +165,7 @@ def new_analyze_and_append_waves(image,
             center_of_mass_points = []
             new_waves = []
 
-            if modality != "unimodal":
+            if modality != "singlet":
                 for wave in waves:
                     new_waves.append(wave[:int(.5*len(wave))])
                     new_waves.append(wave[int(.5*len(wave)):])
@@ -211,13 +212,17 @@ def new_analyze_and_append_waves(image,
         wave_missing_counts = [count for count in wave_missing_counts if count < max_missing_rows]
 
     # Remove wave lines that have fewer than the minimum required points
-    wave_lines = [wave_line for wave_line in wave_lines if len(wave_line) >= min_points_per_wave]
+    #if (y < edge_bound or height - y < edge_bound):
+     #   edge = 1
+    #else:
+    #    edge = 0
+    wave_lines = [wave_line for wave_line in wave_lines if len(wave_line) >= min_points_per_wave ] #* (.5 * edge)
     # pprint(wave_lines)
     # Remove data too close to the edge
-    edge_threshold = 5
-    wave_lines = [[(y, x) for (y, x) in wave_line if edge_threshold <= x <= width - edge_threshold and edge_threshold <= y <= height - edge_threshold] for wave_line in wave_lines]
+    #edge_threshold = 5
+    #wave_lines = [[(y, x) for (y, x) in wave_line if edge_threshold <= x <= width - edge_threshold and edge_threshold <= y <= height - edge_threshold] for wave_line in wave_lines]
 
-    print(wave_lines)
+    #print(wave_lines)
 
     return wave_lines
 
@@ -227,7 +232,8 @@ def analyze_and_append_waves(image,
                              horizontal_proximity_threshold=15, 
                              vertical_proximity_threshold=1, 
                              max_missing_rows=2,
-                             min_points_per_wave=50):
+                             min_points_per_wave=50,
+                             modality = ""):
     """
     Analyze waves in the image, calculate the center of mass for each wave, 
     and append them to the correct wave line based on proximity to previously detected waves.
