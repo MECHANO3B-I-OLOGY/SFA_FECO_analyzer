@@ -128,8 +128,11 @@ The wave centerlines are saved as a CSV file, and the visualization is saved as 
 ## Packages and Dependencies
 
 NumPy: Array manipulation and numerical calculations.
+
 Matplotlib: For visualizing the image and wave centerlines.
+
 Pillow: For loading and handling image files (specifically TIFF format).
+
 Tkinter: Used for UI
 
 ## File Structure
