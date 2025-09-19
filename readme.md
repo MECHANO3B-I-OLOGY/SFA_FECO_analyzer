@@ -14,24 +14,27 @@
 
 ### Prerequisites
 
-- contourpy==1.2.1
-- cycler==0.12.1
-- fonttools==4.53.1
-- kiwisolver==1.4.5
-- matplotlib==3.8.2
-- numpy==1.26.3
-- opencv-contrib-python==4.10.0.82
-- packaging==24.1
-- pandas==2.1.1
-- pillow==10.2.0
-- pyparsing==3.1.2
-- python-dateutil==2.9.0.post0
-- pytz==2024.1
-- scipy==1.14.1
-- screeninfo==0.8.1
-- six==1.16.0
-- tk==0.1.0
-- tzdata==2024.1
+ - python 3.12.X
+ - java 25 (should come with Fiji)
+
+ - contourpy==1.2.1
+ - cycler==0.12.1
+ - deprecation==2.1.0
+ - fonttools==4.53.1
+ - kiwisolver==1.4.5
+ - matplotlib==3.8.2
+ - numpy==1.26.3
+ - opencv-contrib-python==4.10.0.82
+ - packaging==24.1
+ - pandas==2.2.3
+ - pillow==11.1.0
+ - pyparsing==3.1.2
+ - python-dateutil==2.9.0.post0
+ - pytz==2024.1
+ - scipy==1.14.1
+ - six==1.16.0
+ - tk==0.1.0
+ - tzdata==2024.1
 
 ### Setup Instructions
 
