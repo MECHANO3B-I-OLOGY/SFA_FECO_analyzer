@@ -2,6 +2,7 @@ import os
 import sys
 import subprocess
 import pathlib
+from setup import setup
 
 def get_venv_python(venv_dir="venv"):
     """Return path to the Python executable inside the venv."""
@@ -16,6 +17,10 @@ def runProgram(venv_dir="venv"):
 
     subprocess.run([venv_python, "main.py"])
 
-
 if __name__ == "__main__":
+    if not pathlib.Path("venv").exists():
+        setup()
+    else:
+        print(f"Using existing venv at venv")
+
     runProgram("venv")

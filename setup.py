@@ -48,11 +48,14 @@ def drop_into_shell(venv_dir="venv"):
         print("➡️ Dropping into bash with venv activated...")
         subprocess.run(["bash", "--rcfile", activate_script, "-i"])  # interactive shell
 
-if __name__ == "__main__":
+def setup():
     venv_dir = "venv"
     create_venv(venv_dir)
     install_requirements(venv_dir)
     print("Setup complete!")
+
+if __name__ == "__main__":
+    setup()
 
     #print("Setup complete! Launching shell...")
     #drop_into_shell(venv_dir)

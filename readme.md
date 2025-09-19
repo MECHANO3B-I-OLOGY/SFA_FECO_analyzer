@@ -42,27 +42,18 @@
 
 git clone https://github.com/MECHANO3B-I-OLOGY/SFA_FECO_analyzer.git
 
-cd wave-motion-analyzer
+cd SFA_FECO_analyzer
 
-#### 2. Install dependencies and set up virtual environment:
-
-python -m venv venv
-
-**Windows:**
-.\venv\Scripts\activate
-
-**Other OSs:**
-source ./venv/bin/activate
-
-pip install -r requirements.txt
 
 # Usage
 
 ## Steps to Run the Program:
 
-### Run the main script:
+### Run the script:
 
-python main.py
+Running the script will take longer on the first time, as all dependencies are downloaded.
+
+python run.py 
 
 ## In-Program:
 
