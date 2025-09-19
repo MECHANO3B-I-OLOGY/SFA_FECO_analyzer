@@ -137,7 +137,7 @@ Tkinter: Used for UI
 
 ```
 .
-├── bfconverter/ # Entry point of the program
+├── bfconverter/ # Packaged BioFormat Converter to convert .cdx to .tiff
 ├── .gitignore # Git ignore
 ├── changelog.txt # Changelog
 ├── enums.py # Script to store global constants
