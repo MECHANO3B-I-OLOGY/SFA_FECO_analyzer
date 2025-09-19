@@ -2067,10 +2067,7 @@ class RadiusMeasurementWindow:
         self.callback(radius)  # Return value via callback
         plt.close(self.fig)  # Close the window after calculation
 
-def runUI():
+if __name__ == "__main__":
     root = tk.Tk()
     app = SFA_FECO_UI(root)
     root.mainloop()
-
-if __name__ == "__main__":
-    runUI()

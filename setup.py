@@ -52,5 +52,7 @@ if __name__ == "__main__":
     venv_dir = "venv"
     create_venv(venv_dir)
     install_requirements(venv_dir)
-    print("Setup complete! Launching shell...")
-    drop_into_shell(venv_dir)
+    print("Setup complete!")
+
+    #print("Setup complete! Launching shell...")
+    #drop_into_shell(venv_dir)
