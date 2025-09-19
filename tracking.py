@@ -11,6 +11,7 @@ from PIL import Image, ImageTk, ImageSequence, ImageFilter
 from pprint import pprint 
 import matplotlib.pyplot as plt
 import os
+from deprecated import deprecated
 
 from enums import *
 from exceptions import error_popup, warning_popup
