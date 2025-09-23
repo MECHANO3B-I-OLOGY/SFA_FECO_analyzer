@@ -542,7 +542,7 @@ class SFA_FECO_UI:
         
         # Disable the widget again to make it read-only
         self.thickness_display.config(state="disabled")
-    #HERE
+    
     def select_radius_file(self):
         """Select input file for radius. Updates label."""
         self.radius_input_file_path = filedialog.askopenfilename(filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")])
@@ -696,6 +696,9 @@ class SFA_FECO_UI:
 
     def get_mode(self):
         return self.mode_var.get()
+
+    def get_HG_Lines(self):
+        return self.green_var, self.yellow1_var, self.yellow2_var
 
     def callback_handle_crop_offset(self, offsets):
         """
@@ -1108,7 +1111,7 @@ class Wavelength_Calibration_Window:
         if event.key == "enter":
             if self.stage == 1:
                 self.confirm_crop()
-            elif self.stage == 2 and len(self.selected_waves) == self.num_waves:
+            elif self.stage == 2:
                 self.calculate_transformation()
         elif event.key == "escape":
             if self.stage == 1:
@@ -1275,8 +1278,7 @@ class Wavelength_Calibration_Window:
 
     def calculate_transformation(self):
         """Calculates the calibration equation using the selected waves."""
-        if len(self.selected_waves) < 3: 
-            return
+
         x_values = sorted(self.selected_waves)
         y_values = [
             CalibrationValues.HG_GREEN.value,
@@ -1284,11 +1286,31 @@ class Wavelength_Calibration_Window:
             CalibrationValues.HG_YELLOW_2.value
         ]
 
-        self.dispersion1 = (y_values[2] - y_values[1])/(x_values[2] - x_values[1])
-        self.dispersion2 = (y_values[1] - y_values[0])/(x_values[1] - x_values[0])
-        self.dispersion3 = (y_values[2] - y_values[0])/(x_values[2] - x_values[0])
-        self.dispersionAvg = np.average([self.dispersion1,self.dispersion2,self.dispersion3])
-        self.dispersionStd = np.std([self.dispersion1,self.dispersion2,self.dispersion3])
+        if len(self.selected_waves) == 2:
+            g, y1, y2 = app.get_HG_Lines()
+
+            if (int(g.get()) + int(y1.get()) + int(y2.get()) != 2):
+                return
+
+            if (not g):
+                self.dispersion1 = (y_values[1] - y_values[0])/(x_values[2] - x_values[1])
+                self.dispersionAvg = self.dispersion1
+            elif (not y1):
+                self.dispersion3 = (y_values[1] - y_values[0])/(x_values[2] - x_values[0])
+                self.dispersionAvg = self.dispersion3
+            else:
+                self.dispersion2 = (y_values[1] - y_values[0])/(x_values[1] - x_values[0])
+                self.dispersionAvg = self.dispersion2
+
+        elif len(self.selected_waves) == 3:
+            self.dispersion1 = (y_values[2] - y_values[1])/(x_values[2] - x_values[1])
+            self.dispersion2 = (y_values[1] - y_values[0])/(x_values[1] - x_values[0])
+            self.dispersion3 = (y_values[2] - y_values[0])/(x_values[2] - x_values[0])
+            self.dispersionAvg = np.average([self.dispersion1,self.dispersion2,self.dispersion3])
+            self.dispersionStd = np.std([self.dispersion1,self.dispersion2,self.dispersion3])
+
+        else:
+            return
 
         app.setDispersionEntries(self.dispersion1,self.dispersion2,self.dispersion3,self.dispersionAvg,self.dispersionStd)
         
