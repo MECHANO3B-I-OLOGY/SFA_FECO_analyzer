@@ -1292,15 +1292,18 @@ class Wavelength_Calibration_Window:
             if (int(g.get()) + int(y1.get()) + int(y2.get()) != 2):
                 return
 
-            if (not g):
-                self.dispersion1 = (y_values[1] - y_values[0])/(x_values[2] - x_values[1])
+            if (not g.get()):
+                self.dispersion1 = (y_values[2] - y_values[1])/(x_values[1] - x_values[0])
                 self.dispersionAvg = self.dispersion1
-            elif (not y1):
-                self.dispersion3 = (y_values[1] - y_values[0])/(x_values[2] - x_values[0])
+                y_values = [y_values[1]] + [y_values[2]]
+            elif (not y1.get()):
+                self.dispersion3 = (y_values[2] - y_values[0])/(x_values[1] - x_values[0])
                 self.dispersionAvg = self.dispersion3
+                y_values = [y_values[0]] + [y_values[2]]
             else:
                 self.dispersion2 = (y_values[1] - y_values[0])/(x_values[1] - x_values[0])
                 self.dispersionAvg = self.dispersion2
+                y_values = [y_values[0]] + [y_values[1]]
 
         elif len(self.selected_waves) == 3:
             self.dispersion1 = (y_values[2] - y_values[1])/(x_values[2] - x_values[1])
