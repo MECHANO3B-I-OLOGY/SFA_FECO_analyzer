@@ -14,7 +14,7 @@
 
 ### Prerequisites
 
- - python 3.12.X
+ - python 3.13
  - java 25 (should come with Fiji)
 
  - contourpy==1.2.1
