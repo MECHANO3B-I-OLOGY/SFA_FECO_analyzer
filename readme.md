@@ -22,7 +22,7 @@
  - deprecation==2.1.0
  - fonttools==4.53.1
  - kiwisolver==1.4.5
- - matplotlib==3.8.2
+ - matplotlib==3.10.6
  - numpy==1.26.3
  - opencv-contrib-python==4.10.0.82
  - packaging==24.1
