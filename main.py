@@ -924,7 +924,6 @@ class Frame_Prep_Window:
         self.ax.clear()
         self.ax.imshow(frame, cmap="gray")
         self.ax.set_title("Select region to crop (y-axis only).")
-        self.ax.axis("off")
         self.fig.canvas.draw()
 
     def start_crop(self, event):
@@ -1002,7 +1001,6 @@ class Frame_Prep_Window:
             self.ax.clear()
             self.ax.imshow(self.cropped_frame, cmap="gray")
             self.ax.set_title("Cropping complete. You may close the window.")
-            self.ax.axis("off")
             self.fig.canvas.draw()
 
             # Hide the slider after cropping
