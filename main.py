@@ -1103,6 +1103,9 @@ class Wavelength_Calibration_Window:
         self.fig.canvas.mpl_connect("button_release_event", self.end_crop)
         self.fig.canvas.mpl_connect("key_press_event", self.handle_key_press)
 
+        self.ax.set_xlabel("Pixels")
+        self.ax.set_ylabel("Pixels")
+
         # Show the plot
         plt.show()
 
@@ -1150,7 +1153,8 @@ class Wavelength_Calibration_Window:
         self.ax.clear()
         self.ax.imshow(np.array(image), cmap="gray")
         self.ax.set_title(f"Frame {self.current_frame_index}")
-        self.ax.axis("off")
+        #self.ax.set_xlabel("Pixels")
+        #self.ax.set_ylabel("Pixels")
         self.update_instructions("Step 1: Select the region to crop by clicking and dragging. Press Enter to confirm.")
         self.fig.canvas.draw()
 
@@ -1469,7 +1473,8 @@ class Mica_Thickness_Calibration_Window:
         self.ax.clear()
         self.ax.imshow(np.array(image), cmap="gray")
         self.ax.set_title(f"Frame {self.current_frame_index}")
-        self.ax.axis("off")
+        self.ax.set_xlabel("Pixels")
+        self.ax.set_ylabel("Pixels")
         self.update_instructions("Step 1: Select the region to crop by clicking and dragging. Press Enter to confirm.")
         self.fig.canvas.draw()
 
