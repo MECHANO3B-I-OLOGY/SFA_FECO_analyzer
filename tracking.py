@@ -380,6 +380,7 @@ def perform_turnaround_estimation(motion_profile_file_path, centerline_csv_path,
         pointNum = 5
 
         # Initialize lists for leftward and rightward motion points
+        print(x_coords)
         leftward_points = [(x_coords[pointNum - 2], y_coords[pointNum - 2])]
 
         while pointNum < len(x_coords) and (leftward_points[-1][0]- x_coords[pointNum]) >= 5:

@@ -1749,7 +1749,8 @@ class Motion_Analysis_Window:
             self.handle_crop_keypress(event)
         elif self.mode == self.DELETION_MODE:
             self.handle_delete_keypress(event)
-            canvas.draw()
+            #canvas.draw()
+
     def handle_crop_keypress(self, event):
         """Handle key presses specifically for cropping mode."""
         if event.key == 'enter':
