@@ -1951,7 +1951,7 @@ class Motion_Analysis_Window:
         if hasattr(self, "rect_selector"):
             self.rect_selector.set_active(False)
             self.rect_selector.disconnect_events()
-            self.rect_selector.background = None  # Clear any cached blit background
+            self.rect_selector.background = None 
 
         # Force redraw before switching backend
         self.fig.canvas.draw()
