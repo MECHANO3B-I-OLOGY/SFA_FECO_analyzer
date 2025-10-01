@@ -1322,7 +1322,7 @@ class Wavelength_Calibration_Window:
         
         coefficients = np.polyfit(x_values, y_values, 1)
         calibration_equation = {"slope": coefficients[0], "intercept": coefficients[1]}
-        print(calibration_equation)
+        #print(calibration_equation)
         self.callback(calibration_equation)
         self.close_figure()
 
