@@ -7,6 +7,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog
 import matplotlib.pyplot as plt
 from matplotlib.widgets import RectangleSelector, Slider, Cursor
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import csv
 from PIL import Image, ImageSequence
 from enums import CalibrationValues
@@ -1748,7 +1749,7 @@ class Motion_Analysis_Window:
             self.handle_crop_keypress(event)
         elif self.mode == self.DELETION_MODE:
             self.handle_delete_keypress(event)
-
+            canvas.draw()
     def handle_crop_keypress(self, event):
         """Handle key presses specifically for cropping mode."""
         if event.key == 'enter':
@@ -1947,15 +1948,22 @@ class Motion_Analysis_Window:
         # Update the plot title to a proper name
         self.ax.set_title("Final Wave Centerlines")
         
-        # Force an immediate redraw of the figure
+        if hasattr(self, "rect_selector"):
+            self.rect_selector.set_active(False)
+            self.rect_selector.disconnect_events()
+            self.rect_selector.background = None  # Clear any cached blit background
+
+        # Force redraw before switching backend
         self.fig.canvas.draw()
         
         # Save the figure as a PDF
         pdf_filename = "last_centerline_visualization.pdf"
         try:
-            self.fig.savefig(pdf_filename, format='pdf', bbox_inches='tight') 
+            self.fig.savefig(pdf_filename, format='pdf', bbox_inches='tight')
         except Exception as e:
             print(f"Error saving figure as PDF: {e}")
+
+        plt.close(self.fig)
 
     def save_wave_centerlines_to_csv(self, wave_lines, output_filename):
         """Save the wave centerlines to a CSV file, with an optional calibrated CSV if parameters are available."""
