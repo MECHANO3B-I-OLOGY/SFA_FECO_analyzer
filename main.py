@@ -1957,7 +1957,7 @@ class Motion_Analysis_Window:
         self.fig.canvas.draw()
         
         # Save the figure as a PDF
-        pdf_filename = "last_centerline_visualization.pdf"
+        pdf_filename = os.path.join("Output", "last_centerline_visualization.pdf")
         try:
             self.fig.savefig(pdf_filename, format='pdf', bbox_inches='tight')
         except Exception as e:
