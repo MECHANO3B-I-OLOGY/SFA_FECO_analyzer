@@ -421,28 +421,36 @@ def perform_turnaround_estimation(motion_profile_file_path, centerline_csv_path,
             intersection_points[wavenum] = intersection_point
             # print(intersection_point)
 
-        # Plot each wave line
-        ax.plot(x_coords, y_coords, color=colors[wavenum])
-        # Plot leftward and rightward linear approximations
+        # Plot each wave line with a label
+        ax.plot(x_coords, y_coords, color=colors[wavenum-1], label=f"Wave {wavenum}")
+
+        # Plot leftward linear approximation with a label
         if left_slope is not None:
             left_fit_x = np.array(left_x_coords)
             left_fit_y = left_slope * left_fit_x + left_intercept
-            ax.plot(left_fit_x, left_fit_y, 'b--')
+            ax.plot(left_fit_x, left_fit_y, 'b--', label=f"Wave {wavenum} Left Fit")
 
+        # Plot rightward linear approximation with a label
         if right_slope is not None:
             right_fit_x = np.array(right_x_coords)
             right_fit_y = right_slope * right_fit_x + right_intercept
-            ax.plot(right_fit_x, right_fit_y, 'r--')
+            ax.plot(right_fit_x, right_fit_y, 'r--', label=f"Wave {wavenum} Right Fit")
 
-        # Plot the intersection point
+        # Plot the intersection point with a label
         if intersection_point:
-            ax.plot(intersection_point[0], intersection_point[1], 'go')
+            ax.plot(intersection_point[0], intersection_point[1], 'go', label=f"Wave {wavenum} Intersection")
 
     # Reapply title, labels, and limit the legend for clarity
     ax.set_title("Turnaround Estimation")
     ax.set_xlabel("X (columns)")
     ax.set_ylabel("Y (rows)")
-    ax.legend(loc='upper left', fontsize='small')
+    ax.legend(
+        loc='upper left',
+        bbox_to_anchor=(1.05, 1),
+        borderaxespad=0.,
+        fontsize='small'
+    )
+    fig.tight_layout() 
 
     # Ensure the Output folder exists
     output_folder = os.path.join(os.getcwd(), "Output")
