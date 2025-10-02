@@ -814,9 +814,9 @@ class SFA_FECO_UI:
     def cdxToTiff(self, file):
         if(file.lower().endswith(".cxd")):
             if platform == "win32":
-                command = ['.\\bfconverter\\bfconvert.bat', file_path, f"{file_path[:-4]}.tiff"]
+                command = ['.\\bfconverter\\bfconvert.bat', file, f"{file[:-4]}.tiff"]
             else:
-                command = ['./bfconverter/bfconvert', file_path, f"{file_path[:-4]}.tiff"]
+                command = ['./bfconverter/bfconvert', file, f"{file[:-4]}.tiff"]
             subprocess.run(command)
             file = file[:-4] + ".tiff"
         return file
