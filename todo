@@ -5,6 +5,7 @@ future plans:
 - unified file selection strategy, in and out (and finish error catching)
 - scale window to screen (the right way?)
 - Distance calculation
+  - Proper mu calculation for saaD, possible skip
 
 finished:
 
