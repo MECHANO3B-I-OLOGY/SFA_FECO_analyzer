@@ -436,7 +436,7 @@ class SFA_FECO_UI:
         # file_path = "mica_gold.tif" # HARDCODED
         if file_path:
 
-            file_path = self.cdxToTiff(file_path)
+            file_path = self.cxdToTiff(file_path)
 
             # Save the selected file path
             self.wavelength_calibration_video_file_path = file_path
@@ -482,19 +482,19 @@ class SFA_FECO_UI:
         self.dispersionStd_entry.config(state="normal")
 
         self.dispersion1_entry.delete(0, "end")
-        self.dispersion1_entry.insert(0, str(d1))
+        self.dispersion1_entry.insert(0, str(d1)[:6])
 
         self.dispersion2_entry.delete(0, "end")
-        self.dispersion2_entry.insert(0, str(d2))
+        self.dispersion2_entry.insert(0, str(d2)[:6])
 
         self.dispersion3_entry.delete(0, "end")
-        self.dispersion3_entry.insert(0, str(d3))
+        self.dispersion3_entry.insert(0, str(d3)[:6])
 
         self.dispersionAvg_entry.delete(0, "end")
-        self.dispersionAvg_entry.insert(0, str(avg))
+        self.dispersionAvg_entry.insert(0, str(avg)[:6])
 
         self.dispersionStd_entry.delete(0, "end")
-        self.dispersionStd_entry.insert(0, str(std))
+        self.dispersionStd_entry.insert(0, str(std)[:6])
 
         self.dispersion1_entry.config(state="readonly")
         self.dispersion2_entry.config(state="readonly")
@@ -507,7 +507,7 @@ class SFA_FECO_UI:
         self.thickness_input_file_path = filedialog.askopenfilename(filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")])
         if self.thickness_input_file_path:
 
-            self.thickness_input_file_path = self.cdxToTiff(self.thickness_input_file_path)
+            self.thickness_input_file_path = self.cxdToTiff(self.thickness_input_file_path)
 
             if len(self.thickness_input_file_path) > self.MAX_FILE_DISP_LENGTH:
                 data_file_text = '...' + self.thickness_input_file_path[len(self.thickness_input_file_path) - self.MAX_FILE_DISP_LENGTH:]
@@ -549,7 +549,7 @@ class SFA_FECO_UI:
         self.radius_input_file_path = filedialog.askopenfilename(filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")])
         if self.radius_input_file_path:
 
-            self.radius_input_file_path = self.cdxToTiff(self.radius_input_file_path)
+            self.radius_input_file_path = self.cxdToTiff(self.radius_input_file_path)
 
             if len(self.radius_input_file_path) > self.MAX_FILE_DISP_LENGTH:
                 data_file_text = '...' + self.radius_input_file_path[len(self.radius_input_file_path) - self.MAX_FILE_DISP_LENGTH:]
@@ -576,7 +576,7 @@ class SFA_FECO_UI:
         # file_path = "FR1-P1-bis.tif" # hardcoded
         if file_path:
 
-            file_path = self.cdxToTiff(file_path)
+            file_path = self.cxdToTiff(file_path)
 
             # Save the selected file path
             self.raw_video_file_path = file_path
@@ -811,7 +811,7 @@ class SFA_FECO_UI:
             error_popup("Invalid input, must be numeric")
             return False  # Reject input if it’s not a number
 
-    def cdxToTiff(self, file):
+    def cxdToTiff(self, file):
         if(file.lower().endswith(".cxd")):
             if platform == "win32":
                 command = ['.\\bfconverter\\bfconvert.bat', file, f"{file[:-4]}.tiff"]
@@ -1197,6 +1197,7 @@ class Wavelength_Calibration_Window:
     def confirm_crop(self):
         """Confirms the crop selection and proceeds to wave analysis."""
         if self.crop_start_y is not None and self.crop_end_y is not None:
+            # CHANGE WORDING (CONFIRM IDENTIFIED LINES)
             self.update_instructions("Select 3 lines for calibration. Press enter when finished, or escape to restart.")
             y1, y2 = sorted((int(self.crop_start_y), int(self.crop_end_y)))
             self.image.seek(self.current_frame_index)
