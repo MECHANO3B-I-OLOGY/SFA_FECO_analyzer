@@ -15,7 +15,6 @@ class distance:
     def calcMuBar(self):
         return self.muMica/self.mu
 
-
     def calcFn(self):
         return self.lambdaEven/(self.lambdaEven - self.lambdaOdd)
 
