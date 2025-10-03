@@ -1063,8 +1063,7 @@ class Wavelength_Calibration_Window:
         self.cropped_image = None
         self.wave_x_avgs = []
         self.selected_waves = []
-        g, y1, y2 = app.get_HG_Lines()
-        self.num_waves = int(g.get()) + int(y1.get()) + int(y2.get())
+        self.num_waves = 2 if sum(int(x.get()) for x in app.get_HG_Lines()) == 2 else 3
 
         #  Output variables
 
@@ -1213,6 +1212,10 @@ class Wavelength_Calibration_Window:
 
             # Run wave analysis
             self.run_wave_detection(cropped_frame)
+
+            if self.waves is not None and len(self.waves) == self.num_waves:
+                self.selected_waves = [int(np.mean([point[1] for point in wave])) for wave in self.waves]
+                self.calculate_transformation()
         else:
             self.update_instructions("No crop area selected. Please try again.") 
 
