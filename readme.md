@@ -15,7 +15,7 @@
 ### Prerequisites
 
  - python 3.13
- - java 25 (should come with Fiji)
+ - java 25 (should come with Fiji, ensure that PATH is set up correctly)
 
  - contourpy==1.2.1
  - cycler==0.12.1

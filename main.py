@@ -1063,7 +1063,8 @@ class Wavelength_Calibration_Window:
         self.cropped_image = None
         self.wave_x_avgs = []
         self.selected_waves = []
-        self.num_waves = 3
+        g, y1, y2 = app.get_HG_Lines()
+        self.num_waves = int(g.get()) + int(y1.get()) + int(y2.get())
 
         #  Output variables
 
@@ -1154,7 +1155,7 @@ class Wavelength_Calibration_Window:
         self.ax.set_title(f"Frame {self.current_frame_index}")
         #self.ax.set_xlabel("Pixels")
         #self.ax.set_ylabel("Pixels")
-        self.update_instructions("Step 1: Select the region to crop by clicking and dragging. Press Enter to confirm.")
+        self.update_instructions("Step 1: Select the region with all Hg bars by clicking and dragging. Press Enter to confirm.")
         self.fig.canvas.draw()
 
     def click_start_crop(self, event):
@@ -1198,7 +1199,7 @@ class Wavelength_Calibration_Window:
         """Confirms the crop selection and proceeds to wave analysis."""
         if self.crop_start_y is not None and self.crop_end_y is not None:
             # CHANGE WORDING (CONFIRM IDENTIFIED LINES)
-            self.update_instructions("Select 3 lines for calibration. Press enter when finished, or escape to restart.")
+            self.update_instructions(f"Select {self.num_waves} lines for calibration. Press enter when finished, or escape to restart.")
             y1, y2 = sorted((int(self.crop_start_y), int(self.crop_end_y)))
             self.image.seek(self.current_frame_index)
             cropped_frame = self.image.crop((0, y1, self.image.width, y2))
@@ -1404,7 +1405,7 @@ class Mica_Thickness_Calibration_Window:
         # Add instruction text above the plot
         self.instruction_text = self.fig.text(
             0.5, 0.95,  # Centered horizontally, near the top of the figure
-            "Step 1: Select the region to crop by clicking and dragging. Press Enter to confirm.",
+            "Step 1: Select a region including the peaks of the FECO by clicking and dragging. Press Enter to confirm.",
             ha="center", va="center", fontsize=10
         )
 
