@@ -1,18 +1,19 @@
-import os
-import sys
-import shutil
+import csv
 import cv2
-import subprocess
-import numpy as np
-import tkinter as tk
-from tkinter import ttk, filedialog
 import matplotlib.pyplot as plt
+import numpy as np
+import os
+import shutil
+import subprocess
+import sys
+import tkinter as tk
+
+from enums import CalibrationValues
+from PIL import Image, ImageSequence
 from matplotlib.widgets import RectangleSelector, Slider, Cursor
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
-import csv
-from PIL import Image, ImageSequence
-from enums import CalibrationValues
 from sys import platform
+from tkinter import ttk, filedialog
 
 import tracking  
 from exceptions import error_popup, warning_popup, checkbox_popup
