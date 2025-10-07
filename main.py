@@ -1,5 +1,6 @@
 import os
 import sys
+import shutil
 import cv2
 import subprocess
 import numpy as np
@@ -14,7 +15,7 @@ from enums import CalibrationValues
 from sys import platform
 
 import tracking  
-from exceptions import error_popup, warning_popup
+from exceptions import error_popup, warning_popup, checkbox_popup
 
 class SFA_FECO_UI:
     """
@@ -48,6 +49,23 @@ class SFA_FECO_UI:
         self.mica_thickness = '0'
         self.radius = tk.StringVar()
         self.f = 1
+
+        self.javaExists = self.check_java()
+
+        flag_path = os.path.join(os.getcwd(), "storage.txt")
+        skip_java_warning = False
+        if os.path.exists(flag_path):
+            try:
+                with open(flag_path, "r") as f:
+                    if f.read().strip() == "1":
+                        skip_java_warning = True
+            except Exception:
+                pass
+
+        if (not self.javaExists and not skip_java_warning):
+            if checkbox_popup(self.root, "Java Warning", "Java is not installed, or not properly set up in PATH. Disabling CXD to TIFF conversion"):
+                with open(os.path.join(os.getcwd(), "storage.txt"), "w") as f:
+                    f.write("1")
 
         # Set protocol for window close to ensure full exit
         self.root.protocol("WM_DELETE_WINDOW", self.exit_application)
@@ -810,6 +828,30 @@ class SFA_FECO_UI:
         except ValueError:
             error_popup("Invalid input, must be numeric")
             return False  # Reject input if it’s not a number
+
+    def check_java(self):
+        # Quick check if "java" is in PATH
+        java_path = shutil.which("java")
+        if java_path is None:
+            return False
+
+        try:
+            # Run "java -version" (stderr contains version info)
+            result = subprocess.run(
+                ["java", "-version"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+
+            output = result.stdout.strip() or result.stderr.strip()
+            if result.returncode == 0 and ("version" in output.lower() or "openjdk" in output.lower()):
+                return True
+            else:
+                return False
+
+        except Exception as e:
+            return False
 
     def cxdToTiff(self, file):
         if(file.lower().endswith(".cxd")):
