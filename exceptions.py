@@ -1,4 +1,4 @@
-from tkinter import messagebox
+from tkinter import Toplevel, Label, Button, Checkbutton, IntVar, messagebox
 
 def error_popup(msg=None):
     if msg == None:

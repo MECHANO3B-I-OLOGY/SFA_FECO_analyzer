@@ -52,20 +52,7 @@ class SFA_FECO_UI:
 
         self.javaExists = self.check_java()
 
-        flag_path = os.path.join(os.getcwd(), "storage.txt")
-        skip_java_warning = False
-        if os.path.exists(flag_path):
-            try:
-                with open(flag_path, "r") as f:
-                    if f.read().strip() == "1":
-                        skip_java_warning = True
-            except Exception:
-                pass
-
-        if (not self.javaExists and not skip_java_warning):
-            if checkbox_popup(self.root, "Java Warning", "Java is not installed, or not properly set up in PATH. Disabling CXD to TIFF conversion"):
-                with open(os.path.join(os.getcwd(), "storage.txt"), "w") as f:
-                    f.write("1")
+        
 
         # Set protocol for window close to ensure full exit
         self.root.protocol("WM_DELETE_WINDOW", self.exit_application)
@@ -416,6 +403,21 @@ class SFA_FECO_UI:
 
         # endregion
         # endregion
+
+        flag_path = os.path.join(os.getcwd(), "storage.txt")
+        skip_java_warning = False
+        if os.path.exists(flag_path):
+            try:
+                with open(flag_path, "r") as f:
+                    if f.read().strip() == "1":
+                        skip_java_warning = True
+            except Exception:
+                pass
+
+        if (not self.javaExists and not skip_java_warning):
+            if checkbox_popup(self.root, "Java Warning", "Java is not installed, or not properly set up in PATH. Disabling CXD to TIFF conversion"):
+                with open(os.path.join(os.getcwd(), "storage.txt"), "w") as f:
+                    f.write("1")
     
     def exit_application(self):
         """Cleanly exit the application."""
@@ -446,15 +448,11 @@ class SFA_FECO_UI:
             Function for selecting wavelength calibration input file. Checks for validity and updates label. 
         """
         # Open a file dialog to select a TIFF file
-        file_path = filedialog.askopenfilename(
-            initialdir=os.path.join(os.getcwd()),
-            title='Browse for TIFF file',
-            filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")]
-        )
+
+        file_path = self.getFile()
+
         # file_path = "mica_gold.tif" # HARDCODED
         if file_path:
-
-            file_path = self.cxdToTiff(file_path)
 
             # Save the selected file path
             self.wavelength_calibration_video_file_path = file_path
@@ -522,10 +520,8 @@ class SFA_FECO_UI:
 
     def select_thickness_file(self):
         """Select input file for Calibrate Thickness. Updates label."""
-        self.thickness_input_file_path = filedialog.askopenfilename(filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")])
+        self.thickness_input_file_path = self.getFile()
         if self.thickness_input_file_path:
-
-            self.thickness_input_file_path = self.cxdToTiff(self.thickness_input_file_path)
 
             if len(self.thickness_input_file_path) > self.MAX_FILE_DISP_LENGTH:
                 data_file_text = '...' + self.thickness_input_file_path[len(self.thickness_input_file_path) - self.MAX_FILE_DISP_LENGTH:]
@@ -564,10 +560,8 @@ class SFA_FECO_UI:
     
     def select_radius_file(self):
         """Select input file for radius. Updates label."""
-        self.radius_input_file_path = filedialog.askopenfilename(filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")])
+        self.radius_input_file_path = self.getFile()
         if self.radius_input_file_path:
-
-            self.radius_input_file_path = self.cxdToTiff(self.radius_input_file_path)
 
             if len(self.radius_input_file_path) > self.MAX_FILE_DISP_LENGTH:
                 data_file_text = '...' + self.radius_input_file_path[len(self.radius_input_file_path) - self.MAX_FILE_DISP_LENGTH:]
@@ -586,15 +580,9 @@ class SFA_FECO_UI:
             Function for the user to select a file for the input. Updates the label and checks for validity.
         """
         # Open a file dialog to select a TIFF file
-        file_path = filedialog.askopenfilename(
-            initialdir=os.path.join(os.getcwd()),
-            title='Browse for image file',
-            filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")]
-        )
+        file_path = self.getFile()
         # file_path = "FR1-P1-bis.tif" # hardcoded
         if file_path:
-
-            file_path = self.cxdToTiff(file_path)
 
             # Save the selected file path
             self.raw_video_file_path = file_path
@@ -828,6 +816,23 @@ class SFA_FECO_UI:
         except ValueError:
             error_popup("Invalid input, must be numeric")
             return False  # Reject input if it’s not a number
+
+    def getFile(self):
+        if self.javaExists:
+            files = [("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")]
+        else:
+            files = [("TIFF Files", "*.tif *.tiff"), ("All Files", "*")]
+
+        file_path = filedialog.askopenfilename(
+            initialdir=os.path.join(os.getcwd()),
+            title='Browse for image file',
+            filetypes=files
+        )
+
+        if file_path:
+            file_path = self.cxdToTiff(file_path)
+
+        return file_path
 
     def check_java(self):
         # Quick check if "java" is in PATH
