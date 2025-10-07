@@ -10,7 +10,7 @@ class distance:
         self.mu = mu
         self.n = n
 
-        self.muBar = calcMuBar()
+        self.muBar = self.calcMuBar()
 
     def calcMuBar(self):
         return self.muMica/self.mu
@@ -19,8 +19,8 @@ class distance:
         return self.lambdaEven/(self.lambdaEven - self.lambdaOdd)
 
     def saaDCalc(self, nOdd):
-        Fn = calcFn()
-        top = self.Fn*(self.lambdaD - self.lambdaOdd)
+        Fn = self.calcFn()
+        top = Fn*(self.lambdaD - self.lambdaOdd)
         oddD = nOdd*top/(2*self.muMica)
         evenD = (nOdd-1)*top*self.muMica/(2*self.mu**2)
         
@@ -28,8 +28,8 @@ class distance:
 
     def realDCalc(self):
         def rightHandSide():
-            upperInner = (1-self.lambdaOdd)/self.lambdaOdd
-            lowerInner = (1-self.lambdaOdd)/self.lambdaEven
+            upperInner = 1-(self.lambdaOdd/self.lambdaD)
+            lowerInner = 1-(self.lambdaOdd/self.lambdaEven)
             innerTerm = (upperInner/lowerInner)*math.pi
 
             upperTerm = 2*self.muBar * math.sin(innerTerm)
@@ -47,3 +47,9 @@ class distance:
             ret += [(afterTan * self.lambdaD)/(2*math.pi * self.mu)]
 
         return (ret[0], ret[1])
+
+if __name__ == "__main__":
+    dist = distance(560.1765, 572.9366, 5.43, muMica=1.5971, mu = 1.34,n=43)
+    print(dist.saaDCalc(dist.n))
+    print(dist.realDCalc())
+
