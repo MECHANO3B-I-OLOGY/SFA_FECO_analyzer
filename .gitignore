@@ -1,5 +1,3 @@
-storage.txt
-
 *.cdx
 *.pdf
 *.tif
@@ -8,6 +6,7 @@ storage.txt
 
 __pycache__
 .venv
+cache
 CXD_data
 venv
 Output/*

@@ -53,8 +53,6 @@ class SFA_FECO_UI:
 
         self.javaExists = self.check_java()
 
-        
-
         # Set protocol for window close to ensure full exit
         self.root.protocol("WM_DELETE_WINDOW", self.exit_application)
 
@@ -405,7 +403,12 @@ class SFA_FECO_UI:
         # endregion
         # endregion
 
-        flag_path = os.path.join(os.getcwd(), "storage.txt")
+        cache_dir = os.path.join(os.getcwd(), "cache")
+        flag_path = os.path.join(cache_dir, "storage.txt")
+
+        # Ensure cache directory exists
+        os.makedirs(cache_dir, exist_ok=True)
+        
         skip_java_warning = False
         if os.path.exists(flag_path):
             try:
