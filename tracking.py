@@ -1,17 +1,17 @@
-
-import cv2
 import csv
-import pprint
-import numpy as np
+import cv2
 import pandas as pd
+import pprint
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+
+from deprecation import deprecated
+from PIL import Image, ImageTk, ImageSequence, ImageFilter
+from pprint import pprint 
 from scipy.interpolate import splprep, splev
 from scipy.optimize import curve_fit
 from scipy import stats
-from PIL import Image, ImageTk, ImageSequence, ImageFilter
-from pprint import pprint 
-import matplotlib.pyplot as plt
-import os
-from deprecation import deprecated
 
 from enums import *
 from exceptions import error_popup, warning_popup
