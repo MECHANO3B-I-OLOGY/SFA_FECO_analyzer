@@ -49,7 +49,7 @@ class distance:
         return (ret[0], ret[1])
 
 if __name__ == "__main__":
-    dist = distance(560.1765, 572.9366, 5.43, muMica=1.5971, mu = 1.34,n=43)
+    dist = distance(560.1765, 572.9366, 560.720, muMica=1.5971, mu = 1.34,n=43)
     print(dist.saaDCalc(dist.n))
     print(dist.realDCalc())
 
