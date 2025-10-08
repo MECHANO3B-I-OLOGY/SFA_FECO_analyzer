@@ -420,7 +420,7 @@ class SFA_FECO_UI:
 
         if (not self.javaExists and not skip_java_warning):
             if checkbox_popup(self.root, "Java Warning", "Java is not installed, or not properly set up in PATH. Disabling CXD to TIFF conversion"):
-                with open(os.path.join(os.getcwd(), "storage.txt"), "w") as f:
+                with open(flag_path, "w") as f:
                     f.write("1")
     
     def exit_application(self):
