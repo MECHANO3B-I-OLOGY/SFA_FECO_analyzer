@@ -49,7 +49,24 @@ class distance:
         return (ret[0], ret[1])
 
 if __name__ == "__main__":
-    dist = distance(560.1765, 572.9366, 560.720, muMica=1.5971, mu = 1.34,n=43)
-    print(dist.saaDCalc(dist.n))
-    print(dist.realDCalc())
+    #dist = distance(560.1765, 572.9366, 560.720, muMica=1.5971, mu = 1.34,n=43)
+    
+    lambda_odd = float(input("Enter Lambda odd (nm): "))
+    lambda_even = float(input("Enter Lambda even (nm): "))
+    lambda_D = float(input("Enter Lambda D (nm): "))
+
+    # Prompt for optional inputs with defaults
+    muMica_input = input("Enter muMica (default 1.5971): ").strip()
+    mu_input = input("Enter mu (default 1.34): ").strip()
+
+    # Use defaults if no input is given
+    muMica = float(muMica_input) if muMica_input else 1.5971
+    mu = float(mu_input) if mu_input else 1.34
+
+    # Create distance object using entered values
+    dist = distance(lambda_odd, lambda_even, lambda_D, muMica=muMica, mu=mu)
+
+    # Print results
+    temp = dist.realDCalc()
+    print(f"The distance is either {temp[0]} nm or {temp[1]} nm")
 
