@@ -255,7 +255,7 @@ class SFA_FECO_UI:
         self.raw_video_subframe.columnconfigure(0, weight=1)
 
         # Raw video data select button
-        self.select_raw_button = ttk.Button(self.raw_video_subframe, text="Select Raw Video File", command=self.select_raw_video, style='Regular.TButton')
+        self.select_raw_button = ttk.Button(self.raw_video_subframe, text="Select Video for Distance Calculation", command=self.select_raw_video, style='Regular.TButton')
         self.select_raw_button.grid(row=0, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the selected file's name
@@ -1249,7 +1249,7 @@ class Wavelength_Calibration_Window:
         """Confirms the crop selection and proceeds to wave analysis."""
         if self.crop_start_y is not None and self.crop_end_y is not None:
             # CHANGE WORDING (CONFIRM IDENTIFIED LINES)
-            self.update_instructions(f"Select {self.num_waves} lines for calibration. Press enter when finished, or escape to restart.")
+            self.update_instructions(f"Select {self.num_waves} lines for calibration. Red lines are selected and green are not. Press enter when finished, or escape to restart.")
             y1, y2 = sorted((int(self.crop_start_y), int(self.crop_end_y)))
             self.image.seek(self.current_frame_index)
             cropped_frame = self.image.crop((0, y1, self.image.width, y2))
@@ -1266,7 +1266,8 @@ class Wavelength_Calibration_Window:
 
             if self.waves is not None and len(self.waves) == self.num_waves:
                 self.selected_waves = [int(np.mean([point[1] for point in wave])) for wave in self.waves]
-                self.calculate_transformation()
+                self.update_overlay()
+                #self.calculate_transformation()
         else:
             self.update_instructions("No crop area selected. Please try again.") 
 

@@ -5,8 +5,6 @@ future plans:
 - unified file selection strategy, in and out (and finish error catching)
 - scale window to screen (the right way?)
 - Distance calculation
-- add in able to see if numwave = total waves
-- select raw video file -> Select video for distance calculation
 - scale motion profiles 
 
 finished:
