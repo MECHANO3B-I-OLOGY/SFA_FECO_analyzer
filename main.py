@@ -1764,39 +1764,59 @@ class Motion_Analysis_Window:
     DELETION_MODE = 'delete'
     FIGURE_SIZE = (12, 4)
 
-    def __init__(self, motion_profile_file_path, calibration_parameters, output_file_path, offset_callback = None) -> None:
+    def __init__(self, motion_profile_file_path, calibration_parameters, output_file_path, offset_callback=None) -> None:
         self.y_offset = 0
         self.x_offset_start = 0
         self.x_offset_end = 0
         self.calibration_parameters = calibration_parameters
         self.offset_callback = offset_callback
 
-        # Step 1: Request output file name
         self.output_filename = output_file_path
+        self.timelapse_image = np.array(Image.open(motion_profile_file_path).convert('L'))
+        self.file_path = motion_profile_file_path
 
-        # Step 2: Load the timelapse image (convert it to a NumPy array)
-        self.timelapse_image = np.array(Image.open(motion_profile_file_path).convert('L'))  # Grayscale conversion
-        self.file_path = motion_profile_file_path  # Store file path for saving
-
-        # Step 3: Initialize mode (cropping or deleting)
-        self.mode = Motion_Analysis_Window.CROPPING_MODE  # Start with cropping mode
+        self.mode = Motion_Analysis_Window.CROPPING_MODE
         self.cropping_complete = False
-        self.crop_area = None  # Store the crop area
-        self.deletion_areas = []  # Store areas selected for deletion
+        self.crop_area = None
+        self.deletion_areas = []
 
-        # Increase the figure size for larger display
-        self.fig, self.ax = plt.subplots(figsize=Motion_Analysis_Window.FIGURE_SIZE)  # Set larger figure size
-        self.ax.imshow(self.timelapse_image, cmap='gray')
-        # self.ax.set_xlim( self.x_offset_start, self.x_offset_end)
-        self.ax.set_title("Click and drag to crop the image, then press any key to confirm. Press escape to cancel selection.")
+        h, w = self.timelapse_image.shape
+        aspect_ratio = w / h  # width / height
 
-        # Create a RectangleSelector for cropping the image
-        self.rect_selector = RectangleSelector(self.ax, self.on_select_crop, useblit=True, interactive=True)
+        self.fig, self.ax = plt.subplots(figsize=Motion_Analysis_Window.FIGURE_SIZE)
+        self.ax.imshow(self.timelapse_image, cmap='gray', origin='upper')
+
+        # --- Adjust visual aspect ratio only ---
+        # "aspect" = (height of data unit) / (width of data unit)
+        # smaller -> stretches vertically, larger -> compresses vertically
+
+        if aspect_ratio < 1:  
+            # Too tall: stretch it (make it appear less tall → wider)
+            # We want display ratio to reach 2:3 → target_aspect = h/w / (3/2)
+            target_ratio = 1
+            scale_factor = (aspect_ratio / target_ratio)
+            self.ax.set_aspect(scale_factor)  # stretch vertically
+        elif aspect_ratio > 4:
+            # Too wide: compress it vertically (towards 1:1)
+            target_ratio = 4
+            scale_factor = (aspect_ratio / target_ratio)
+            self.ax.set_aspect(scale_factor)  # compress vertically
+        else:
+            # Between 2:3 and 1:1 — leave normal
+            self.ax.set_aspect('auto')
+
+        self.ax.set_title(
+            "Click and drag to crop the image, then press any key to confirm. "
+            "Press Escape to cancel selection."
+        )
+
+        self.rect_selector = RectangleSelector(
+            self.ax, self.on_select_crop, useblit=True, interactive=True
+        )
         self.fig.canvas.mpl_connect('key_press_event', self.handle_key_press)
 
         plt.show(block=True)
 
-        # Step 4: Run the analysis after cropping
         if self.cropping_complete:
             self.run_analysis()
 
@@ -1958,7 +1978,25 @@ class Motion_Analysis_Window:
         self.ax.clear()
         
         # Replot the image
-        self.ax.imshow(self.cropped_image, cmap='gray')
+        self.ax.imshow(self.cropped_image, cmap='gray', origin='upper')
+
+        # --- Apply visual aspect ratio scaling for display convenience ---
+        h, w = self.cropped_image.shape
+        aspect_ratio = w / h  # width / height
+
+        if aspect_ratio < 1:
+            # Too tall → stretch vertically toward 1:1
+            target_ratio = 1
+            scale_factor = aspect_ratio / target_ratio
+            self.ax.set_aspect(scale_factor)
+        elif aspect_ratio > 4:
+            # Too wide → compress vertically toward 4:1
+            target_ratio = 4
+            scale_factor = aspect_ratio / target_ratio
+            self.ax.set_aspect(scale_factor)
+        else:
+            # Within [1, 4] range → leave natural aspect
+            self.ax.set_aspect('auto')
 
         # Replot the wave lines
         colors = plt.cm.rainbow(np.linspace(0, 1, len(self.wave_lines)))
@@ -1987,8 +2025,8 @@ class Motion_Analysis_Window:
                 self.calibration_parameters['slope'] * (tick - self.x_offset_start) + self.calibration_parameters['intercept']
                 for tick in ticks
             ]
-            self.ax.set_xticks(ticks)  # Original ticks for data
-            self.ax.set_xticklabels([f"{tick:.2f}" for tick in calibrated_ticks])  # Show calibrated labels
+            self.ax.set_xticks(ticks)
+            self.ax.set_xticklabels([f"{tick:.2f}" for tick in calibrated_ticks])
 
             self.ax.set_xlim(0, self.x_offset_end - self.x_offset_start)
 
@@ -1997,6 +2035,7 @@ class Motion_Analysis_Window:
 
         # Adjust the layout to include all elements
         self.fig.tight_layout()
+
 
     def on_close(self, event):
         """Save the modified wave lines and the figure when the window is closed."""
