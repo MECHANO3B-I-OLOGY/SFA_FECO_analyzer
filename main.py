@@ -1796,9 +1796,9 @@ class Motion_Analysis_Window:
             target_ratio = 1
             scale_factor = (aspect_ratio / target_ratio)
             self.ax.set_aspect(scale_factor)  # stretch vertically
-        elif aspect_ratio > 4:
+        elif aspect_ratio > 6:
             # Too wide: compress it vertically (towards 1:1)
-            target_ratio = 4
+            target_ratio = 6
             scale_factor = (aspect_ratio / target_ratio)
             self.ax.set_aspect(scale_factor)  # compress vertically
         else:
@@ -1989,9 +1989,9 @@ class Motion_Analysis_Window:
             target_ratio = 1
             scale_factor = aspect_ratio / target_ratio
             self.ax.set_aspect(scale_factor)
-        elif aspect_ratio > 4:
+        elif aspect_ratio > 6:
             # Too wide → compress vertically toward 4:1
-            target_ratio = 4
+            target_ratio = 6
             scale_factor = aspect_ratio / target_ratio
             self.ax.set_aspect(scale_factor)
         else:
