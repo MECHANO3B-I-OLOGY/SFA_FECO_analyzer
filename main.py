@@ -663,7 +663,7 @@ class SFA_FECO_UI:
             Function for the user to select a file for analysis. Updates label accordingly. 
         """
         # Allow the user to choose an existing data file
-        check_file = filedialog.askopenfilename(filetypes=[("Tiff files", "*.tif")])
+        check_file = self.getFile()
         if(check_file): 
             self.motion_output_file_path = check_file
             if len(self.motion_output_file_path) > self.MAX_FILE_DISP_LENGTH:

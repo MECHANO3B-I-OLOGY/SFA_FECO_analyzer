@@ -140,6 +140,9 @@ def new_analyze_and_append_waves(image,
     wave_lines = []  # Initialize list to store wave lines
     wave_missing_counts = []  # Track how many rows each wave has been missing for
 
+    if height < 50:
+        min_points_per_wave = height/2
+
     # Loop through each row
     for y in range(height):
         row = image[y, :]
