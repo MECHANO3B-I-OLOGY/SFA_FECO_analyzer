@@ -36,17 +36,16 @@ class distance:
             lowerTerm = (1+self.muBar**2) * math.cos(innerTerm)
             pm = self.muBar**2 - 1
 
-            plus = upperTerm/(lowerTerm + pm)
-            minus = upperTerm/(lowerTerm - pm)
+            rhs = upperTerm/(lowerTerm + (-1)**(n+1)*pm)
+            #plus = upperTerm/(lowerTerm + pm)
+            #minus = upperTerm/(lowerTerm - pm)
 
-            return (plus, minus)
+            return rhs
 
-        ret = []
-        for right in rightHandSide():
-            afterTan = math.atan(right)
-            ret += [(afterTan * self.lambdaD)/(2*math.pi * self.mu)]
+        afterTan = math.atan(rightHandSide())
+        ret = (afterTan * self.lambdaD)/(2*math.pi * self.mu)
 
-        return (ret[0], ret[1])
+        return ret
 
 if __name__ == "__main__":
     #dist = distance(560.1765, 572.9366, 560.720, muMica=1.5971, mu = 1.34,n=43)
@@ -58,15 +57,16 @@ if __name__ == "__main__":
     # Prompt for optional inputs with defaults
     muMica_input = input("Enter muMica (default 1.5971): ").strip()
     mu_input = input("Enter mu (default 1.34): ").strip()
+    n_input = input("Enter n (default 3): ").strip()
 
     # Use defaults if no input is given
     muMica = float(muMica_input) if muMica_input else 1.5971
     mu = float(mu_input) if mu_input else 1.34
+    n = float(n_input) if n_input else 3
 
     # Create distance object using entered values
-    dist = distance(lambda_odd, lambda_even, lambda_D, muMica=muMica, mu=mu)
+    dist = distance(lambda_odd, lambda_even, lambda_D, muMica=muMica, mu=mu, n=n)
 
     # Print results
-    temp = dist.realDCalc()
-    print(f"The distance is either {temp[0]} nm or {temp[1]} nm")
+    print(f"The distance is {dist.realDCalc()} nm")
 
