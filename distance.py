@@ -47,6 +47,19 @@ class distance:
 
         return ret
 
+    def asymMicaAu(self):
+        def rightHandSide():
+            innerTerm = (self.muMica - self.mu)/(self.muMica + self.mu)
+            upperTerm = (1- innerTerm**2)*math.sin(2*math.pi*self.lambda_odd/self.lambda_D)
+            lowerTerm = -2*(innerTerm) + (1+ (innerTerm**2))*math.cos(2*math.pi*self.lambda_odd/self.lambda_D)
+
+            return upperTerm / lowerTerm
+
+        afterTan = math.atan(rightHandSide())
+        ret = (afterTan * self.lambdaD)/(4*math.pi * self.mu)
+
+        return ret
+
 if __name__ == "__main__":
     #dist = distance(560.1765, 572.9366, 560.720, muMica=1.5971, mu = 1.34,n=43)
     
