@@ -209,7 +209,7 @@ class SFA_FECO_UI:
         # Add a horizontal separator between rows
         calibrate_separator2 = ttk.Separator(self.calibration_subframe, orient="horizontal")
         calibrate_separator2.grid(row=11+2, column=0, sticky='ew', pady=10)
-
+        '''
         # Select radius File button
         self.select_radius_file_button = ttk.Button(self.calibration_subframe, text="Select Radius Calibration Video", command=self.select_radius_file, style='Regular.TButton')
         self.select_radius_file_button.grid(row=12+2, column=0, sticky='ew', padx=10, pady=5)
@@ -237,7 +237,7 @@ class SFA_FECO_UI:
         # Radius display
         self.radius_display = tk.Entry(self.calibration_subframe, textvariable = self.radius, validate='key', validatecommand=vcmd)
         self.radius_display.grid(row=18+2, column=0, sticky="esw", padx=10, pady=(5, 5)) 
-
+        '''
         # endregion
         
         # Add a vertical separator between columns
@@ -356,10 +356,11 @@ class SFA_FECO_UI:
         # Analyze button
         self.analyze_button = ttk.Button(self.analyze_subframe, text="Analyze", command=self.analyze, style='Regular.TButton')
         self.analyze_button.grid(row=2, column=0, sticky='ew', padx=10, pady=5)
-
+        '''
         # Estimate Turnaround button
         self.estimate_turnaround_button = ttk.Button(self.analyze_subframe, text="Estimate Turnaround of Output", command=self.estimate_turnaround, style='Regular.TButton')
         self.estimate_turnaround_button.grid(row=3, column=0, sticky='ew', padx=10, pady=5)
+        '''
         # endregion
 
         # region Subframe for Split functionality
@@ -751,6 +752,8 @@ class SFA_FECO_UI:
             Simple function to split a given CSV file along the centerline given. Checks for input.
         """
         file_to_split = self.split_file_path
+
+        self.split_frame_num = int(self.split_var.get())
 
         if(not self.split_frame_num):
             msg = "No split frame selected, aborting"
