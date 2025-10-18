@@ -15,6 +15,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from sys import platform
 from tkinter import ttk, filedialog
 
+import distance as dist
 import tracking  
 from exceptions import error_popup, warning_popup, checkbox_popup
 
@@ -50,6 +51,9 @@ class SFA_FECO_UI:
         self.mica_thickness = '0'
         self.radius = tk.StringVar()
         self.f = 1
+        self.lambdaOdd = None
+        self.lambdaEven = None
+        self.wave_lines = None
 
         self.javaExists = self.check_java()
 
@@ -404,6 +408,64 @@ class SFA_FECO_UI:
         # endregion
         # endregion
 
+        # Add a vertical separator between columns
+        vertical_separator = ttk.Separator(self.root, orient="vertical")
+        vertical_separator.grid(row=0, column=5, rowspan=7, sticky='ns', padx=10)
+
+        # region Step 3: Visualize
+        step4_label = ttk.Label(self.root, text="STEP 3: Visualize", style='Step.TLabel', font=20)
+        step4_label.grid(row=0, column=6, sticky='ew', padx=10)
+
+        # Subframe for visualization controls
+        self.visualize_subframe = ttk.Frame(self.root)
+        self.visualize_subframe.grid(row=1, column=6, sticky='new', padx=10, pady=10)
+
+        self.visualize_subframe.columnconfigure(0, weight=0)
+        self.visualize_subframe.columnconfigure(1, weight=1)
+
+        # Label for Camera FPS
+        self.camera_fps_label = ttk.Label(self.visualize_subframe, text="Camera FPS:", style='Regular.TLabel')
+        self.camera_fps_label.grid(row=0, column=0, sticky='w', padx=(0, 5), pady=(0, 5))
+
+        # Entry for Camera FPS
+        self.camera_fps_var = tk.StringVar(value="2")  
+        self.camera_fps_entry = ttk.Entry(self.visualize_subframe, textvariable=self.camera_fps_var, width=10, style='Regular.TEntry')
+        self.camera_fps_entry.grid(row=0, column=1, sticky='ew', pady=(0, 5))
+
+        # Button to visualize
+        self.visualize_button_in = ttk.Button(
+            self.visualize_subframe,
+            text="Visualize Distance Over Time In Run",
+            command=self.visualize_distance_over_time_in_run,
+            style='Regular.TButton'
+        )
+        self.visualize_button_in.grid(row=1, column=0, columnspan=2, sticky='ew', pady=10)
+
+        self.visualize_button_in = ttk.Button(
+            self.visualize_subframe,
+            text="Visualize Distance Over Time Out Run",
+            command=self.visualize_distance_over_time_out_run,
+            style='Regular.TButton'
+        )
+        self.visualize_button_in.grid(row=2, column=0, columnspan=2, sticky='ew', pady=10)
+
+        self.visualize_button_in = ttk.Button(
+            self.visualize_subframe,
+            text="Visualize Distance Over Time Full",
+            command=self.visualize_distance_over_time_full,
+            style='Regular.TButton'
+        )
+        self.visualize_button_in.grid(row=3, column=0, columnspan=2, sticky='ew', pady=10)
+        # endregion
+
+        # Ensure all 4 main regions (columns 0, 2, 4, 6) have equal horizontal weight
+        for col in [0, 2, 4, 6]:
+            self.root.grid_columnconfigure(col, weight=1, uniform="region")
+
+        # Optionally, make separators take minimal space
+        for sep_col in [1, 3, 5]:
+            self.root.grid_columnconfigure(sep_col, weight=0)
+
         cache_dir = os.path.join(os.getcwd(), "cache")
         flag_path = os.path.join(cache_dir, "storage.txt")
 
@@ -423,7 +485,7 @@ class SFA_FECO_UI:
             if checkbox_popup(self.root, "Java Warning", "Java is not installed, or not properly set up in PATH. Disabling CXD to TIFF conversion"):
                 with open(flag_path, "w") as f:
                     f.write("1")
-    
+
     def exit_application(self):
         """Cleanly exit the application."""
         # Close all matplotlib figures
@@ -824,6 +886,17 @@ class SFA_FECO_UI:
             error_popup("Invalid input, must be numeric")
             return False  # Reject input if it’s not a number
 
+    #mode, wave_lines, split_frame_num, fps
+
+    def visualize_distance_over_time_in_run(self):
+        TimeVsDistanceWindow("in", self.wave_lines, int(self.split_var.get()), int(self.camera_fps_var.get()), [self.lambdaOdd, self.lambdaEven])
+
+    def visualize_distance_over_time_out_run(self):
+        print("Visualizing distance over time... (placeholder)")
+
+    def visualize_distance_over_time_full(self):
+        print("Visualizing distance over time... (placeholder)")
+
     def getFile(self):
         if self.javaExists:
             files = [("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")]
@@ -840,6 +913,13 @@ class SFA_FECO_UI:
             file_path = self.cxdToTiff(file_path)
 
         return file_path
+
+    def setLambdas(self, lambdas):
+        self.lambdaOdd = lambdas[0]
+        self.lambdaEven = lambdas[1]
+
+    def setWaveLines(self, wave_lines):
+        self.wave_lines = wave_lines
 
     def check_java(self):
         # Quick check if "java" is in PATH
@@ -1719,6 +1799,13 @@ class Mica_Thickness_Calibration_Window:
         intercept = self.calibration_parameters['intercept']
         self.selected_wavelengths = [slope * (x) + intercept for x in self.selected_waves] 
 
+        if(self.selected_wavelengths[0] > self.selected_wavelengths[1]):
+            lambdas = self.selected_wavelengths
+        else:
+            lambdas = [self.selected_wavelengths[1]] + [self.selected_wavelengths[0]]
+
+        app.setLambdas(lambdas)
+
         thickness = self.calculate_thickness()
         if thickness:
             self.callback(thickness)
@@ -2043,6 +2130,7 @@ class Motion_Analysis_Window:
     def on_close(self, event):
         """Save the modified wave lines and the figure when the window is closed."""
         # Save the wave centerlines to CSV
+        app.setWaveLines(self.wave_lines)
         self.save_wave_centerlines_to_csv(self.wave_lines, self.output_filename)
         
         # Update the plot title to a proper name
@@ -2202,6 +2290,35 @@ class RadiusMeasurementWindow:
         print(f"Calculated Radius: {radius:.4f}")
         self.callback(radius)  # Return value via callback
         plt.close(self.fig)  # Close the window after calculation
+
+class TimeVsDistanceWindow:
+
+    def __init__(self, mode, wave_lines, split_frame_num, fps, lambdas):
+        self.mode = mode
+        self.split_frame_num = split_frame_num
+
+        if(self.mode == "in"):
+            self.wave_lines = wave_lines[0][:split_frame_num]
+        elif(self.mode == "out"):
+            self.wave_lines = wave_lines[0][split_frame_num+1:]
+        else:
+            self.wave_lines = wave_lines[0]
+
+        y_vals = [p[0]/fps for p in self.wave_lines]
+        x_vals = [p[1] for p in self.wave_lines]
+
+        self.dist = dist.distance(lambdas[0], lambdas[1])
+
+        x_vals = self.dist.arrayDistance(x_vals, "realDCalc")
+
+        plt.figure(figsize=(10, 6))
+        plt.scatter(y_vals, x_vals, color='blue', s=20)  # s controls point size
+
+        plt.xlabel("Distance (x)")
+        plt.ylabel("Frame (y)")
+        plt.title("Frame vs Distance Scatter Plot")
+        plt.grid(True)
+        plt.show()
 
 if __name__ == "__main__":
     root = tk.Tk()
