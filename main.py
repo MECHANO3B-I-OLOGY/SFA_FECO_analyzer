@@ -1,20 +1,22 @@
-import os
-import sys
+import csv
 import cv2
-import subprocess
-import numpy as np
-import tkinter as tk
-from tkinter import ttk, filedialog
 import matplotlib.pyplot as plt
+import numpy as np
+import os
+import shutil
+import subprocess
+import sys
+import tkinter as tk
+
+from enums import CalibrationValues
+from PIL import Image, ImageSequence
 from matplotlib.widgets import RectangleSelector, Slider, Cursor
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
-import csv
-from PIL import Image, ImageSequence
-from enums import CalibrationValues
 from sys import platform
+from tkinter import ttk, filedialog
 
 import tracking  
-from exceptions import error_popup, warning_popup
+from exceptions import error_popup, warning_popup, checkbox_popup
 
 class SFA_FECO_UI:
     """
@@ -48,6 +50,8 @@ class SFA_FECO_UI:
         self.mica_thickness = '0'
         self.radius = tk.StringVar()
         self.f = 1
+
+        self.javaExists = self.check_java()
 
         # Set protocol for window close to ensure full exit
         self.root.protocol("WM_DELETE_WINDOW", self.exit_application)
@@ -251,7 +255,7 @@ class SFA_FECO_UI:
         self.raw_video_subframe.columnconfigure(0, weight=1)
 
         # Raw video data select button
-        self.select_raw_button = ttk.Button(self.raw_video_subframe, text="Select Raw Video File", command=self.select_raw_video, style='Regular.TButton')
+        self.select_raw_button = ttk.Button(self.raw_video_subframe, text="Select Video for Distance Calculation", command=self.select_raw_video, style='Regular.TButton')
         self.select_raw_button.grid(row=0, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the selected file's name
@@ -398,6 +402,26 @@ class SFA_FECO_UI:
 
         # endregion
         # endregion
+
+        cache_dir = os.path.join(os.getcwd(), "cache")
+        flag_path = os.path.join(cache_dir, "storage.txt")
+
+        # Ensure cache directory exists
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        skip_java_warning = False
+        if os.path.exists(flag_path):
+            try:
+                with open(flag_path, "r") as f:
+                    if f.read().strip() == "1":
+                        skip_java_warning = True
+            except Exception:
+                pass
+
+        if (not self.javaExists and not skip_java_warning):
+            if checkbox_popup(self.root, "Java Warning", "Java is not installed, or not properly set up in PATH. Disabling CXD to TIFF conversion"):
+                with open(flag_path, "w") as f:
+                    f.write("1")
     
     def exit_application(self):
         """Cleanly exit the application."""
@@ -428,15 +452,11 @@ class SFA_FECO_UI:
             Function for selecting wavelength calibration input file. Checks for validity and updates label. 
         """
         # Open a file dialog to select a TIFF file
-        file_path = filedialog.askopenfilename(
-            initialdir=os.path.join(os.getcwd()),
-            title='Browse for TIFF file',
-            filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")]
-        )
+
+        file_path = self.getFile()
+
         # file_path = "mica_gold.tif" # HARDCODED
         if file_path:
-
-            file_path = self.cxdToTiff(file_path)
 
             # Save the selected file path
             self.wavelength_calibration_video_file_path = file_path
@@ -504,10 +524,8 @@ class SFA_FECO_UI:
 
     def select_thickness_file(self):
         """Select input file for Calibrate Thickness. Updates label."""
-        self.thickness_input_file_path = filedialog.askopenfilename(filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")])
+        self.thickness_input_file_path = self.getFile()
         if self.thickness_input_file_path:
-
-            self.thickness_input_file_path = self.cxdToTiff(self.thickness_input_file_path)
 
             if len(self.thickness_input_file_path) > self.MAX_FILE_DISP_LENGTH:
                 data_file_text = '...' + self.thickness_input_file_path[len(self.thickness_input_file_path) - self.MAX_FILE_DISP_LENGTH:]
@@ -546,10 +564,8 @@ class SFA_FECO_UI:
     
     def select_radius_file(self):
         """Select input file for radius. Updates label."""
-        self.radius_input_file_path = filedialog.askopenfilename(filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")])
+        self.radius_input_file_path = self.getFile()
         if self.radius_input_file_path:
-
-            self.radius_input_file_path = self.cxdToTiff(self.radius_input_file_path)
 
             if len(self.radius_input_file_path) > self.MAX_FILE_DISP_LENGTH:
                 data_file_text = '...' + self.radius_input_file_path[len(self.radius_input_file_path) - self.MAX_FILE_DISP_LENGTH:]
@@ -568,15 +584,9 @@ class SFA_FECO_UI:
             Function for the user to select a file for the input. Updates the label and checks for validity.
         """
         # Open a file dialog to select a TIFF file
-        file_path = filedialog.askopenfilename(
-            initialdir=os.path.join(os.getcwd()),
-            title='Browse for image file',
-            filetypes=[("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")]
-        )
+        file_path = self.getFile()
         # file_path = "FR1-P1-bis.tif" # hardcoded
         if file_path:
-
-            file_path = self.cxdToTiff(file_path)
 
             # Save the selected file path
             self.raw_video_file_path = file_path
@@ -653,7 +663,7 @@ class SFA_FECO_UI:
             Function for the user to select a file for analysis. Updates label accordingly. 
         """
         # Allow the user to choose an existing data file
-        check_file = filedialog.askopenfilename(filetypes=[("Tiff files", "*.tif")])
+        check_file = self.getFile()
         if(check_file): 
             self.motion_output_file_path = check_file
             if len(self.motion_output_file_path) > self.MAX_FILE_DISP_LENGTH:
@@ -810,6 +820,47 @@ class SFA_FECO_UI:
         except ValueError:
             error_popup("Invalid input, must be numeric")
             return False  # Reject input if it’s not a number
+
+    def getFile(self):
+        if self.javaExists:
+            files = [("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")]
+        else:
+            files = [("TIFF Files", "*.tif *.tiff"), ("All Files", "*")]
+
+        file_path = filedialog.askopenfilename(
+            initialdir=os.path.join(os.getcwd()),
+            title='Browse for image file',
+            filetypes=files
+        )
+
+        if file_path:
+            file_path = self.cxdToTiff(file_path)
+
+        return file_path
+
+    def check_java(self):
+        # Quick check if "java" is in PATH
+        java_path = shutil.which("java")
+        if java_path is None:
+            return False
+
+        try:
+            # Run "java -version" (stderr contains version info)
+            result = subprocess.run(
+                ["java", "-version"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+
+            output = result.stdout.strip() or result.stderr.strip()
+            if result.returncode == 0 and ("version" in output.lower() or "openjdk" in output.lower()):
+                return True
+            else:
+                return False
+
+        except Exception as e:
+            return False
 
     def cxdToTiff(self, file):
         if(file.lower().endswith(".cxd")):
@@ -1198,7 +1249,7 @@ class Wavelength_Calibration_Window:
         """Confirms the crop selection and proceeds to wave analysis."""
         if self.crop_start_y is not None and self.crop_end_y is not None:
             # CHANGE WORDING (CONFIRM IDENTIFIED LINES)
-            self.update_instructions(f"Select {self.num_waves} lines for calibration. Press enter when finished, or escape to restart.")
+            self.update_instructions(f"Select {self.num_waves} lines for calibration. Red lines are selected and green are not. Press enter when finished, or escape to restart.")
             y1, y2 = sorted((int(self.crop_start_y), int(self.crop_end_y)))
             self.image.seek(self.current_frame_index)
             cropped_frame = self.image.crop((0, y1, self.image.width, y2))
@@ -1215,7 +1266,8 @@ class Wavelength_Calibration_Window:
 
             if self.waves is not None and len(self.waves) == self.num_waves:
                 self.selected_waves = [int(np.mean([point[1] for point in wave])) for wave in self.waves]
-                self.calculate_transformation()
+                self.update_overlay()
+                #self.calculate_transformation()
         else:
             self.update_instructions("No crop area selected. Please try again.") 
 
@@ -1712,39 +1764,59 @@ class Motion_Analysis_Window:
     DELETION_MODE = 'delete'
     FIGURE_SIZE = (12, 4)
 
-    def __init__(self, motion_profile_file_path, calibration_parameters, output_file_path, offset_callback = None) -> None:
+    def __init__(self, motion_profile_file_path, calibration_parameters, output_file_path, offset_callback=None) -> None:
         self.y_offset = 0
         self.x_offset_start = 0
         self.x_offset_end = 0
         self.calibration_parameters = calibration_parameters
         self.offset_callback = offset_callback
 
-        # Step 1: Request output file name
         self.output_filename = output_file_path
+        self.timelapse_image = np.array(Image.open(motion_profile_file_path).convert('L'))
+        self.file_path = motion_profile_file_path
 
-        # Step 2: Load the timelapse image (convert it to a NumPy array)
-        self.timelapse_image = np.array(Image.open(motion_profile_file_path).convert('L'))  # Grayscale conversion
-        self.file_path = motion_profile_file_path  # Store file path for saving
-
-        # Step 3: Initialize mode (cropping or deleting)
-        self.mode = Motion_Analysis_Window.CROPPING_MODE  # Start with cropping mode
+        self.mode = Motion_Analysis_Window.CROPPING_MODE
         self.cropping_complete = False
-        self.crop_area = None  # Store the crop area
-        self.deletion_areas = []  # Store areas selected for deletion
+        self.crop_area = None
+        self.deletion_areas = []
 
-        # Increase the figure size for larger display
-        self.fig, self.ax = plt.subplots(figsize=Motion_Analysis_Window.FIGURE_SIZE)  # Set larger figure size
-        self.ax.imshow(self.timelapse_image, cmap='gray')
-        # self.ax.set_xlim( self.x_offset_start, self.x_offset_end)
-        self.ax.set_title("Click and drag to crop the image, then press any key to confirm. Press escape to cancel selection.")
+        h, w = self.timelapse_image.shape
+        aspect_ratio = w / h  # width / height
 
-        # Create a RectangleSelector for cropping the image
-        self.rect_selector = RectangleSelector(self.ax, self.on_select_crop, useblit=True, interactive=True)
+        self.fig, self.ax = plt.subplots(figsize=Motion_Analysis_Window.FIGURE_SIZE)
+        self.ax.imshow(self.timelapse_image, cmap='gray', origin='upper')
+
+        # --- Adjust visual aspect ratio only ---
+        # "aspect" = (height of data unit) / (width of data unit)
+        # smaller -> stretches vertically, larger -> compresses vertically
+
+        if aspect_ratio < 1:  
+            # Too tall: stretch it (make it appear less tall → wider)
+            # We want display ratio to reach 2:3 → target_aspect = h/w / (3/2)
+            target_ratio = 1
+            scale_factor = (aspect_ratio / target_ratio)
+            self.ax.set_aspect(scale_factor)  # stretch vertically
+        elif aspect_ratio > 6:
+            # Too wide: compress it vertically (towards 1:1)
+            target_ratio = 6
+            scale_factor = (aspect_ratio / target_ratio)
+            self.ax.set_aspect(scale_factor)  # compress vertically
+        else:
+            # Between 2:3 and 1:1 — leave normal
+            self.ax.set_aspect('auto')
+
+        self.ax.set_title(
+            "Click and drag to crop the image, then press any key to confirm. "
+            "Press Escape to cancel selection."
+        )
+
+        self.rect_selector = RectangleSelector(
+            self.ax, self.on_select_crop, useblit=True, interactive=True
+        )
         self.fig.canvas.mpl_connect('key_press_event', self.handle_key_press)
 
         plt.show(block=True)
 
-        # Step 4: Run the analysis after cropping
         if self.cropping_complete:
             self.run_analysis()
 
@@ -1906,7 +1978,25 @@ class Motion_Analysis_Window:
         self.ax.clear()
         
         # Replot the image
-        self.ax.imshow(self.cropped_image, cmap='gray')
+        self.ax.imshow(self.cropped_image, cmap='gray', origin='upper')
+
+        # --- Apply visual aspect ratio scaling for display convenience ---
+        h, w = self.cropped_image.shape
+        aspect_ratio = w / h  # width / height
+
+        if aspect_ratio < 1:
+            # Too tall → stretch vertically toward 1:1
+            target_ratio = 1
+            scale_factor = aspect_ratio / target_ratio
+            self.ax.set_aspect(scale_factor)
+        elif aspect_ratio > 6:
+            # Too wide → compress vertically toward 4:1
+            target_ratio = 6
+            scale_factor = aspect_ratio / target_ratio
+            self.ax.set_aspect(scale_factor)
+        else:
+            # Within [1, 4] range → leave natural aspect
+            self.ax.set_aspect('auto')
 
         # Replot the wave lines
         colors = plt.cm.rainbow(np.linspace(0, 1, len(self.wave_lines)))
@@ -1935,8 +2025,8 @@ class Motion_Analysis_Window:
                 self.calibration_parameters['slope'] * (tick - self.x_offset_start) + self.calibration_parameters['intercept']
                 for tick in ticks
             ]
-            self.ax.set_xticks(ticks)  # Original ticks for data
-            self.ax.set_xticklabels([f"{tick:.2f}" for tick in calibrated_ticks])  # Show calibrated labels
+            self.ax.set_xticks(ticks)
+            self.ax.set_xticklabels([f"{tick:.2f}" for tick in calibrated_ticks])
 
             self.ax.set_xlim(0, self.x_offset_end - self.x_offset_start)
 
@@ -1945,6 +2035,7 @@ class Motion_Analysis_Window:
 
         # Adjust the layout to include all elements
         self.fig.tight_layout()
+
 
     def on_close(self, event):
         """Save the modified wave lines and the figure when the window is closed."""

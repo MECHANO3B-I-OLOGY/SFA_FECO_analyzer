@@ -6,6 +6,7 @@
 
 __pycache__
 .venv
+cache
 CXD_data
 venv
 Output/*
