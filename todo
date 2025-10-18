@@ -6,6 +6,10 @@ future plans:
 - scale window to screen (the right way?)
 - Distance calculation
   - Proper mu calculation for saaD, possible skip
+  - proper muMica
+- Select linear difference of distance / time
+- Calculate force from non linear section
+  - k = mN/m (temp = 1210800)
 
 finished:
 
