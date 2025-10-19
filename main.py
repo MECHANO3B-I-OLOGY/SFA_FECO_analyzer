@@ -420,42 +420,46 @@ class SFA_FECO_UI:
         self.visualize_subframe = ttk.Frame(self.root)
         self.visualize_subframe.grid(row=1, column=6, sticky='new', padx=10, pady=10)
 
-        self.visualize_subframe.columnconfigure(0, weight=0)
-        self.visualize_subframe.columnconfigure(1, weight=1)
+        # --- Camera FPS row ---
+        fps_frame = ttk.Frame(self.visualize_subframe)
+        fps_frame.pack(anchor='w', pady=(0, 5))
 
-        # Label for Camera FPS
-        self.camera_fps_label = ttk.Label(self.visualize_subframe, text="Camera FPS:", style='Regular.TLabel')
-        self.camera_fps_label.grid(row=0, column=0, sticky='w', padx=(0, 5), pady=(0, 5))
+        self.camera_fps_label = ttk.Label(fps_frame, text="Camera FPS:", style='Regular.TLabel')
+        self.camera_fps_label.pack(side='left', padx=(0, 5))
 
-        # Entry for Camera FPS
-        self.camera_fps_var = tk.StringVar(value="2")  
-        self.camera_fps_entry = ttk.Entry(self.visualize_subframe, textvariable=self.camera_fps_var, width=10, style='Regular.TEntry')
-        self.camera_fps_entry.grid(row=0, column=1, sticky='ew', pady=(0, 5))
+        self.camera_fps_var = tk.StringVar(value="2")
+        self.camera_fps_entry = ttk.Entry(fps_frame, textvariable=self.camera_fps_var, width=10, style='Regular.TEntry')
+        self.camera_fps_entry.pack(side='left')
 
-        # Button to visualize
-        self.visualize_button_in = ttk.Button(
+        # --- Radio buttons row ---
+        radio_frame = ttk.Frame(self.visualize_subframe)
+        radio_frame.pack(anchor='w', pady=(0, 8))
+
+        self.visualize_mode = tk.StringVar(value="in")  # default mode
+
+        self.radio_in = ttk.Radiobutton(
+            radio_frame, text="In Run", variable=self.visualize_mode, value="in", style='Regular.TRadiobutton'
+        )
+        self.radio_in.pack(side='left', padx=(0, 10))
+
+        self.radio_out = ttk.Radiobutton(
+            radio_frame, text="Out Run", variable=self.visualize_mode, value="out", style='Regular.TRadiobutton'
+        )
+        self.radio_out.pack(side='left', padx=(0, 10))
+
+        self.radio_full = ttk.Radiobutton(
+            radio_frame, text="Full Run", variable=self.visualize_mode, value="full", style='Regular.TRadiobutton'
+        )
+        self.radio_full.pack(side='left')
+
+        # --- Single visualize button ---
+        self.visualize_button = ttk.Button(
             self.visualize_subframe,
-            text="Visualize Distance Over Time In Run",
-            command=self.visualize_distance_over_time_in_run,
+            text="Visualize Distance Over Time",
+            command=self.visualize_distance_over_time,
             style='Regular.TButton'
         )
-        self.visualize_button_in.grid(row=1, column=0, columnspan=2, sticky='ew', pady=10)
-
-        self.visualize_button_in = ttk.Button(
-            self.visualize_subframe,
-            text="Visualize Distance Over Time Out Run",
-            command=self.visualize_distance_over_time_out_run,
-            style='Regular.TButton'
-        )
-        self.visualize_button_in.grid(row=2, column=0, columnspan=2, sticky='ew', pady=10)
-
-        self.visualize_button_in = ttk.Button(
-            self.visualize_subframe,
-            text="Visualize Distance Over Time Full",
-            command=self.visualize_distance_over_time_full,
-            style='Regular.TButton'
-        )
-        self.visualize_button_in.grid(row=3, column=0, columnspan=2, sticky='ew', pady=10)
+        self.visualize_button.pack(fill='x', pady=5)
         # endregion
 
         # Ensure all 4 main regions (columns 0, 2, 4, 6) have equal horizontal weight
@@ -888,14 +892,8 @@ class SFA_FECO_UI:
 
     #mode, wave_lines, split_frame_num, fps
 
-    def visualize_distance_over_time_in_run(self):
-        TimeVsDistanceWindow("in", self.wave_lines, int(self.split_var.get()), int(self.camera_fps_var.get()), [self.lambdaOdd, self.lambdaEven])
-
-    def visualize_distance_over_time_out_run(self):
-        print("Visualizing distance over time... (placeholder)")
-
-    def visualize_distance_over_time_full(self):
-        print("Visualizing distance over time... (placeholder)")
+    def visualize_distance_over_time(self):
+        TimeVsDistanceWindow(self.visualize_mode.get(), self.wave_lines, int(self.split_var.get()), int(self.camera_fps_var.get()), [self.lambdaOdd, self.lambdaEven], self.calibration_parameters)
 
     def getFile(self):
         if self.javaExists:
@@ -1799,12 +1797,14 @@ class Mica_Thickness_Calibration_Window:
         intercept = self.calibration_parameters['intercept']
         self.selected_wavelengths = [slope * (x) + intercept for x in self.selected_waves] 
 
-        if(self.selected_wavelengths[0] > self.selected_wavelengths[1]):
+        if(self.selected_wavelengths[0] < self.selected_wavelengths[1]):
             lambdas = self.selected_wavelengths
         else:
             lambdas = [self.selected_wavelengths[1]] + [self.selected_wavelengths[0]]
 
         app.setLambdas(lambdas)
+
+        #print(lambdas)
 
         thickness = self.calculate_thickness()
         if thickness:
@@ -2293,9 +2293,13 @@ class RadiusMeasurementWindow:
 
 class TimeVsDistanceWindow:
 
-    def __init__(self, mode, wave_lines, split_frame_num, fps, lambdas):
+    def __init__(self, mode, wave_lines, split_frame_num, fps, lambdas, parameters):
         self.mode = mode
         self.split_frame_num = split_frame_num
+
+        print(split_frame_num)
+
+        print(parameters)
 
         if(self.mode == "in"):
             self.wave_lines = wave_lines[0][:split_frame_num]
@@ -2309,14 +2313,16 @@ class TimeVsDistanceWindow:
 
         self.dist = dist.distance(lambdas[0], lambdas[1])
 
+        x_vals = [parameters["slope"]*(x+40) + parameters["intercept"] for x in x_vals]
+
         x_vals = self.dist.arrayDistance(x_vals, "realDCalc")
 
         plt.figure(figsize=(10, 6))
         plt.scatter(y_vals, x_vals, color='blue', s=20)  # s controls point size
 
-        plt.xlabel("Distance (x)")
-        plt.ylabel("Frame (y)")
-        plt.title("Frame vs Distance Scatter Plot")
+        plt.xlabel("Time (s)")
+        plt.ylabel("Distance (nm)")
+        plt.title(f"Frame vs Distance Scatter Plot {mode}")
         plt.grid(True)
         plt.show()
 
