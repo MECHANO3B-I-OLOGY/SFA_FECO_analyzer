@@ -460,6 +460,51 @@ class SFA_FECO_UI:
             style='Regular.TButton'
         )
         self.visualize_button.pack(fill='x', pady=5)
+
+         # --- Buffer line ---
+        ttk.Separator(self.visualize_subframe, orient='horizontal').pack(fill='x', pady=5)
+
+        # --- Input k row ---
+        k_frame = ttk.Frame(self.visualize_subframe)
+        k_frame.pack(anchor='w', pady=(5, 5))
+
+        self.k_label = ttk.Label(k_frame, text="Input k (mN/m):", style='Regular.TLabel')
+        self.k_label.pack(side='left', padx=(0, 5))
+
+        self.k_var = tk.StringVar(value="0")
+        self.k_entry = ttk.Entry(k_frame, textvariable=self.k_var, width=10, style='Regular.TEntry')
+        self.k_entry.pack(side='left')
+
+        # --- Radio buttons for force visualization ---
+        force_radio_frame = ttk.Frame(self.visualize_subframe)
+        force_radio_frame.pack(anchor='w', pady=(0, 8))
+
+        self.force_mode = tk.StringVar(value="in")  # separate variable for force visualization
+
+        self.force_radio_in = ttk.Radiobutton(
+            force_radio_frame, text="In", variable=self.force_mode, value="in", style='Regular.TRadiobutton'
+        )
+        self.force_radio_in.pack(side='left', padx=(0, 10))
+
+        self.force_radio_out = ttk.Radiobutton(
+            force_radio_frame, text="Out", variable=self.force_mode, value="out", style='Regular.TRadiobutton'
+        )
+        self.force_radio_out.pack(side='left', padx=(0, 10))
+
+        self.force_radio_full = ttk.Radiobutton(
+            force_radio_frame, text="Full", variable=self.force_mode, value="full", style='Regular.TRadiobutton'
+        )
+        self.force_radio_full.pack(side='left')
+
+        # --- Visualize Force button ---
+        self.visualize_force_button = ttk.Button(
+            self.visualize_subframe,
+            text="Visualize Force Over Distance",
+            command=self.visualize_force_over_distance,  # attach your function here
+            style='Regular.TButton'
+        )
+        self.visualize_force_button.pack(fill='x', pady=5)
+        
         # endregion
 
         # Ensure all 4 main regions (columns 0, 2, 4, 6) have equal horizontal weight
@@ -894,6 +939,12 @@ class SFA_FECO_UI:
 
     def visualize_distance_over_time(self):
         TimeVsDistanceWindow(self.visualize_mode.get(), self.wave_lines, int(self.split_var.get()), int(self.camera_fps_var.get()), [self.lambdaOdd, self.lambdaEven], self.calibration_parameters)
+
+    #class ForceVsDistanceWindow:
+        #def __init__(self, mode, wave_lines, split_frame_num, springConstant):
+
+    def visualize_force_over_distance(self):
+        ForceVsDistanceWindow(self.force_mode.get(), self.wave_lines, int(self.split_var.get()), int(self.k_var.get()), [self.lambdaOdd, self.lambdaEven], self.calibration_parameters)
 
     def getFile(self):
         if self.javaExists:
@@ -2297,10 +2348,6 @@ class TimeVsDistanceWindow:
         self.mode = mode
         self.split_frame_num = split_frame_num
 
-        print(split_frame_num)
-
-        print(parameters)
-
         if(self.mode == "in"):
             self.wave_lines = wave_lines[0][:split_frame_num]
         elif(self.mode == "out"):
@@ -2323,6 +2370,37 @@ class TimeVsDistanceWindow:
         plt.xlabel("Time (s)")
         plt.ylabel("Distance (nm)")
         plt.title(f"Frame vs Distance Scatter Plot {mode}")
+        plt.grid(True)
+        plt.show()
+
+class ForceVsDistanceWindow:
+    def __init__(self, mode, wave_lines, split_frame_num, springConstant, lambdas, parameters):
+        self.mode = mode
+        self.springConstant = springConstant
+        self.split_frame_num = split_frame_num
+
+        if(self.mode == "in"):
+            self.wave_lines = wave_lines[0][:split_frame_num]
+        elif(self.mode == "out"):
+            self.wave_lines = wave_lines[0][split_frame_num+1:]
+        else:
+            self.wave_lines = wave_lines[0]
+
+        x_vals = [p[1] for p in self.wave_lines]
+
+        self.dist = dist.distance(lambdas[0], lambdas[1])
+
+        x_vals = [parameters["slope"]*(x+40) + parameters["intercept"] for x in x_vals]
+
+        x_vals = self.dist.arrayDistance(x_vals, "realDCalc")
+        y_vals = [x*self.springConstant for x in x_vals]
+
+        plt.figure(figsize=(10, 6))
+        plt.scatter(y_vals, x_vals, color='blue', s=20)  # s controls point size
+
+        plt.xlabel("Distance (nm)")
+        plt.ylabel("Force (mN)")
+        plt.title(f"Force vs Distance Scatter Plot {mode}")
         plt.grid(True)
         plt.show()
 
