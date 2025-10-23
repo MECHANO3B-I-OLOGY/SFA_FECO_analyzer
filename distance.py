@@ -27,13 +27,11 @@ class distance:
             lowerTerm = (1+muBar**2) * math.cos(innerTerm)
             pm = muBar**2 - 1
 
-            rhs = upperTerm/(lowerTerm + (-1)**(self.n+1)*pm)
-            #plus = upperTerm/(lowerTerm + pm)
-            #minus = upperTerm/(lowerTerm - pm)
+            return upperTerm, lowerTerm + (-1)**(self.n+1)*pm
 
-            return rhs
 
-        afterTan = math.atan(rightHandSide())
+        num, denom = rightHandSide()
+        afterTan = math.atan2(num, denom)
         ret = (afterTan * self.lambdaD)/(2*math.pi * self.mu)
 
         return ret
@@ -46,9 +44,11 @@ class distance:
             upperTerm = (1- innerTerm**2)*math.sin(2*math.pi*self.lambdaOdd/self.lambdaD)
             lowerTerm = -2*(innerTerm) + (1+ (innerTerm**2))*math.cos(2*math.pi*self.lambdaOdd/self.lambdaD)
 
-            return upperTerm / lowerTerm
+            return upperTerm, lowerTerm
 
-        afterTan = math.atan(rightHandSide())
+        num, denom = rightHandSide()
+
+        afterTan = math.atan2(num, denom)
         ret = (afterTan * self.lambdaD)/(4*math.pi * self.mu)
 
         return ret

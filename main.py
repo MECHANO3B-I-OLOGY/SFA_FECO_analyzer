@@ -1509,8 +1509,7 @@ class Wavelength_Calibration_Window:
 
         app.setDispersionEntries(self.dispersion1,self.dispersion2,self.dispersion3,self.dispersionAvg,self.dispersionStd)
         
-        coefficients = np.polyfit(x_values, y_values, 1)
-        calibration_equation = {"slope": coefficients[0], "intercept": coefficients[1]}
+        calibration_equation = {"slope": self.dispersionAvg, "intercept": CalibrationValues.HG_GREEN.value, "offset": x_values[0]}
         #print(calibration_equation)
         self.callback(calibration_equation)
         self.close_figure()
@@ -1846,7 +1845,7 @@ class Mica_Thickness_Calibration_Window:
         # Calculate wavelengths using slope and intercept
         slope = self.calibration_parameters['slope']
         intercept = self.calibration_parameters['intercept']
-        self.selected_wavelengths = [slope * (x) + intercept for x in self.selected_waves] 
+        self.selected_wavelengths = [slope * (x - self.calibration_parameters['offset']) + intercept for x in self.selected_waves] 
 
         if(self.selected_wavelengths[0] < self.selected_wavelengths[1]):
             lambdas = self.selected_wavelengths
@@ -1855,7 +1854,7 @@ class Mica_Thickness_Calibration_Window:
 
         app.setLambdas(lambdas)
 
-        #print(lambdas)
+        print(lambdas)
 
         thickness = self.calculate_thickness()
         if thickness:
@@ -2163,7 +2162,7 @@ class Motion_Analysis_Window:
 
             # Apply calibration to display ticks only
             calibrated_ticks = [
-                self.calibration_parameters['slope'] * (tick - self.x_offset_start) + self.calibration_parameters['intercept']
+                self.calibration_parameters['slope'] * (tick + self.x_offset_start - self.calibration_parameters['offset']) + self.calibration_parameters['intercept']
                 for tick in ticks
             ]
             self.ax.set_xticks(ticks)
@@ -2181,7 +2180,11 @@ class Motion_Analysis_Window:
     def on_close(self, event):
         """Save the modified wave lines and the figure when the window is closed."""
         # Save the wave centerlines to CSV
-        app.setWaveLines(self.wave_lines)
+        
+        outputWaveLines = [[(x, y + self.x_offset_start) for (x, y) in wave] for wave in self.wave_lines]
+        print(outputWaveLines)
+
+        app.setWaveLines(outputWaveLines)
         self.save_wave_centerlines_to_csv(self.wave_lines, self.output_filename)
         
         # Update the plot title to a proper name
@@ -2232,7 +2235,7 @@ class Motion_Analysis_Window:
                     for wave_idx, wave_line in enumerate(wave_lines):
                         for (y, x_center) in wave_line:
                             frame_number = y + self.y_offset  # Ensure consistency
-                            calibrated_x = self.calibration_parameters['slope'] * (x_center - self.x_offset_start) + self.calibration_parameters['intercept']
+                            calibrated_x = self.calibration_parameters['slope'] * (x_center + self.x_offset_start - self.calibration_parameters['offset']) + self.calibration_parameters['intercept']
                             writer.writerow([wave_idx + 1, frame_number, calibrated_x])
 
         except Exception as e:
@@ -2360,16 +2363,18 @@ class TimeVsDistanceWindow:
 
         self.dist = dist.distance(lambdas[0], lambdas[1])
 
-        x_vals = [parameters["slope"]*(x+40) + parameters["intercept"] for x in x_vals]
+        x_vals = [parameters["slope"]*(x-parameters["offset"]) + parameters["intercept"] for x in x_vals]
+
+        print(x_vals)
 
         x_vals = self.dist.arrayDistance(x_vals, "realDCalc")
 
         plt.figure(figsize=(10, 6))
         plt.scatter(y_vals, x_vals, color='blue', s=20)  # s controls point size
 
-        plt.xlabel("Time (s)")
-        plt.ylabel("Distance (nm)")
-        plt.title(f"Frame vs Distance Scatter Plot {mode}")
+        plt.xlabel(r"Time, $\mathit{t}$ (s)")
+        plt.ylabel(r"Distance, $\mathit{D}$ (nm)")
+        plt.title(f"Time vs Distance Scatter Plot {mode}")
         plt.grid(True)
         plt.show()
 
@@ -2390,7 +2395,7 @@ class ForceVsDistanceWindow:
 
         self.dist = dist.distance(lambdas[0], lambdas[1])
 
-        x_vals = [parameters["slope"]*(x+40) + parameters["intercept"] for x in x_vals]
+        x_vals = [parameters["slope"]*(x-parameters["offset"]) + parameters["intercept"] for x in x_vals]
 
         x_vals = self.dist.arrayDistance(x_vals, "realDCalc")
         y_vals = [x*self.springConstant for x in x_vals]
@@ -2398,8 +2403,8 @@ class ForceVsDistanceWindow:
         plt.figure(figsize=(10, 6))
         plt.scatter(y_vals, x_vals, color='blue', s=20)  # s controls point size
 
-        plt.xlabel("Distance (nm)")
-        plt.ylabel("Force (mN)")
+        plt.xlabel(r"Distance, $\mathit{D}$ (nm)")
+        plt.ylabel(r"Force/Radius, $\mathit{F/R}$ (mN/m)")
         plt.title(f"Force vs Distance Scatter Plot {mode}")
         plt.grid(True)
         plt.show()
