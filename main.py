@@ -15,6 +15,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from sys import platform
 from tkinter import ttk, filedialog
 
+import distance as dist
 import tracking  
 from exceptions import error_popup, warning_popup, checkbox_popup
 
@@ -50,6 +51,9 @@ class SFA_FECO_UI:
         self.mica_thickness = '0'
         self.radius = tk.StringVar()
         self.f = 1
+        self.lambdaOdd = None
+        self.lambdaEven = None
+        self.wave_lines = None
 
         self.javaExists = self.check_java()
 
@@ -404,6 +408,113 @@ class SFA_FECO_UI:
         # endregion
         # endregion
 
+        # Add a vertical separator between columns
+        vertical_separator = ttk.Separator(self.root, orient="vertical")
+        vertical_separator.grid(row=0, column=5, rowspan=7, sticky='ns', padx=10)
+
+        # region Step 3: Visualize
+        step4_label = ttk.Label(self.root, text="STEP 3: Visualize", style='Step.TLabel', font=20)
+        step4_label.grid(row=0, column=6, sticky='ew', padx=10)
+
+        # Subframe for visualization controls
+        self.visualize_subframe = ttk.Frame(self.root)
+        self.visualize_subframe.grid(row=1, column=6, sticky='new', padx=10, pady=10)
+
+        # --- Camera FPS row ---
+        fps_frame = ttk.Frame(self.visualize_subframe)
+        fps_frame.pack(anchor='w', pady=(0, 5))
+
+        self.camera_fps_label = ttk.Label(fps_frame, text="Camera FPS:", style='Regular.TLabel')
+        self.camera_fps_label.pack(side='left', padx=(0, 5))
+
+        self.camera_fps_var = tk.StringVar(value="2")
+        self.camera_fps_entry = ttk.Entry(fps_frame, textvariable=self.camera_fps_var, width=10, style='Regular.TEntry')
+        self.camera_fps_entry.pack(side='left')
+
+        # --- Radio buttons row ---
+        radio_frame = ttk.Frame(self.visualize_subframe)
+        radio_frame.pack(anchor='w', pady=(0, 8))
+
+        self.visualize_mode = tk.StringVar(value="in")  # default mode
+
+        self.radio_in = ttk.Radiobutton(
+            radio_frame, text="In Run", variable=self.visualize_mode, value="in", style='Regular.TRadiobutton'
+        )
+        self.radio_in.pack(side='left', padx=(0, 10))
+
+        self.radio_out = ttk.Radiobutton(
+            radio_frame, text="Out Run", variable=self.visualize_mode, value="out", style='Regular.TRadiobutton'
+        )
+        self.radio_out.pack(side='left', padx=(0, 10))
+
+        self.radio_full = ttk.Radiobutton(
+            radio_frame, text="Full Run", variable=self.visualize_mode, value="full", style='Regular.TRadiobutton'
+        )
+        self.radio_full.pack(side='left')
+
+        # --- Single visualize button ---
+        self.visualize_button = ttk.Button(
+            self.visualize_subframe,
+            text="Visualize Distance Over Time",
+            command=self.visualize_distance_over_time,
+            style='Regular.TButton'
+        )
+        self.visualize_button.pack(fill='x', pady=5)
+
+         # --- Buffer line ---
+        ttk.Separator(self.visualize_subframe, orient='horizontal').pack(fill='x', pady=5)
+
+        # --- Input k row ---
+        k_frame = ttk.Frame(self.visualize_subframe)
+        k_frame.pack(anchor='w', pady=(5, 5))
+
+        self.k_label = ttk.Label(k_frame, text="Input k (mN/m):", style='Regular.TLabel')
+        self.k_label.pack(side='left', padx=(0, 5))
+
+        self.k_var = tk.StringVar(value="0")
+        self.k_entry = ttk.Entry(k_frame, textvariable=self.k_var, width=10, style='Regular.TEntry')
+        self.k_entry.pack(side='left')
+
+        # --- Radio buttons for force visualization ---
+        force_radio_frame = ttk.Frame(self.visualize_subframe)
+        force_radio_frame.pack(anchor='w', pady=(0, 8))
+
+        self.force_mode = tk.StringVar(value="in")  # separate variable for force visualization
+
+        self.force_radio_in = ttk.Radiobutton(
+            force_radio_frame, text="In", variable=self.force_mode, value="in", style='Regular.TRadiobutton'
+        )
+        self.force_radio_in.pack(side='left', padx=(0, 10))
+
+        self.force_radio_out = ttk.Radiobutton(
+            force_radio_frame, text="Out", variable=self.force_mode, value="out", style='Regular.TRadiobutton'
+        )
+        self.force_radio_out.pack(side='left', padx=(0, 10))
+
+        self.force_radio_full = ttk.Radiobutton(
+            force_radio_frame, text="Full", variable=self.force_mode, value="full", style='Regular.TRadiobutton'
+        )
+        self.force_radio_full.pack(side='left')
+
+        # --- Visualize Force button ---
+        self.visualize_force_button = ttk.Button(
+            self.visualize_subframe,
+            text="Visualize Force Over Distance",
+            command=self.visualize_force_over_distance,  # attach your function here
+            style='Regular.TButton'
+        )
+        self.visualize_force_button.pack(fill='x', pady=5)
+        
+        # endregion
+
+        # Ensure all 4 main regions (columns 0, 2, 4, 6) have equal horizontal weight
+        for col in [0, 2, 4, 6]:
+            self.root.grid_columnconfigure(col, weight=1, uniform="region")
+
+        # Optionally, make separators take minimal space
+        for sep_col in [1, 3, 5]:
+            self.root.grid_columnconfigure(sep_col, weight=0)
+
         cache_dir = os.path.join(os.getcwd(), "cache")
         flag_path = os.path.join(cache_dir, "storage.txt")
 
@@ -423,7 +534,7 @@ class SFA_FECO_UI:
             if checkbox_popup(self.root, "Java Warning", "Java is not installed, or not properly set up in PATH. Disabling CXD to TIFF conversion"):
                 with open(flag_path, "w") as f:
                     f.write("1")
-    
+
     def exit_application(self):
         """Cleanly exit the application."""
         # Close all matplotlib figures
@@ -824,6 +935,17 @@ class SFA_FECO_UI:
             error_popup("Invalid input, must be numeric")
             return False  # Reject input if it’s not a number
 
+    #mode, wave_lines, split_frame_num, fps
+
+    def visualize_distance_over_time(self):
+        TimeVsDistanceWindow(self.visualize_mode.get(), self.wave_lines, int(self.split_var.get()), int(self.camera_fps_var.get()), [self.lambdaOdd, self.lambdaEven], self.calibration_parameters)
+
+    #class ForceVsDistanceWindow:
+        #def __init__(self, mode, wave_lines, split_frame_num, springConstant):
+
+    def visualize_force_over_distance(self):
+        ForceVsDistanceWindow(self.force_mode.get(), self.wave_lines, int(self.split_var.get()), int(self.k_var.get()), [self.lambdaOdd, self.lambdaEven], self.calibration_parameters)
+
     def getFile(self):
         if self.javaExists:
             files = [("TIFF Files", "*.tif *.tiff"), ("CXD Files", "*.cxd"), ("All Files", "*")]
@@ -840,6 +962,13 @@ class SFA_FECO_UI:
             file_path = self.cxdToTiff(file_path)
 
         return file_path
+
+    def setLambdas(self, lambdas):
+        self.lambdaOdd = lambdas[0]
+        self.lambdaEven = lambdas[1]
+
+    def setWaveLines(self, wave_lines):
+        self.wave_lines = wave_lines
 
     def check_java(self):
         # Quick check if "java" is in PATH
@@ -1380,8 +1509,7 @@ class Wavelength_Calibration_Window:
 
         app.setDispersionEntries(self.dispersion1,self.dispersion2,self.dispersion3,self.dispersionAvg,self.dispersionStd)
         
-        coefficients = np.polyfit(x_values, y_values, 1)
-        calibration_equation = {"slope": coefficients[0], "intercept": coefficients[1]}
+        calibration_equation = {"slope": self.dispersionAvg, "intercept": CalibrationValues.HG_GREEN.value, "offset": x_values[0]}
         #print(calibration_equation)
         self.callback(calibration_equation)
         self.close_figure()
@@ -1717,7 +1845,16 @@ class Mica_Thickness_Calibration_Window:
         # Calculate wavelengths using slope and intercept
         slope = self.calibration_parameters['slope']
         intercept = self.calibration_parameters['intercept']
-        self.selected_wavelengths = [slope * (x) + intercept for x in self.selected_waves] 
+        self.selected_wavelengths = [slope * (x - self.calibration_parameters['offset']) + intercept for x in self.selected_waves] 
+
+        if(self.selected_wavelengths[0] < self.selected_wavelengths[1]):
+            lambdas = self.selected_wavelengths
+        else:
+            lambdas = [self.selected_wavelengths[1]] + [self.selected_wavelengths[0]]
+
+        app.setLambdas(lambdas)
+
+        print(lambdas)
 
         thickness = self.calculate_thickness()
         if thickness:
@@ -2025,7 +2162,7 @@ class Motion_Analysis_Window:
 
             # Apply calibration to display ticks only
             calibrated_ticks = [
-                self.calibration_parameters['slope'] * (tick - self.x_offset_start) + self.calibration_parameters['intercept']
+                self.calibration_parameters['slope'] * (tick + self.x_offset_start - self.calibration_parameters['offset']) + self.calibration_parameters['intercept']
                 for tick in ticks
             ]
             self.ax.set_xticks(ticks)
@@ -2043,6 +2180,11 @@ class Motion_Analysis_Window:
     def on_close(self, event):
         """Save the modified wave lines and the figure when the window is closed."""
         # Save the wave centerlines to CSV
+        
+        outputWaveLines = [[(x, y + self.x_offset_start) for (x, y) in wave] for wave in self.wave_lines]
+        print(outputWaveLines)
+
+        app.setWaveLines(outputWaveLines)
         self.save_wave_centerlines_to_csv(self.wave_lines, self.output_filename)
         
         # Update the plot title to a proper name
@@ -2093,7 +2235,7 @@ class Motion_Analysis_Window:
                     for wave_idx, wave_line in enumerate(wave_lines):
                         for (y, x_center) in wave_line:
                             frame_number = y + self.y_offset  # Ensure consistency
-                            calibrated_x = self.calibration_parameters['slope'] * (x_center - self.x_offset_start) + self.calibration_parameters['intercept']
+                            calibrated_x = self.calibration_parameters['slope'] * (x_center + self.x_offset_start - self.calibration_parameters['offset']) + self.calibration_parameters['intercept']
                             writer.writerow([wave_idx + 1, frame_number, calibrated_x])
 
         except Exception as e:
@@ -2202,6 +2344,70 @@ class RadiusMeasurementWindow:
         print(f"Calculated Radius: {radius:.4f}")
         self.callback(radius)  # Return value via callback
         plt.close(self.fig)  # Close the window after calculation
+
+class TimeVsDistanceWindow:
+
+    def __init__(self, mode, wave_lines, split_frame_num, fps, lambdas, parameters):
+        self.mode = mode
+        self.split_frame_num = split_frame_num
+
+        if(self.mode == "in"):
+            self.wave_lines = wave_lines[0][:split_frame_num]
+        elif(self.mode == "out"):
+            self.wave_lines = wave_lines[0][split_frame_num+1:]
+        else:
+            self.wave_lines = wave_lines[0]
+
+        y_vals = [p[0]/fps for p in self.wave_lines]
+        x_vals = [p[1] for p in self.wave_lines]
+
+        self.dist = dist.distance(lambdas[0], lambdas[1])
+
+        x_vals = [parameters["slope"]*(x-parameters["offset"]) + parameters["intercept"] for x in x_vals]
+
+        print(x_vals)
+
+        x_vals = self.dist.arrayDistance(x_vals, "realDCalc")
+
+        plt.figure(figsize=(10, 6))
+        plt.scatter(y_vals, x_vals, color='blue', s=20)  # s controls point size
+
+        plt.xlabel(r"Time, $\mathit{t}$ (s)")
+        plt.ylabel(r"Distance, $\mathit{D}$ (nm)")
+        plt.title(f"Time vs Distance Scatter Plot {mode}")
+        plt.grid(True)
+        plt.show()
+
+class ForceVsDistanceWindow:
+    def __init__(self, mode, wave_lines, split_frame_num, springConstant, lambdas, parameters):
+        self.mode = mode
+        self.springConstant = springConstant
+        self.split_frame_num = split_frame_num
+
+        if(self.mode == "in"):
+            self.wave_lines = wave_lines[0][:split_frame_num]
+        elif(self.mode == "out"):
+            self.wave_lines = wave_lines[0][split_frame_num+1:]
+        else:
+            self.wave_lines = wave_lines[0]
+
+        x_vals = [p[1] for p in self.wave_lines]
+
+        self.dist = dist.distance(lambdas[0], lambdas[1])
+
+        x_vals = [parameters["slope"]*(x-parameters["offset"]) + parameters["intercept"] for x in x_vals]
+
+        x_vals = self.dist.arrayDistance(x_vals, "realDCalc")
+        y_vals = [x*self.springConstant for x in x_vals]
+
+        plt.figure(figsize=(10, 6))
+        plt.scatter(y_vals, x_vals, color='blue', s=20)  # s controls point size
+
+        plt.xlabel(r"Distance, $\mathit{D}$ (nm)")
+        plt.ylabel(r"Force/Radius, $\mathit{F/R}$ (mN/m)")
+        plt.title(f"Force vs Distance Scatter Plot {mode}")
+        plt.grid(True)
+        plt.show()
 
 if __name__ == "__main__":
     root = tk.Tk()

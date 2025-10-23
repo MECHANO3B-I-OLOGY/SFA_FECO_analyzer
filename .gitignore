@@ -1,5 +1,8 @@
+*.aux
 *.cdx
+*.log
 *.pdf
+*.out
 *.tif
 *.tiff
 *.zip
