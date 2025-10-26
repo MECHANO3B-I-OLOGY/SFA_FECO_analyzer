@@ -7,17 +7,44 @@ import shutil
 import subprocess
 import sys
 import tkinter as tk
+import _tkinter
 
 from enums import CalibrationValues
 from PIL import Image, ImageSequence
-from matplotlib.widgets import RectangleSelector, Slider, Cursor
+import matplotlib.backends._backend_tk as backend_tk
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+import matplotlib.ticker as ticker
+from matplotlib.widgets import Cursor, RectangleSelector, Slider, SpanSelector
 from sys import platform
 from tkinter import ttk, filedialog
 
 import distance as dist
 import tracking  
 from exceptions import error_popup, warning_popup, checkbox_popup
+
+# -------------------- Patch Tkinter configure --------------------
+_original_configure = tk.Misc.configure
+
+def configure_ignore_tclerror(self, cnf=None, **kw):
+    try:
+        return _original_configure(self, cnf, **kw)
+    except _tkinter.TclError:
+        # Ignore invalid command name errors (common during figure redraws)
+        pass
+
+tk.Misc.configure = configure_ignore_tclerror
+
+# -------------------- Patch Matplotlib Toolbar update --------------------
+_original_toolbar_update = backend_tk.NavigationToolbar2Tk.update
+
+def toolbar_update_ignore_tclerror(self):
+    try:
+        _original_toolbar_update(self)
+    except _tkinter.TclError:
+        # Ignore errors caused by destroyed toolbar buttons
+        pass
+
+backend_tk.NavigationToolbar2Tk.update = toolbar_update_ignore_tclerror
 
 class SFA_FECO_UI:
     """
@@ -54,6 +81,8 @@ class SFA_FECO_UI:
         self.lambdaOdd = None
         self.lambdaEven = None
         self.wave_lines = None
+        self.dispDistPairsIn = None
+        self.dispDistPairsOut = None
 
         self.javaExists = self.check_java()
 
@@ -447,11 +476,6 @@ class SFA_FECO_UI:
         )
         self.radio_out.pack(side='left', padx=(0, 10))
 
-        self.radio_full = ttk.Radiobutton(
-            radio_frame, text="Full Run", variable=self.visualize_mode, value="full", style='Regular.TRadiobutton'
-        )
-        self.radio_full.pack(side='left')
-
         # --- Single visualize button ---
         self.visualize_button = ttk.Button(
             self.visualize_subframe,
@@ -491,10 +515,6 @@ class SFA_FECO_UI:
         )
         self.force_radio_out.pack(side='left', padx=(0, 10))
 
-        self.force_radio_full = ttk.Radiobutton(
-            force_radio_frame, text="Full", variable=self.force_mode, value="full", style='Regular.TRadiobutton'
-        )
-        self.force_radio_full.pack(side='left')
 
         # --- Visualize Force button ---
         self.visualize_force_button = ttk.Button(
@@ -944,7 +964,10 @@ class SFA_FECO_UI:
         #def __init__(self, mode, wave_lines, split_frame_num, springConstant):
 
     def visualize_force_over_distance(self):
-        ForceVsDistanceWindow(self.force_mode.get(), self.wave_lines, int(self.split_var.get()), int(self.k_var.get()), [self.lambdaOdd, self.lambdaEven], self.calibration_parameters)
+        if self.force_mode.get() == "in":
+            ForceVsDistanceWindow(self.force_mode.get(), self.dispDistPairsIn, int(self.k_var.get()))
+        else:
+            ForceVsDistanceWindow(self.force_mode.get(), self.dispDistPairsOut, int(self.k_var.get()))
 
     def getFile(self):
         if self.javaExists:
@@ -969,6 +992,12 @@ class SFA_FECO_UI:
 
     def setWaveLines(self, wave_lines):
         self.wave_lines = wave_lines
+
+    def setDispDistPairs(self, pairs, mode):
+        if mode == "in":
+            self.dispDistPairsIn = pairs
+        else:
+            self.dispDistPairsOut = pairs
 
     def check_java(self):
         # Quick check if "java" is in PATH
@@ -1086,6 +1115,9 @@ class Frame_Prep_Window:
         self.fig.canvas.mpl_connect("button_release_event", self.end_crop)
         self.fig.canvas.mpl_connect('key_press_event', self.on_key_press)
 
+        self.ax.set_xlabel("Pixels")
+        self.ax.set_ylabel("Pixels")
+
         # Show the plot
         plt.show()
 
@@ -1185,6 +1217,8 @@ class Frame_Prep_Window:
             self.ax.clear()
             self.ax.imshow(self.cropped_frame, cmap="gray")
             self.ax.set_title("Cropping complete. You may close the window.")
+            self.ax.set_xlabel("Pixels")
+            self.ax.set_ylabel("Pixels")
             self.fig.canvas.draw()
 
             # Hide the slider after cropping
@@ -1335,8 +1369,8 @@ class Wavelength_Calibration_Window:
         self.ax.clear()
         self.ax.imshow(np.array(image), cmap="gray")
         self.ax.set_title(f"Frame {self.current_frame_index}")
-        #self.ax.set_xlabel("Pixels")
-        #self.ax.set_ylabel("Pixels")
+        self.ax.set_xlabel("Pixels")
+        self.ax.set_ylabel("Pixels")
         self.update_instructions("Step 1: Select the region with all Hg bars by clicking and dragging. Press Enter to confirm.")
         self.fig.canvas.draw()
 
@@ -1366,6 +1400,8 @@ class Wavelength_Calibration_Window:
                     linewidth=1.5,
                 )
             )
+            self.ax.set_xlabel("Pixels")
+            self.ax.set_ylabel("Pixels")
             self.fig.canvas.draw()
 
     def end_crop(self, event):
@@ -1426,6 +1462,8 @@ class Wavelength_Calibration_Window:
         """Displays the waves over the cropped image using Matplotlib."""
         if self.waves and self.cropped_image is not None:
             self.ax.clear()
+            self.ax.set_xlabel("Pixels")
+            self.ax.set_ylabel("Pixels")
             self.ax.imshow(np.array(self.cropped_image), cmap="gray")
 
             for wave_index, wave in enumerate(self.waves):
@@ -1466,6 +1504,8 @@ class Wavelength_Calibration_Window:
         for wave_x in self.wave_x_avgs:
             color = "red" if wave_x in self.selected_waves else "lime"
             self.ax.axvline(x=wave_x, color=color, linestyle="-")
+        self.ax.set_xlabel("Pixels")
+        self.ax.set_ylabel("Pixels")
         self.fig.canvas.draw()
 
     def calculate_transformation(self):
@@ -1588,6 +1628,9 @@ class Mica_Thickness_Calibration_Window:
         self.fig, self.ax = plt.subplots(figsize=(8, 6))
         plt.subplots_adjust(bottom=0.2, top=0.85)  # Leave space for the slider
 
+        self.secax = self.ax.secondary_xaxis('top', functions=(self.pixToWave, self.waveToPix))
+        self.secax.set_xlabel(r"Wavelength, $\it{\lambda}$ (nm)")
+
         # Add instruction text above the plot
         self.instruction_text = self.fig.text(
             0.5, 0.95,  # Centered horizontally, near the top of the figure
@@ -1613,8 +1656,33 @@ class Mica_Thickness_Calibration_Window:
         self.fig.canvas.mpl_connect("button_release_event", self.end_crop)
         self.fig.canvas.mpl_connect("key_press_event", self.handle_key_press)
 
+        self.fig.canvas.mpl_connect('draw_event', self.update_secondary_axis)
+
         # Show the plot
         plt.show()
+
+    def update_secondary_axis(self, event):
+        if hasattr(self, "secax"):
+            self.secax.set_xlim(self.ax.get_xlim())
+
+    def pixToWave(self, x):
+        return self.calibration_parameters["slope"]*(x-self.calibration_parameters["offset"]) + self.calibration_parameters["intercept"]
+
+    def waveToPix(self, lam):
+        return (lam - self.calibration_parameters["intercept"]) / self.calibration_parameters["slope"] + self.calibration_parameters["offset"]
+
+    def refresh_secondary_axis(self):
+        """Ensure the top wavelength axis exists and matches the current x-limits."""
+        # Remove any previous secondary axis safely
+        if hasattr(self, "secax") and self.secax:
+            try:
+                self.secax.remove()
+            except Exception:
+                pass
+
+        # Recreate the axis based on the current transform functions
+        self.secax = self.ax.secondary_xaxis('top', functions=(self.pixToWave, self.waveToPix))
+        self.secax.set_xlabel(r"Wavelength, $\it{\lambda}$ (nm)")
 
     def handle_key_press(self, event):
         """Handles key press events for crop confirmation or cancellation."""
@@ -1658,16 +1726,20 @@ class Mica_Thickness_Calibration_Window:
     def display_image(self, image):
         """Displays the current frame in the Matplotlib axes."""
         self.ax.clear()
-        self.ax.imshow(np.array(image), cmap="gray")
-        self.ax.set_title(f"Frame {self.current_frame_index}")
+        self.ax.imshow(np.array(image), cmap="gray", aspect="auto")
+
         self.ax.set_xlabel("Pixels")
         self.ax.set_ylabel("Pixels")
+
+        self.refresh_secondary_axis()  
+
         self.update_instructions("Step 1: Select the region to crop by clicking and dragging. Press Enter to confirm.")
-        self.fig.canvas.draw()
+        self.fig.canvas.draw_idle()
 
     def click_start_crop(self, event):
         """Handles the start of crop selection."""
         if self.stage == 1 and event.inaxes == self.ax:
+            
             self.cancel_crop()
             self.crop_start_y = event.ydata
             self.temp_crop_rectangle = None  # Clear any existing temporary crop
@@ -1677,6 +1749,7 @@ class Mica_Thickness_Calibration_Window:
         """Dynamically draws a rectangle to indicate the crop area during mouse movement."""
         if self.stage == 1 and self.crop_start_y is not None and self.crop_end_y is None and event.inaxes == self.ax:
             # Remove the previous temporary rectangle, if any
+
             if self.temp_crop_rectangle:
                 self.temp_crop_rectangle.remove()
             temp_crop_end_y = event.ydata
@@ -1695,7 +1768,11 @@ class Mica_Thickness_Calibration_Window:
 
     def end_crop(self, event):
         """Finalizes the crop selection."""
-        if self.stage == 1 and self.crop_start_y is not None and event.inaxes == self.ax:
+        if self.stage == 1 and self.crop_start_y is not None and event.inaxes ==self.ax:
+            event.inaxes = self.ax
+
+            if event.ydata is None:
+                return
             self.update_instructions("Press Enter to confirm or Esc to reset.")
             self.crop_end_y = event.ydata
             self.ax.axhline(y=self.crop_start_y, color="red", linestyle="-")
@@ -1767,20 +1844,18 @@ class Mica_Thickness_Calibration_Window:
         self.display_filtered_waves()
 
     def display_filtered_waves(self):
-        """Display the cropped image with filtered wave averages overlaid for selection."""
-        # Convert the cropped frame to a NumPy array
-        image_array = np.array(self.cropped_frame)
-
-        # Display the image using Matplotlib
         self.ax.clear()
-        self.ax.imshow(image_array, cmap='gray')
-        self.ax.axis('off')
+        self.ax.imshow(np.array(self.cropped_frame), cmap='gray')
 
-        # Draw vertical lines at the positions of the wave averages
+        self.ax.set_xlabel("Pixels")
+        self.ax.set_ylabel("Pixels")
+
         for avg_x in self.filtered_averages:
             self.ax.axvline(x=avg_x, color='lime', linestyle='-')
 
-        self.fig.canvas.draw()
+        self.refresh_secondary_axis()  
+        
+        self.fig.canvas.draw_idle()
 
     def select_wave_click(self, event):
         """Handles click events to select wave lines based on the average x-coordinate."""
@@ -1823,7 +1898,10 @@ class Mica_Thickness_Calibration_Window:
         # Display the image using Matplotlib
         self.ax.clear()
         self.ax.imshow(image_array, cmap='gray')
-        self.ax.axis('off')
+        #self.ax.axis('off')
+
+        self.ax.set_xlabel("Pixels")
+        self.ax.set_ylabel("Pixels")
 
         # Draw all wave lines, red for selected and green for unselected
         for avg_x in self.filtered_averages:
@@ -1831,6 +1909,8 @@ class Mica_Thickness_Calibration_Window:
             if avg_x in self.selected_waves:
                 color = 'red'  # Red for selected
             self.ax.axvline(x=avg_x, color=color, linestyle='-')
+
+        self.refresh_secondary_axis()
 
         self.fig.canvas.draw()
 
@@ -1854,7 +1934,7 @@ class Mica_Thickness_Calibration_Window:
 
         app.setLambdas(lambdas)
 
-        print(lambdas)
+        #print(lambdas)
 
         thickness = self.calculate_thickness()
         if thickness:
@@ -1926,6 +2006,9 @@ class Motion_Analysis_Window:
         self.fig, self.ax = plt.subplots(figsize=Motion_Analysis_Window.FIGURE_SIZE)
         self.ax.imshow(self.timelapse_image, cmap='gray', origin='upper')
 
+        self.secax = self.ax.secondary_xaxis('top', functions=(self.pixToWave, self.waveToPix))
+        self.secax.set_xlabel(r"Wavelength, $\it{\lambda}$ (nm)")
+
         # --- Adjust visual aspect ratio only ---
         # "aspect" = (height of data unit) / (width of data unit)
         # smaller -> stretches vertically, larger -> compresses vertically
@@ -1950,15 +2033,76 @@ class Motion_Analysis_Window:
             "Press Escape to cancel selection."
         )
 
+        self.ax.xaxis.set_major_formatter(ticker.FuncFormatter(self.offsetX))
+
         self.rect_selector = RectangleSelector(
             self.ax, self.on_select_crop, useblit=True, interactive=True
         )
         self.fig.canvas.mpl_connect('key_press_event', self.handle_key_press)
 
+        #self._draw_cid = self.fig.canvas.mpl_connect('draw_event', self.update_secondary_axis)
+
         plt.show(block=True)
 
         if self.cropping_complete:
             self.run_analysis()
+
+    def offsetX(self,x , pos):
+        return f"{int(x + self.x_offset_start)}"
+
+    def update_secondary_axis(self, event):
+        """Safely sync the top wavelength axis limits with the main axis."""
+        try:
+            # quick sanity checks
+            if not hasattr(self, "secax") or self.secax is None:
+                return
+            if not hasattr(self, "ax") or self.ax is None:
+                return
+            # ensure figure still exists
+            if not plt.fignum_exists(getattr(self, "fig").number):
+                return
+
+            # If there's no canvas/manager/toolbar, bail out
+            canvas = getattr(self, "fig", None).canvas
+            manager = getattr(canvas, "manager", None)
+            toolbar = getattr(manager, "toolbar", None)
+            # set_xlim is cheap; do it only if everything looks OK
+            if toolbar is None or manager is None or canvas is None:
+                # still safe to set limits (no toolbar update) — but check ax exists
+                self.secax.set_xlim(self.ax.get_xlim())
+                return
+
+            # normal case: set limits
+            self.secax.set_xlim(self.ax.get_xlim())
+
+        except _tkinter.TclError:
+            # occurs when Tk widgets were destroyed mid-update; ignore
+            return
+        except Exception:
+            # swallow any other race-condition exceptions silently
+            return
+
+    def pixToWave(self, x):
+        return self.calibration_parameters["slope"]*(x + self.x_offset_start - self.calibration_parameters["offset"]) + self.calibration_parameters["intercept"]
+
+    def waveToPix(self, lam):
+        return (lam - self.calibration_parameters["intercept"]) / self.calibration_parameters["slope"] + self.calibration_parameters["offset"] - self.x_offset_start
+
+    def refresh_secondary_axis(self):
+        """Ensure the top wavelength axis exists and is visible after crop/redraw."""
+        if not hasattr(self, "fig") or not plt.fignum_exists(self.fig.number):
+            return
+
+        # Remove old secax if it exists to avoid conflicts
+        if getattr(self, "secax", None) is not None:
+            try:
+                self.secax.remove()
+            except Exception:
+                pass
+
+        # Create a new secondary x-axis on top
+        self.secax = self.ax.secondary_xaxis('top', functions=(self.pixToWave, self.waveToPix))
+        self.secax.set_xlabel(r"Wavelength, $\it{\lambda}$ (nm)")
 
     def handle_key_press(self, event):
         """Centralized key press handler based on mode."""
@@ -2015,7 +2159,12 @@ class Motion_Analysis_Window:
 
         # Switch to deletion mode after cropping is complete
         self.mode = Motion_Analysis_Window.DELETION_MODE
-        plt.close(self.fig)  # Close the figure to proceed
+
+        try:
+            plt.close(self.fig)
+        except Exception:
+            # Ignore any errors caused by Tkinter callbacks firing during close
+            pass # Close the figure to proceed
 
     def cancel_crop(self):
         """Cancel the current cropping selection and reset the mode."""
@@ -2120,6 +2269,10 @@ class Motion_Analysis_Window:
         # Replot the image
         self.ax.imshow(self.cropped_image, cmap='gray', origin='upper')
 
+        self.ax.xaxis.set_major_formatter(ticker.FuncFormatter(self.offsetX))
+
+        self.refresh_secondary_axis()
+
         # --- Apply visual aspect ratio scaling for display convenience ---
         h, w = self.cropped_image.shape
         aspect_ratio = w / h  # width / height
@@ -2149,26 +2302,9 @@ class Motion_Analysis_Window:
 
         # Reapply title, labels, and legend
         self.ax.set_title("Highlight data to delete it. Enter to accept, Esc to cancel, close window to save.")
-        if self.calibration_parameters:
-            self.ax.set_xlabel(r"Wavelength, $\lambda$ (nm)")
-        else:
-            self.ax.set_xlabel("Pixels")
+        self.ax.set_xlabel("Pixels")
         self.ax.set_ylabel("Frame Number")
         self.ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-
-        # Apply calibrated x-axis ticks if calibration parameters exist
-        if self.calibration_parameters:
-            ticks = self.ax.get_xticks()  # Get original x-axis ticks
-
-            # Apply calibration to display ticks only
-            calibrated_ticks = [
-                self.calibration_parameters['slope'] * (tick + self.x_offset_start - self.calibration_parameters['offset']) + self.calibration_parameters['intercept']
-                for tick in ticks
-            ]
-            self.ax.set_xticks(ticks)
-            self.ax.set_xticklabels([f"{tick:.2f}" for tick in calibrated_ticks])
-
-            self.ax.set_xlim(0, self.x_offset_end - self.x_offset_start)
 
         # Redraw the updated plot
         plt.draw()
@@ -2176,13 +2312,11 @@ class Motion_Analysis_Window:
         # Adjust the layout to include all elements
         self.fig.tight_layout()
 
-
     def on_close(self, event):
         """Save the modified wave lines and the figure when the window is closed."""
         # Save the wave centerlines to CSV
         
         outputWaveLines = [[(x, y + self.x_offset_start) for (x, y) in wave] for wave in self.wave_lines]
-        print(outputWaveLines)
 
         app.setWaveLines(outputWaveLines)
         self.save_wave_centerlines_to_csv(self.wave_lines, self.output_filename)
@@ -2205,7 +2339,11 @@ class Motion_Analysis_Window:
         except Exception as e:
             print(f"Error saving figure as PDF: {e}")
 
-        plt.close(self.fig)
+        try:
+            plt.close(self.fig)
+        except Exception:
+            # Ignore any errors caused by Tkinter callbacks firing during close
+            pass
 
     def save_wave_centerlines_to_csv(self, wave_lines, output_filename):
         """Save the wave centerlines to a CSV file, with an optional calibrated CSV if parameters are available."""
@@ -2350,58 +2488,109 @@ class TimeVsDistanceWindow:
     def __init__(self, mode, wave_lines, split_frame_num, fps, lambdas, parameters):
         self.mode = mode
         self.split_frame_num = split_frame_num
+        self.slope = None
+        self.intercept = None
+        self.x_line = None
 
-        if(self.mode == "in"):
+        if self.mode == "in":
             self.wave_lines = wave_lines[0][:split_frame_num]
-        elif(self.mode == "out"):
+        elif self.mode == "out":
             self.wave_lines = wave_lines[0][split_frame_num+1:]
         else:
             self.wave_lines = wave_lines[0]
 
-        y_vals = [p[0]/fps for p in self.wave_lines]
-        x_vals = [p[1] for p in self.wave_lines]
+        self.y_vals = np.array([p[0]/fps for p in self.wave_lines])
+        x_vals = np.array([p[1] for p in self.wave_lines])
 
         self.dist = dist.distance(lambdas[0], lambdas[1])
 
-        x_vals = [parameters["slope"]*(x-parameters["offset"]) + parameters["intercept"] for x in x_vals]
+        x_vals = parameters["slope"]*(x_vals-parameters["offset"]) + parameters["intercept"]
+        self.x_vals = np.array(self.dist.arrayDistance(x_vals, "realDCalc"))
 
-        print(x_vals)
+        # Create figure and scatter plot
+        self.fig, self.ax = plt.subplots(figsize=(10, 6))
+        self.sc = self.ax.scatter(self.y_vals, self.x_vals, color='blue', s=20)
 
-        x_vals = self.dist.arrayDistance(x_vals, "realDCalc")
+        x_min = self.y_vals.min()
+        x_max = self.y_vals.max()
+        padding = 0.05 * (x_max - x_min)  # optional 5% padding
 
-        plt.figure(figsize=(10, 6))
-        plt.scatter(y_vals, x_vals, color='blue', s=20)  # s controls point size
+        self.ax.set_xlim(x_min - padding, x_max + padding)
 
-        plt.xlabel(r"Time, $\mathit{t}$ (s)")
-        plt.ylabel(r"Distance, $\mathit{D}$ (nm)")
-        plt.title(f"Time vs Distance Scatter Plot {mode}")
-        plt.grid(True)
+        self.ax.set_xlabel(r"Time, $\mathit{t}$ (s)")
+        self.ax.set_ylabel(r"Distance, $\mathit{D}$ (nm)")
+        self.ax.set_title(f"Time vs Distance Scatter Plot {mode}")
+        self.ax.grid(True)
+
+        # Add horizontal span selector
+        self.span = SpanSelector(self.ax, self.on_select, direction='horizontal', useblit=True,
+                                 props=dict(alpha=0.3, facecolor='red'))
+
+        # Reference to current regression line (so we can remove it)
+        self.current_line = None
+
         plt.show()
 
+    def on_select(self, y_min, y_max):
+        """
+        Callback when the user selects a horizontal span.
+        Computes linear regression for the points inside the selected region using NumPy.
+        The regression line is extended across the full horizontal axis.
+        Old regression line is removed before plotting a new one.
+        """
+        # Filter points within the selected y-range
+        mask = (self.y_vals >= y_min) & (self.y_vals <= y_max)
+        selected_x = self.y_vals[mask]
+        selected_y = self.x_vals[mask]
+
+        if len(selected_x) < 2:
+            print("Select a larger region with at least 2 points.")
+            return
+
+        # NumPy linear regression
+        self.slope, self.intercept = np.polyfit(selected_x, selected_y, 1)
+
+        # Store current axes limits
+        xlim = self.ax.get_xlim()
+        ylim = self.ax.get_ylim()
+
+        # Plot regression line only over selected region
+        self.x_line = self.slope * self.y_vals + self.intercept
+
+        # Remove old line if exists
+        if self.current_line is not None:
+            self.current_line.remove()
+
+        # Plot new regression line
+        self.current_line, = self.ax.plot(self.y_vals, self.x_line, color='green', linewidth=2)
+
+        # Restore original axes limits to prevent autoscaling
+        self.ax.set_xlim(xlim)
+        self.ax.set_ylim(ylim)
+
+        self.fig.canvas.draw()
+
+        self.calcDisplacementDistancePairs()
+
+    def calcDisplacementDistancePairs(self):
+        pairs = [(self.x_vals[i], self.x_vals[i] - self.x_line[i]) for i in range(len(self.x_vals))]
+        app.setDispDistPairs(pairs, self.mode)
+
+
 class ForceVsDistanceWindow:
-    def __init__(self, mode, wave_lines, split_frame_num, springConstant, lambdas, parameters):
+    def __init__(self, mode, pairs, springConstant):
         self.mode = mode
         self.springConstant = springConstant
-        self.split_frame_num = split_frame_num
+        self.pairs = pairs
 
-        if(self.mode == "in"):
-            self.wave_lines = wave_lines[0][:split_frame_num]
-        elif(self.mode == "out"):
-            self.wave_lines = wave_lines[0][split_frame_num+1:]
-        else:
-            self.wave_lines = wave_lines[0]
-
-        x_vals = [p[1] for p in self.wave_lines]
-
-        self.dist = dist.distance(lambdas[0], lambdas[1])
-
-        x_vals = [parameters["slope"]*(x-parameters["offset"]) + parameters["intercept"] for x in x_vals]
-
-        x_vals = self.dist.arrayDistance(x_vals, "realDCalc")
-        y_vals = [x*self.springConstant for x in x_vals]
+        x_vals = []
+        y_vals = []
+        for i in range(len(self.pairs)):
+            x_vals += [self.pairs[i][0]]
+            y_vals += [self.pairs[i][1]*self.springConstant*10e-8]
 
         plt.figure(figsize=(10, 6))
-        plt.scatter(y_vals, x_vals, color='blue', s=20)  # s controls point size
+        plt.scatter(x_vals, y_vals, color='blue', s=20)  # s controls point size
 
         plt.xlabel(r"Distance, $\mathit{D}$ (nm)")
         plt.ylabel(r"Force/Radius, $\mathit{F/R}$ (mN/m)")
