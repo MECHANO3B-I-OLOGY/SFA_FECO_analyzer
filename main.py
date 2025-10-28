@@ -1468,7 +1468,7 @@ class Wavelength_Calibration_Window:
 
     def run_wave_detection(self, image):
         """Runs the wave analysis on the cropped image."""
-        self.waves = tracking.new_analyze_and_append_waves(np.array(image), wave_threshold=110,modality=app.mode_var.get())
+        self.waves = tracking.new_analyze_and_append_waves(np.array(image), wave_threshold=110,modality=app.mode_var.get(), smooth=False)
         self.display_waves()
 
     def display_waves(self):
@@ -1841,7 +1841,8 @@ class Mica_Thickness_Calibration_Window:
             wave_threshold=40,
             min_points_per_wave=10,
             min_wave_gap=10,
-            modality=app.mode_var.get()
+            modality=app.mode_var.get(),
+            smooth = False
         )
         
         # Proceed with filtering and displaying waves

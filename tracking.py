@@ -9,12 +9,14 @@ import os
 from deprecation import deprecated
 from PIL import Image, ImageTk, ImageSequence, ImageFilter
 from pprint import pprint 
-from scipy.interpolate import splprep, splev
+from scipy.interpolate import splprep, splev, UnivariateSpline
 from scipy.optimize import curve_fit
+from scipy.signal import savgol_filter, medfilt
 from scipy import stats
 
 from enums import *
 from exceptions import error_popup, warning_popup
+
 
 def scale_frame(frame, scale_factor=0.9):
     """Scales a PIL image based on monitor resolution and provided scale factor.
@@ -107,8 +109,107 @@ def generate_motion_profile(file_path, y_start, y_end, filename):
     final_image.save(filename)
     print(f"Timelapse saved to {filename}")
 
-import numpy as np
-from scipy.signal import savgol_filter
+def fix_endpoints(xs_clean, xs_smooth, k_frac=0.06, min_k=3):
+    """
+    Repair endpoints of xs_smooth using local linear fits on xs_clean.
+    - k_frac: fraction of total length to treat as 'end region'
+    - min_k: minimum number of points in end region
+    """
+    n = len(xs_clean)
+    k = max(min_k, int(np.ceil(n * k_frac)))
+    if n <= 2*k:
+        # Too short — return cleaned values (no smoothing) as safest fallback
+        return xs_clean.copy()
+
+    out = xs_smooth.copy()
+
+    # Left endpoint: fit linear on first 2*k points of the cleaned signal
+    left_fit_n = min(max(3, k), n//2)
+    pL = np.polyfit(np.arange(left_fit_n), xs_clean[:left_fit_n], 1)
+    left_lin = np.polyval(pL, np.arange(left_fit_n))
+
+    # Right endpoint: fit linear on last 2*k points
+    right_fit_n = left_fit_n
+    pR = np.polyfit(np.arange(n-right_fit_n, n), xs_clean[-right_fit_n:], 1)
+    right_x = np.arange(n-right_fit_n, n)
+    right_lin = np.polyval(pR, right_x)
+
+    # Replace first k and last k values with linear fits (or a blend)
+    # Blend weights linearly from 1 (use linear) to 0 (use smooth) over k points
+    for i in range(k):
+        alpha = 1.0 - (i / float(k))  # alpha=1 at the very edge, 0 at boundary
+        out[i] = alpha * left_lin[i] + (1 - alpha) * xs_smooth[i]
+        j = n - 1 - i
+        out[j] = alpha * right_lin[-(i+1)] + (1 - alpha) * xs_smooth[j]
+
+    return out
+
+def robust_smooth_1d(xs, smooth=True, base_window=21, polyorder=3):
+    """
+    Robust smoothing for 1D traces:
+    - small median filter to remove spikes
+    - MAD outlier replacement with local median
+    - adaptive window smoothing (adjusts window by local slope)
+    - fallback to smoothing spline if too few points
+    """
+    xs = np.asarray(xs, dtype=float)
+    n = len(xs)
+    if n == 0:
+        return xs
+
+    # 1) small median filter to suppress single-frame spikes
+    k_med = 3 if n >= 3 else 1
+    xs_med = medfilt(xs, kernel_size=k_med) if k_med > 1 else xs.copy()
+
+    # 2) MAD-based outlier detection
+    resid = xs - xs_med
+    mad = np.median(np.abs(resid - np.median(resid)))
+    if mad <= 0:
+        mad = np.std(resid) + 1e-8
+    threshold = 4.5 * mad
+    outliers = np.abs(resid) > threshold
+    if np.any(outliers):
+        xs_clean = xs.copy()
+        for i in np.where(outliers)[0]:
+            lo = max(0, i - 2)
+            hi = min(n, i + 3)
+            xs_clean[i] = np.median(xs[lo:hi])
+    else:
+        xs_clean = xs_med
+
+    if not smooth:
+        return xs_clean
+
+    # 3) Adaptive smoothing
+    if n <= 5:
+        try:
+            spl = UnivariateSpline(np.arange(n), xs_clean, s=0.0, k=min(3, n-1))
+            return spl(np.arange(n))
+        except Exception:
+            return xs_clean
+
+    # --- Adaptive window logic ---
+    dy = np.gradient(xs_clean)
+    abs_dy = np.abs(dy)
+    if np.max(abs_dy) == 0:
+        abs_dy += 1e-8
+
+    # Window shrinks where slope is high, expands where slope is flat
+    min_w, max_w = 5, base_window
+    local_windows = np.clip(max_w - (abs_dy / np.max(abs_dy)) * (max_w - min_w), min_w, max_w)
+    local_windows = (2 * (local_windows // 2) + 1).astype(int)  # ensure odd
+
+    xs_smooth = np.zeros_like(xs_clean)
+    for i in range(n):
+        w = int(local_windows[i])
+        half = w // 2
+        start = max(0, i - half)
+        end = min(n, i + half + 1)
+        xs_smooth[i] = np.mean(xs_clean[start:end])
+
+    xs_smooth = fix_endpoints(xs_clean, xs_smooth, k_frac=0.06, min_k=3)
+
+    return xs_smooth
 
 def new_analyze_and_append_waves(
         image, 
@@ -226,7 +327,9 @@ def new_analyze_and_append_waves(
     # Filter out short wave lines
     wave_lines = [wave_line for wave_line in wave_lines if len(wave_line) >= min_points_per_wave]
 
-    # --- Apply adaptive Savitzky–Golay smoothing ---
+    
+    
+    # --- Apply adaptive Savitzky-Golay smoothing ---
     if smooth and len(wave_lines) > 0:
         smoothed_wave_lines = []
         for wave_line in wave_lines:
@@ -243,7 +346,7 @@ def new_analyze_and_append_waves(
                 polyorder = min(smooth_polyorder, window_len - 2)
 
                 try:
-                    xs_smooth = savgol_filter(xs, window_length=window_len, polyorder=polyorder)
+                    xs_smooth = robust_smooth_1d(xs, smooth=True, base_window=smooth_window, polyorder=smooth_polyorder)
                 except ValueError:
                     xs_smooth = xs  # Fallback if filter fails
             else:
@@ -252,6 +355,17 @@ def new_analyze_and_append_waves(
             smoothed_wave_lines.append(list(zip(ys, xs_smooth)))
 
         wave_lines = smoothed_wave_lines
+    
+    '''
+    height, width = image.shape
+    clipped_wave_lines = []
+    for wave_line in wave_lines:
+        clipped = [(y, x) for (y, x) in wave_line if 0 <= y < height and 0 <= x < width]
+        if len(clipped) > 0:
+            clipped_wave_lines.append(clipped)
+
+    wave_lines = clipped_wave_lines
+    '''
 
     return wave_lines
 
