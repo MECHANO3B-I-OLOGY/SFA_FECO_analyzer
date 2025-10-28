@@ -239,9 +239,18 @@ class SFA_FECO_UI:
         # Set the text widget to be read-only
         self.thickness_display.config(state="disabled")
 
+        self.fringe_frame = ttk.Frame(self.calibration_subframe)
+        self.fringe_frame.grid(row=11+2, column=0, sticky='ew', padx=10, pady=(5, 10))
+
+        self.fringe_label = ttk.Label(self.fringe_frame, text="Fringe number (n):", style='Regular.TLabel')
+        self.fringe_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
+
+        self.fringe_entry = ttk.Entry(self.fringe_frame, width=15)
+        self.fringe_entry.grid(row=0, column=1, sticky='w')
+
         # Add a horizontal separator between rows
         calibrate_separator2 = ttk.Separator(self.calibration_subframe, orient="horizontal")
-        calibrate_separator2.grid(row=11+2, column=0, sticky='ew', pady=10)
+        calibrate_separator2.grid(row=12+2, column=0, sticky='ew', pady=10)
         '''
         # Select radius File button
         self.select_radius_file_button = ttk.Button(self.calibration_subframe, text="Select Radius Calibration Video", command=self.select_radius_file, style='Regular.TButton')
@@ -958,7 +967,7 @@ class SFA_FECO_UI:
     #mode, wave_lines, split_frame_num, fps
 
     def visualize_distance_over_time(self):
-        TimeVsDistanceWindow(self.visualize_mode.get(), self.wave_lines, int(self.split_var.get()), int(self.camera_fps_var.get()), [self.lambdaOdd, self.lambdaEven], self.calibration_parameters)
+        TimeVsDistanceWindow(self.visualize_mode.get(), self.wave_lines, int(self.split_var.get()), int(self.camera_fps_var.get()), [self.lambdaOdd, self.lambdaEven], self.calibration_parameters, int(self.fringe_entry.get()))
 
     #class ForceVsDistanceWindow:
         #def __init__(self, mode, wave_lines, split_frame_num, springConstant):
@@ -985,6 +994,10 @@ class SFA_FECO_UI:
             file_path = self.cxdToTiff(file_path)
 
         return file_path
+
+    def setN(self, n):
+        self.fringe_entry.delete(0, tk.END)
+        self.fringe_entry.insert(0, str(n))
 
     def setLambdas(self, lambdas):
         self.lambdaOdd = lambdas[0]
@@ -1939,6 +1952,11 @@ class Mica_Thickness_Calibration_Window:
         thickness = self.calculate_thickness()
         if thickness:
             self.callback(thickness)
+
+        n = int(np.round(((lambdas[1]/(lambdas[1]-lambdas[0]))-1)/1.024)) 
+
+        app.setN(n)
+
         self.close_figure()
 
     def calculate_thickness(self):
@@ -2485,7 +2503,7 @@ class RadiusMeasurementWindow:
 
 class TimeVsDistanceWindow:
 
-    def __init__(self, mode, wave_lines, split_frame_num, fps, lambdas, parameters):
+    def __init__(self, mode, wave_lines, split_frame_num, fps, lambdas, parameters, n):
         self.mode = mode
         self.split_frame_num = split_frame_num
         self.slope = None
@@ -2502,7 +2520,7 @@ class TimeVsDistanceWindow:
         self.y_vals = np.array([p[0]/fps for p in self.wave_lines])
         x_vals = np.array([p[1] for p in self.wave_lines])
 
-        self.dist = dist.distance(lambdas[0], lambdas[1])
+        self.dist = dist.distance(lambdas[0], lambdas[1], n=n)
 
         x_vals = parameters["slope"]*(x_vals-parameters["offset"]) + parameters["intercept"]
         self.x_vals = np.array(self.dist.arrayDistance(x_vals, "realDCalc"))
