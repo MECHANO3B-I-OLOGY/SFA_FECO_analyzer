@@ -4,6 +4,9 @@ future plans:
 
 - unified file selection strategy, in and out (and finish error catching)
 - scale window to screen (the right way?)
+- Click and drag to select linear region for velocity calculation
+  - show m,b, R^2
+- Force semilog plot
 
 finished:
 
