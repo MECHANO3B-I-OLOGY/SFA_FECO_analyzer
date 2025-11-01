@@ -1,6 +1,9 @@
 import csv
 import cv2
+import json
+import matplotlib.backends._backend_tk as backend_tk
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import numpy as np
 import os
 import shutil
@@ -11,10 +14,9 @@ import _tkinter
 
 from enums import CalibrationValues
 from PIL import Image, ImageSequence
-import matplotlib.backends._backend_tk as backend_tk
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
-import matplotlib.ticker as ticker
 from matplotlib.widgets import Cursor, RectangleSelector, Slider, SpanSelector
+from screeninfo import get_monitors
 from sys import platform
 from tkinter import ttk, filedialog
 
@@ -84,20 +86,14 @@ class SFA_FECO_UI:
         self.dispDistPairsIn = None
         self.dispDistPairsOut = None
 
+        self.internal_flags = self.loadInternalJSON()
+
         self.javaExists = self.check_java()
 
         # Set protocol for window close to ensure full exit
         self.root.protocol("WM_DELETE_WINDOW", self.exit_application)
 
-        # Get screen width and height
-        screen_width = root.winfo_screenwidth()
-        screen_height = root.winfo_screenheight()
-
-        # Define window size
-        window_width = int(screen_width * self.DEFAULT_WIDTH_RATIO)
-        window_height = int(screen_height * self.DEFAULT_HEIGHT_RATIO)
-
-        self.root.geometry(f"{window_width}x{window_height}+300+100")  # Start at a set position
+        self.root.geometry(self.internal_flags["geometry"])
 
         # Configure validation to accept only numbers
         vcmd = (root.register(self.validate_numeric_input), '%P')
@@ -116,7 +112,7 @@ class SFA_FECO_UI:
 
 
         # region Subframe for Calibration
-        prep_label = ttk.Label(self.root, text="STEP 0: Dispersion Calibration", style='Step.TLabel', font=20)
+        prep_label = ttk.Label(self.root, text="STEP 1: Dispersion Calibration", style='Step.TLabel', font=20)
         prep_label.grid(row=0, column=0, sticky='ew', padx=10)
 
         self.calibration_subframe = ttk.Frame(self.root)
@@ -251,35 +247,38 @@ class SFA_FECO_UI:
         # Add a horizontal separator between rows
         calibrate_separator2 = ttk.Separator(self.calibration_subframe, orient="horizontal")
         calibrate_separator2.grid(row=12+2, column=0, sticky='ew', pady=10)
-        '''
+
+        prep_label = ttk.Label(self.calibration_subframe, text="STEP 2: Radius of Curvature Calibration", style='Step.TLabel', font=20)
+        prep_label.grid(row=12+3, column=0, sticky='ew', padx=10)
+        
         # Select radius File button
-        self.select_radius_file_button = ttk.Button(self.calibration_subframe, text="Select Radius Calibration Video", command=self.select_radius_file, style='Regular.TButton')
-        self.select_radius_file_button.grid(row=12+2, column=0, sticky='ew', padx=10, pady=5)
+        self.select_radius_file_button = ttk.Button(self.calibration_subframe, text="Select Radius of Curvature Calibration Video", command=self.select_radius_file, style='Regular.TButton')
+        self.select_radius_file_button.grid(row=12+4, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the selected radius file's name
         self.radius_file_label = ttk.Label(self.calibration_subframe, text="No file selected", style='Regular.TLabel')
-        self.radius_file_label.grid(row=13+2, column=0, sticky='new', padx=10)
+        self.radius_file_label.grid(row=13+4, column=0, sticky='new', padx=10)
 
         # Label to display the f
-        self.calibration_f_label = ttk.Label(self.calibration_subframe, text="f value:", style='Regular.TLabel')
-        self.calibration_f_label.grid(row=14+2, column=0, sticky='sew', padx=10)
+        self.calibration_f_label = ttk.Label(self.calibration_subframe, text=r"f value: μm/px", style='Regular.TLabel')
+        self.calibration_f_label.grid(row=14+4, column=0, sticky='sew', padx=10)
 
         # f display
         self.f_display = tk.Entry(self.calibration_subframe, textvariable = self.f, validate='key', validatecommand=vcmd)
-        self.f_display.grid(row=15+2, column=0, sticky="esw", padx=10, pady=(5, 5))
+        self.f_display.grid(row=15+4, column=0, sticky="esw", padx=10, pady=(5, 5))
 
         # Calibrate radius button
         self.execute_radius_calibration = ttk.Button(self.calibration_subframe, text="Find Radius", command=self.run_radius_calibration, style='Regular.TButton')
-        self.execute_radius_calibration.grid(row=16+2, column=0, sticky='ew', padx=10, pady=5)
+        self.execute_radius_calibration.grid(row=16+4, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the radius
         self.calibration_radius_label = ttk.Label(self.calibration_subframe, text="Radius:", style='Regular.TLabel')
-        self.calibration_radius_label.grid(row=17+2, column=0, sticky='sew', padx=10)
+        self.calibration_radius_label.grid(row=17+4, column=0, sticky='sew', padx=10)
 
         # Radius display
         self.radius_display = tk.Entry(self.calibration_subframe, textvariable = self.radius, validate='key', validatecommand=vcmd)
-        self.radius_display.grid(row=18+2, column=0, sticky="esw", padx=10, pady=(5, 5)) 
-        '''
+        self.radius_display.grid(row=18+4, column=0, sticky="esw", padx=10, pady=(5, 5)) 
+        
         # endregion
         
         # Add a vertical separator between columns
@@ -287,7 +286,7 @@ class SFA_FECO_UI:
         vertical_separator.grid(row=0, column=1, rowspan=7, sticky='ns', padx=10)
 
         # region Step 1: Prep
-        prep_label = ttk.Label(self.root, text="STEP 1: Prep", style='Step.TLabel', font=20)
+        prep_label = ttk.Label(self.root, text="STEP 3: Prep", style='Step.TLabel', font=20)
         prep_label.grid(row=0, column=2, sticky='ew', padx=10)
 
         # Subframe for Raw Video selection
@@ -360,7 +359,7 @@ class SFA_FECO_UI:
         vertical_separator.grid(row=0, column=3, rowspan=7, sticky='ns', padx=10)
 
         # region Step 2: Analyze
-        step3_label = ttk.Label(self.root, text="STEP 2: Analyze", style='Step.TLabel', font=20)
+        step3_label = ttk.Label(self.root, text="STEP 4: Analyze", style='Step.TLabel', font=20)
         step3_label.grid(row=0, column=4, sticky='ew', padx=10)
 
         # region Subframe for Data File Selection
@@ -451,7 +450,7 @@ class SFA_FECO_UI:
         vertical_separator.grid(row=0, column=5, rowspan=7, sticky='ns', padx=10)
 
         # region Step 3: Visualize
-        step4_label = ttk.Label(self.root, text="STEP 3: Visualize", style='Step.TLabel', font=20)
+        step4_label = ttk.Label(self.root, text="STEP 5: Visualize", style='Step.TLabel', font=20)
         step4_label.grid(row=0, column=6, sticky='ew', padx=10)
 
         # Subframe for visualization controls
@@ -544,28 +543,19 @@ class SFA_FECO_UI:
         for sep_col in [1, 3, 5]:
             self.root.grid_columnconfigure(sep_col, weight=0)
 
-        cache_dir = os.path.join(os.getcwd(), "cache")
-        flag_path = os.path.join(cache_dir, "storage.txt")
-
-        # Ensure cache directory exists
-        os.makedirs(cache_dir, exist_ok=True)
-        
-        skip_java_warning = False
-        if os.path.exists(flag_path):
-            try:
-                with open(flag_path, "r") as f:
-                    if f.read().strip() == "1":
-                        skip_java_warning = True
-            except Exception:
-                pass
-
-        if (not self.javaExists and not skip_java_warning):
-            if checkbox_popup(self.root, "Java Warning", "Java is not installed, or not properly set up in PATH. Disabling CXD to TIFF conversion"):
-                with open(flag_path, "w") as f:
-                    f.write("1")
+        self.javaPrompt()
 
     def exit_application(self):
         """Cleanly exit the application."""
+
+        geometry = self.root.geometry()
+        self.internal_flags.update({"geometry": geometry})
+
+        cache_dir = os.path.join(os.getcwd(), "cache")
+        flag_path = os.path.join(cache_dir, "internal.json")
+        with open(flag_path, "w") as f:
+            json.dump(self.internal_flags, f)
+
         # Close all matplotlib figures
         plt.close('all')
 
@@ -1012,6 +1002,58 @@ class SFA_FECO_UI:
         else:
             self.dispDistPairsOut = pairs
 
+    def loadInternalJSON(self):
+        def is_geometry_on_screen(geometry):
+
+            def parse_geometry(geometry):
+                size, x_y = geometry.split('+', 1)
+                w, h = size.split('x')
+                x, y = x_y.split('+')
+                return int(w), int(h), int(x), int(y)
+
+            try:
+                w, h, x, y = parse_geometry(geometry)
+                for m in get_monitors():
+                    if x < m.x + m.width and x + w > m.x and \
+                    y < m.y + m.height and y + h > m.y:
+                        return True
+                return False
+            except Exception:
+                return False
+        cache_dir = os.path.join(os.getcwd(), "cache")
+        flag_path = os.path.join(cache_dir, "internal.json")
+
+        # Ensure cache directory exists
+        os.makedirs(cache_dir, exist_ok=True)
+
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+
+        # Define window size
+        window_width = int(screen_width * self.DEFAULT_WIDTH_RATIO)
+        window_height = int(screen_height * self.DEFAULT_HEIGHT_RATIO)
+
+        # Load existing flags if file exists
+        if os.path.exists(flag_path):
+            try:
+                with open(flag_path, "r") as f:
+                    temp = json.load(f)
+                    if not is_geometry_on_screen(temp["geometry"]):
+                        temp.update({"geometry": f"{window_width}x{window_height}+300+100"})
+
+                    return temp
+                    
+            except Exception:
+                pass
+        else:
+
+            defaultFlags = {
+                "skip_java_warning": False,
+                "geometry": f"{window_width}x{window_height}+300+100"
+            }
+
+            return defaultFlags
+
     def check_java(self):
         # Quick check if "java" is in PATH
         java_path = shutil.which("java")
@@ -1035,6 +1077,20 @@ class SFA_FECO_UI:
 
         except Exception as e:
             return False
+
+    def javaPrompt(self):
+        # Access specific flag
+        skip_java_warning = self.internal_flags.get("skip_java_warning", False)
+
+        # Behavior logic
+        if not self.javaExists and not skip_java_warning:
+            if checkbox_popup(self.root, "Java Warning", "Java is not installed, or not properly set up in PATH. Disabling CXD to TIFF conversion"):
+                self.internal_flags["skip_java_warning"] = True
+                try:
+                    with open(flag_path, "w") as f:
+                        json.dump(self.internal_flags, f, indent=4)
+                except Exception:
+                    pass
 
     def cxdToTiff(self, file):
         if(file.lower().endswith(".cxd")):

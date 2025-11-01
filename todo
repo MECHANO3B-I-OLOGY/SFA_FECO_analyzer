@@ -7,6 +7,7 @@ future plans:
 - Click and drag to select linear region for velocity calculation
   - show m,b, R^2
 - Force semilog plot
+- Radius of curve calibration/video0
 
 finished:
 

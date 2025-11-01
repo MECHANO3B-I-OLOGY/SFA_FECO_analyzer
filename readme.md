@@ -33,6 +33,7 @@
  - pytz==2024.1
  - scipy==1.14.1
  - six==1.16.0
+ - screeninfo==0.8.1
  - tk==0.1.0
  - tzdata==2024.1
 
