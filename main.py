@@ -64,24 +64,13 @@ class SFA_FECO_UI:
 
         # Initialize file paths and parameters
         self.raw_video_file_path = None
-        self.motion_output_file_path = None
-        self.wavelength_calibration_video_file_path = None
-        self.thickness_input_file_path = None
-        self.radius_input_file_path = None
         self.split_file_path = None
         self.data_file_path = None
         self.analyze_output_file_path = None
 
-        self.split_frame_num = 0
         self.roi_offset = 0
         self.analysis_x_offset = None
         self.analysis_y_offset = None
-        self.calibration_parameters = {}
-        self.mica_thickness = '0'
-        self.radius = tk.StringVar()
-        self.f = 1
-        self.lambdaOdd = None
-        self.lambdaEven = None
         self.wave_lines = None
         self.dispDistPairsIn = None
         self.dispDistPairsOut = None
@@ -89,6 +78,18 @@ class SFA_FECO_UI:
         self.internal_flags = self.loadInternalJSON()
 
         self.calibration_values = self.load_calibration(self.internal_flags["auto_load_calibration"])
+
+        self.wavelength_calibration_video_file_path = self.calibration_values["mercury_video_file"]
+        self.thickness_input_file_path = self.calibration_values["thickness_video_file"]
+        self.radius_input_file_path = self.calibration_values["radius_video_file"]
+
+        self.mica_thickness = self.calibration_values["mica_thickness"]
+        self.lambdaOdd = self.calibration_values["lambdas"]["odd"]
+        self.lambdaEven = self.calibration_values["lambdas"]["even"]
+        self.calibration_parameters = self.calibration_values["calibration_parameters"]
+        self.f = self.calibration_values["f_value"]
+        self.radius = self.calibration_values["radius"]
+        self.split_frame_num = self.calibration_values["turnaround_frame"]
 
         self.javaExists = self.check_java()
 
@@ -123,10 +124,10 @@ class SFA_FECO_UI:
         self.calibration_buttons_frame.grid(row=0, column=0, sticky='w', padx=10, pady=(0, 0))
 
         # Buttons side by side
-        self.load_calibration_button = ttk.Button(self.calibration_buttons_frame, text="Load Calibration", command=self.load_calibration)
+        self.load_calibration_button = ttk.Button(self.calibration_buttons_frame, text="Load Calibration", command=lambda: self.load_calibration(False, filedialog.askopenfilename(filetypes=[("JSON files", "*.json")])))
         self.load_calibration_button.grid(row=0, column=0, padx=(0, 5), pady=0, sticky='w')
 
-        self.save_calibration_button = ttk.Button(self.calibration_buttons_frame, text="Save Calibration", command=self.save_calibration)
+        self.save_calibration_button = ttk.Button(self.calibration_buttons_frame, text="Save Calibration", command=lambda: self.save_calibration(False))
         self.save_calibration_button.grid(row=0, column=1, padx=(5, 0), pady=0, sticky='w')
 
         # Checkbox under buttons, in the same frame
@@ -158,11 +159,11 @@ class SFA_FECO_UI:
         self.wavelength_calibration_file_label = ttk.Label(self.calibration_subframe, text="No file selected", style='Regular.TLabel')
         self.wavelength_calibration_file_label.grid(row=4+1, column=0, sticky='ew', padx=10)
 
-         # Checkbox frame (keeps them together neatly)
+        # Checkbox frame (keeps them together neatly)
         self.checkbox_frame = ttk.Frame(self.calibration_subframe)
         self.checkbox_frame.grid(row=5+1, column=0, sticky='w', padx=10, pady=5)
 
-         # Instruction label inside the frame
+        # Instruction label inside the frame
         self.checkbox_instruction = ttk.Label(
             self.checkbox_frame,
             text="If only using 2 Hg lines, select which you will use:",
@@ -170,11 +171,14 @@ class SFA_FECO_UI:
         )
         self.checkbox_instruction.grid(row=0, column=0, columnspan=3, sticky='w', pady=(0, 5))
 
-
         # Variables for checkboxes
         self.green_var = tk.BooleanVar()
         self.yellow1_var = tk.BooleanVar()
         self.yellow2_var = tk.BooleanVar()
+
+        self.green_var.set(self.calibration_values["mercury_lines"]["green"])
+        self.yellow1_var.set(self.calibration_values["mercury_lines"]["yellow_1"])
+        self.yellow2_var.set(self.calibration_values["mercury_lines"]["yellow_2"])
 
         # Checkboxes
         self.green_check = ttk.Checkbutton(self.checkbox_frame, text="Green", variable=self.green_var)
@@ -231,6 +235,7 @@ class SFA_FECO_UI:
         self.dispersionStd_entry.grid(row=4, column=1, sticky='w', pady=2)
 
         
+        
         self.dispersion1_entry.config(state="readonly")
         self.dispersion2_entry.config(state="readonly")
         self.dispersion3_entry.config(state="readonly")
@@ -257,15 +262,14 @@ class SFA_FECO_UI:
         self.thickness_frame = ttk.Frame(self.calibration_subframe)
         self.thickness_frame.grid(row=13+1, column=0, sticky='w', padx=10, pady=(5, 5))
 
-        self.calibration_thickness_label = ttk.Label(self.thickness_frame, text="Mica thickness:", style='Regular.TLabel')
+        self.calibration_thickness_label = ttk.Label(self.thickness_frame, text="Mica thickness (μm):", style='Regular.TLabel')
         self.calibration_thickness_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
 
-        self.thickness_display = tk.Text(self.thickness_frame, height=1, width=10, wrap="none")
+        self.thickness_display = tk.Entry(self.thickness_frame, width=10)
         self.thickness_display.grid(row=0, column=1, sticky='w')
 
         # Insert and disable
-        self.thickness_display.insert("1.0", str(self.mica_thickness))
-        self.thickness_display.config(state="disabled")
+        self.thickness_display.insert(0, str(self.mica_thickness))
 
         self.fringe_frame = ttk.Frame(self.calibration_subframe)
         self.fringe_frame.grid(row=15+1, column=0, sticky='ew', padx=10, pady=(5, 10))
@@ -275,6 +279,8 @@ class SFA_FECO_UI:
 
         self.fringe_entry = ttk.Entry(self.fringe_frame, width=15)
         self.fringe_entry.grid(row=0, column=1, sticky='w')
+
+        self.fringe_entry.insert(0, str(self.calibration_values["fringe_number"]))
 
         # Add a horizontal separator between rows
         calibrate_separator2 = ttk.Separator(self.calibration_subframe, orient="horizontal")
@@ -298,8 +304,10 @@ class SFA_FECO_UI:
         self.calibration_f_label = ttk.Label(self.f_frame, text=r"f value (μm/px):", style='Regular.TLabel')
         self.calibration_f_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
 
-        self.f_display = ttk.Entry(self.f_frame, width=15, validate='key', validatecommand=vcmd)
+        self.f_display = ttk.Entry(self.f_frame, width=15, validate='key')
         self.f_display.grid(row=0, column=1, sticky='w')
+
+        self.f_display.insert(0, str(self.f))
 
         # Calibrate radius button
         self.execute_radius_calibration = ttk.Button(self.calibration_subframe, text="Find Radius", command=self.run_radius_calibration, style='Regular.TButton')
@@ -312,8 +320,10 @@ class SFA_FECO_UI:
         self.calibration_radius_label = ttk.Label(self.radius_frame, text="Radius of Curvature:", style='Regular.TLabel')
         self.calibration_radius_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
 
-        self.radius_display = ttk.Entry(self.radius_frame, width=15, textvariable=self.radius, validate='key', validatecommand=vcmd)
+        self.radius_display = ttk.Entry(self.radius_frame, width=15, textvariable=str(self.radius), validate='key')
         self.radius_display.grid(row=0, column=1, sticky='w')
+
+        self.radius_display.insert(0, str(self.radius))
         
         # endregion
         
@@ -503,7 +513,7 @@ class SFA_FECO_UI:
         self.camera_fps_label = ttk.Label(fps_frame, text="Camera FPS:", style='Regular.TLabel')
         self.camera_fps_label.pack(side='left', padx=(0, 5))
 
-        self.camera_fps_var = tk.StringVar(value="2")
+        self.camera_fps_var = tk.StringVar(value=str(self.calibration_values["fps"]))
         self.camera_fps_entry = ttk.Entry(fps_frame, textvariable=self.camera_fps_var, width=10, style='Regular.TEntry')
         self.camera_fps_entry.pack(side='left')
 
@@ -542,7 +552,7 @@ class SFA_FECO_UI:
         self.k_label = ttk.Label(k_frame, text="Input k (mN/m):", style='Regular.TLabel')
         self.k_label.pack(side='left', padx=(0, 5))
 
-        self.k_var = tk.StringVar(value="0")
+        self.k_var = tk.StringVar(value=str(self.calibration_values["spring_constant"]))
         self.k_entry = ttk.Entry(k_frame, textvariable=self.k_var, width=10, style='Regular.TEntry')
         self.k_entry.pack(side='left')
 
@@ -584,6 +594,8 @@ class SFA_FECO_UI:
 
         self.javaPrompt()
 
+        self.updateScreenValues()
+
     def exit_application(self):
         """Cleanly exit the application."""
 
@@ -597,6 +609,8 @@ class SFA_FECO_UI:
         flag_path = os.path.join(cache_dir, "internal.json")
         with open(flag_path, "w") as f:
             json.dump(self.internal_flags, f)
+
+        self.save_calibration(True)
 
         # Close all matplotlib figures
         plt.close('all')
@@ -730,8 +744,8 @@ class SFA_FECO_UI:
         self.thickness_display.config(state="normal")
         
         # Clear the current content and insert the new value
-        self.thickness_display.delete("1.0", "end")
-        self.thickness_display.insert("1.0", str(abs(thickness))[:4] + ' um')
+        self.thickness_display.delete(0, "end")
+        self.thickness_display.insert(0, str(abs(thickness))[:4])
         
         # Disable the widget again to make it read-only
         self.thickness_display.config(state="disabled")
@@ -1099,12 +1113,167 @@ class SFA_FECO_UI:
             return defaultFlags
 
     def load_calibration(self, loadPrev, fileName = None):
-        # implement loading calibration logic
-        pass
+        cache_dir = os.path.join(os.getcwd(), "cache")
+        flag_path = os.path.join(cache_dir, "previousCalibration.json")
 
-    def save_calibration(self):
+        # Ensure cache directory exists
+        os.makedirs(cache_dir, exist_ok=True)
+
+        prevExists = os.path.exists(flag_path)
+
+        if loadPrev and prevExists:
+            with open(flag_path, "r") as f:
+                return json.load(f)
+        elif fileName != None:
+            with open(fileName, "r") as f:
+                self.calibration_values = json.load(f)
+                self.updateScreenValues()
+                return 
+        else:
+            temp = {
+                "mercury_video_file": "",
+                "mercury_lines": {
+                    "green": False,
+                    "yellow_1": False,
+                    "yellow_2": False
+                },
+                "dispersion_values": {
+                    "1": np.NaN,
+                    "2": np.NaN,
+                    "3": np.NaN,
+                    "average": np.NaN,
+                    "standard_deviation": np.NaN
+                },
+                "calibration_parameters": {
+                    "slope": np.NaN,
+                    "intercept": np.NaN,
+                    "offset": np.NaN
+                },
+                "thickness_video_file": "",
+                "mica_thickness": np.NaN, 
+                "fringe_number": np.NaN,
+                "lambdas": {
+                    "odd": np.NaN,
+                    "even": np.NaN
+                },
+                "radius_video_file": "",
+                "f_value": np.NaN,
+                "radius": np.NaN, 
+                "turnaround_frame": 0,
+                "fps": 2,
+                "spring_constant": 0
+            }
+
+            return temp
+
+    def updateScreenValues(self):
+        self.wavelength_calibration_video_file_path = self.calibration_values["mercury_video_file"]
+        self.thickness_input_file_path = self.calibration_values["thickness_video_file"]
+        self.radius_input_file_path = self.calibration_values["radius_video_file"]
+
+        self.mica_thickness = self.calibration_values["mica_thickness"]
+        self.lambdaOdd = self.calibration_values["lambdas"]["odd"]
+        self.lambdaEven = self.calibration_values["lambdas"]["even"]
+        self.calibration_parameters = self.calibration_values["calibration_parameters"]
+        self.f = self.calibration_values["f_value"]
+        self.radius = self.calibration_values["radius"]
+        self.split_frame_num = self.calibration_values["turnaround_frame"]
+
+        if self.wavelength_calibration_video_file_path != "":
+            if len(self.wavelength_calibration_video_file_path) > self.MAX_FILE_DISP_LENGTH:
+                data_file_text = '...' + self.wavelength_calibration_video_file_path[len(self.wavelength_calibration_video_file_path) - self.MAX_FILE_DISP_LENGTH:]
+                self.wavelength_calibration_file_label.config(text=data_file_text)
+            else: 
+                self.wavelength_calibration_file_label.config(text=self.wavelength_calibration_video_file_path)
+
+        self.green_var.set(self.calibration_values["mercury_lines"]["green"])
+        self.yellow1_var.set(self.calibration_values["mercury_lines"]["yellow_1"])
+        self.yellow2_var.set(self.calibration_values["mercury_lines"]["yellow_2"])
+
+        self.setDispersionEntries(self.calibration_values["dispersion_values"]["1"],self.calibration_values["dispersion_values"]["2"],self.calibration_values["dispersion_values"]["3"],self.calibration_values["dispersion_values"]["average"],self.calibration_values["dispersion_values"]["standard_deviation"])
+
+        if self.thickness_input_file_path != "":
+            if len(self.thickness_input_file_path) > self.MAX_FILE_DISP_LENGTH:
+                data_file_text = '...' + self.thickness_input_file_path[len(self.thickness_input_file_path) - self.MAX_FILE_DISP_LENGTH:]
+                self.thickness_file_label.config(text=data_file_text)
+            else:
+                self.thickness_file_label.config(text=self.thickness_input_file_path) 
+
+        if self.radius_input_file_path != "":
+            if len(self.radius_input_file_path) > self.MAX_FILE_DISP_LENGTH:
+                data_file_text = '...' + self.radius_input_file_path[len(self.radius_input_file_path) - self.MAX_FILE_DISP_LENGTH:]
+                self.radius_file_label.config(text=data_file_text)
+            else:
+                self.radius_file_label.config(text=self.radius_input_file_path) 
+
+        self.thickness_display.delete(0, "end")
+        self.thickness_display.insert(0, str(self.mica_thickness))
+
+        self.fringe_entry.delete(0, "end")
+        self.fringe_entry.insert(0, str(self.calibration_values["fringe_number"]))
+
+        self.f_display.delete(0, "end")
+        self.f_display.insert(0, str(self.f))
+
+        self.radius_display.delete(0, "end")
+        self.radius_display.insert(0, str(self.f))
+
+        self.split_var.set(str(self.split_frame_num))
+
+        self.camera_fps_var.set(str(self.calibration_values["fps"]))
+
+        self.k_var.set(str(self.calibration_values["spring_constant"]))
+
+
+    def save_calibration(self, onClose):
         # implement saving calibration logic
-        pass
+        temp = {
+                "mercury_video_file": self.wavelength_calibration_video_file_path,
+                "mercury_lines": {
+                    "green": self.green_var.get(),
+                    "yellow_1": self.yellow1_var.get(),
+                    "yellow_2": self.yellow2_var.get()
+                },
+                "dispersion_values": {
+                    "1": float(self.dispersion1_entry.get()),
+                    "2": float(self.dispersion2_entry.get()),
+                    "3": float(self.dispersion3_entry.get()),
+                    "average": float(self.dispersionAvg_entry.get()),
+                    "standard_deviation": float(self.dispersionStd_entry.get())
+                },
+                "calibration_parameters": self.calibration_parameters,
+                "thickness_video_file": self.thickness_input_file_path,
+                "mica_thickness": float(str(self.mica_thickness)[:4]), 
+                "fringe_number": float(self.fringe_entry.get()),
+                "lambdas": {
+                    "odd": self.lambdaOdd,
+                    "even": self.lambdaEven
+                },
+                "radius_video_file": self.radius_input_file_path,
+                "f_value": float(self.f_display.get()),
+                "radius": float(self.radius_display.get()), 
+                "turnaround_frame": int(self.split_frame_num),
+                "fps": int(self.camera_fps_var.get()),
+                "spring_constant":  int(self.k_var.get())
+            }
+        if onClose:
+
+            cache_dir = os.path.join(os.getcwd(), "cache")
+            flag_path = os.path.join(cache_dir, "previousCalibration.json")
+            with open(flag_path, "w") as f:
+                json.dump(temp, f)
+        else:
+            
+            filename = filedialog.asksaveasfilename(
+                defaultextension=".csv",
+                filetypes=[("JSON files", "*.json")],
+                title="Save calibration file as..."
+            )
+            if filename:
+                with open(filename, "w") as f:
+                    json.dump(temp, f)
+            else:
+                exceptions.warning_popup("No file selected, aborting")
 
     def check_java(self):
         # Quick check if "java" is in PATH
