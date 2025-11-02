@@ -88,6 +88,8 @@ class SFA_FECO_UI:
 
         self.internal_flags = self.loadInternalJSON()
 
+        self.calibration_values = self.load_calibration(self.internal_flags["auto_load_calibration"])
+
         self.javaExists = self.check_java()
 
         # Set protocol for window close to ensure full exit
@@ -102,8 +104,8 @@ class SFA_FECO_UI:
         self.setup_styles()
 
         # Configure grid layout for the root window
-        for i in range(7):
-            self.root.grid_rowconfigure(i, weight=1)
+        for i in range(40):
+            self.root.grid_rowconfigure(i, weight=0)
         self.root.grid_columnconfigure(0, weight=1)
         self.root.grid_columnconfigure(1, weight=0)
         self.root.grid_columnconfigure(2, weight=1)
@@ -112,26 +114,53 @@ class SFA_FECO_UI:
 
 
         # region Subframe for Calibration
-        prep_label = ttk.Label(self.root, text="STEP 1: Dispersion Calibration", style='Step.TLabel', font=20)
-        prep_label.grid(row=0, column=0, sticky='ew', padx=10)
-
+        # --- Calibration Load/Save Buttons and Checkbox ---
+        # Frame to hold load/save buttons and checkbox together
         self.calibration_subframe = ttk.Frame(self.root)
-        self.calibration_subframe.grid(row=1, column=0, rowspan=2, sticky='ew')
+        self.calibration_subframe.grid(row=0, column=0, rowspan=2, sticky='ew', pady=(25,0))
+
+        self.calibration_buttons_frame = ttk.Frame(self.calibration_subframe)
+        self.calibration_buttons_frame.grid(row=0, column=0, sticky='w', padx=10, pady=(0, 0))
+
+        # Buttons side by side
+        self.load_calibration_button = ttk.Button(self.calibration_buttons_frame, text="Load Calibration", command=self.load_calibration)
+        self.load_calibration_button.grid(row=0, column=0, padx=(0, 5), pady=0, sticky='w')
+
+        self.save_calibration_button = ttk.Button(self.calibration_buttons_frame, text="Save Calibration", command=self.save_calibration)
+        self.save_calibration_button.grid(row=0, column=1, padx=(5, 0), pady=0, sticky='w')
+
+        # Checkbox under buttons, in the same frame
+        self.load_previous_var = tk.BooleanVar()
+        self.load_previous_var.set(self.internal_flags["auto_load_calibration"])
+        self.load_previous_checkbox = ttk.Checkbutton(
+            self.calibration_buttons_frame,
+            text="Load previous calibration by default",
+            variable=self.load_previous_var
+        )
+        self.load_previous_checkbox.grid(row=1, column=0, columnspan=2, sticky='w', pady=(2, 2))
+
+        # Add a horizontal separator between rows
+        calibrate_separator1 = ttk.Separator(self.calibration_subframe, orient="horizontal")
+        calibrate_separator1.grid(row=2, column=0, sticky='ew', pady=10)
+
+        # --- Step 1 label now moves down one row ---
+        prep_label = ttk.Label(self.calibration_subframe, text="STEP 1: Dispersion Calibration", style='Step.TLabel', font=20)
+        prep_label.grid(row=2+1, column=0, sticky='ew', padx=10)
 
         # Configure the column of the subframe to expand
         self.calibration_subframe.columnconfigure(0, weight=1)
 
         # Select wavelength calibration video file
         self.select_calibration_file_button = ttk.Button(self.calibration_subframe, text="Select Hg Lines (No Mica) Video", command=self.select_wavelength_calibration_file, style='Regular.TButton')
-        self.select_calibration_file_button.grid(row=1, column=0, sticky='ew', padx=10, pady=5)
+        self.select_calibration_file_button.grid(row=3+1, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the selected wavelength calibration video file's name
         self.wavelength_calibration_file_label = ttk.Label(self.calibration_subframe, text="No file selected", style='Regular.TLabel')
-        self.wavelength_calibration_file_label.grid(row=2, column=0, sticky='ew', padx=10)
+        self.wavelength_calibration_file_label.grid(row=4+1, column=0, sticky='ew', padx=10)
 
          # Checkbox frame (keeps them together neatly)
         self.checkbox_frame = ttk.Frame(self.calibration_subframe)
-        self.checkbox_frame.grid(row=3, column=0, sticky='w', padx=10, pady=5)
+        self.checkbox_frame.grid(row=5+1, column=0, sticky='w', padx=10, pady=5)
 
          # Instruction label inside the frame
         self.checkbox_instruction = ttk.Label(
@@ -159,11 +188,11 @@ class SFA_FECO_UI:
 
         # Calibrate Wavelengths button
         self.execute_wavelength_calibration = ttk.Button(self.calibration_subframe, text="Calibrate Wavelengths", command=self.run_wavelength_calibration, style='Regular.TButton')
-        self.execute_wavelength_calibration.grid(row=3+1, column=0, sticky='ew', padx=10, pady=5)
+        self.execute_wavelength_calibration.grid(row=6+1, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the wavelength calibration status
         self.calibration_completion_label = ttk.Label(self.calibration_subframe, text="Calibration not completed", style='Regular.TLabel')
-        self.calibration_completion_label.grid(row=4+1, column=0, sticky='new', padx=10, pady=(0, 20))
+        self.calibration_completion_label.grid(row=7+1, column=0, sticky='new', padx=10, pady=(0, 20))
 
          # Subframe for dispersion values
         self.dispersion_frame = ttk.Frame(self.calibration_subframe)
@@ -178,22 +207,26 @@ class SFA_FECO_UI:
         # Dispersion 2
         self.dispersion2_label = ttk.Label(self.dispersion_frame, text="Dispersion 2:", style='Regular.TLabel')
         self.dispersion2_label.grid(row=1, column=0, sticky='w', pady=2, padx=(0, 5))
+
         self.dispersion2_entry = ttk.Entry(self.dispersion_frame, width=15)
         self.dispersion2_entry.grid(row=1, column=1, sticky='w', pady=2)
 
         # Dispersion 3
         self.dispersion3_label = ttk.Label(self.dispersion_frame, text="Dispersion 3:", style='Regular.TLabel')
         self.dispersion3_label.grid(row=2, column=0, sticky='w', pady=2, padx=(0, 5))
+
         self.dispersion3_entry = ttk.Entry(self.dispersion_frame, width=15)
         self.dispersion3_entry.grid(row=2, column=1, sticky='w', pady=2)
 
         self.dispersionAvg_label = ttk.Label(self.dispersion_frame, text="Average Dispersion:", style='Regular.TLabel')
         self.dispersionAvg_label.grid(row=3, column=0, sticky='w', pady=2, padx=(0, 5))
+
         self.dispersionAvg_entry = ttk.Entry(self.dispersion_frame, width=15)
         self.dispersionAvg_entry.grid(row=3, column=1, sticky='w', pady=2)
 
         self.dispersionStd_label = ttk.Label(self.dispersion_frame, text="Standard Deviation:", style='Regular.TLabel')
         self.dispersionStd_label.grid(row=4, column=0, sticky='w', pady=2, padx=(0, 5))
+
         self.dispersionStd_entry = ttk.Entry(self.dispersion_frame, width=15)
         self.dispersionStd_entry.grid(row=4, column=1, sticky='w', pady=2)
 
@@ -204,39 +237,38 @@ class SFA_FECO_UI:
         self.dispersionAvg_entry.config(state="readonly")
         self.dispersionStd_entry.config(state="readonly")
         
-
         # Add a horizontal separator between rows
         calibrate_separator1 = ttk.Separator(self.calibration_subframe, orient="horizontal")
-        calibrate_separator1.grid(row=5+2, column=0, sticky='ew', pady=10)
+        calibrate_separator1.grid(row=9+1, column=0, sticky='ew', pady=10)
 
         # Select Thickness File button
         self.select_thickness_file_button = ttk.Button(self.calibration_subframe, text="Select Mica Mica Contact (No Hg) Video", command=self.select_thickness_file, style='Regular.TButton')
-        self.select_thickness_file_button.grid(row=6+2, column=0, sticky='ew', padx=10, pady=5)
+        self.select_thickness_file_button.grid(row=10+1, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the selected thickness file's name
         self.thickness_file_label = ttk.Label(self.calibration_subframe, text="No file selected", style='Regular.TLabel')
-        self.thickness_file_label.grid(row=7+2, column=0, sticky='new', padx=10)
+        self.thickness_file_label.grid(row=11+1, column=0, sticky='new', padx=10)
 
         # Calibrate Thickness button
         self.execute_thickness_calibration = ttk.Button(self.calibration_subframe, text="Calculate Mica Thickness", command=self.run_thickness_calibration, style='Regular.TButton')
-        self.execute_thickness_calibration.grid(row=8+2, column=0, sticky='ew', padx=10, pady=5)
+        self.execute_thickness_calibration.grid(row=12+1, column=0, sticky='ew', padx=10, pady=5)
 
-        # Label to display the thickness
-        self.calibration_thickness_label = ttk.Label(self.calibration_subframe, text="Mica thickness:", style='Regular.TLabel')
-        self.calibration_thickness_label.grid(row=9+2, column=0, sticky='sew', padx=10)
+        # Frame to hold mica thickness label and entry side by side
+        self.thickness_frame = ttk.Frame(self.calibration_subframe)
+        self.thickness_frame.grid(row=13+1, column=0, sticky='w', padx=10, pady=(5, 5))
 
-        # Thickness display
-        self.thickness_display = tk.Text(self.calibration_subframe, height=1, width=10, wrap="none")
-        self.thickness_display.grid(row=10+2, column=0, sticky="esw", padx=10, pady=(5, 5))
+        self.calibration_thickness_label = ttk.Label(self.thickness_frame, text="Mica thickness:", style='Regular.TLabel')
+        self.calibration_thickness_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
 
-        # Insert the mica thickness value into the text widget
+        self.thickness_display = tk.Text(self.thickness_frame, height=1, width=10, wrap="none")
+        self.thickness_display.grid(row=0, column=1, sticky='w')
+
+        # Insert and disable
         self.thickness_display.insert("1.0", str(self.mica_thickness))
-
-        # Set the text widget to be read-only
         self.thickness_display.config(state="disabled")
 
         self.fringe_frame = ttk.Frame(self.calibration_subframe)
-        self.fringe_frame.grid(row=11+2, column=0, sticky='ew', padx=10, pady=(5, 10))
+        self.fringe_frame.grid(row=15+1, column=0, sticky='ew', padx=10, pady=(5, 10))
 
         self.fringe_label = ttk.Label(self.fringe_frame, text="Fringe number (n):", style='Regular.TLabel')
         self.fringe_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
@@ -246,38 +278,42 @@ class SFA_FECO_UI:
 
         # Add a horizontal separator between rows
         calibrate_separator2 = ttk.Separator(self.calibration_subframe, orient="horizontal")
-        calibrate_separator2.grid(row=12+2, column=0, sticky='ew', pady=10)
+        calibrate_separator2.grid(row=16+1, column=0, sticky='ew', pady=10)
 
         prep_label = ttk.Label(self.calibration_subframe, text="STEP 2: Radius of Curvature Calibration", style='Step.TLabel', font=20)
-        prep_label.grid(row=12+3, column=0, sticky='ew', padx=10)
+        prep_label.grid(row=17+1, column=0, sticky='ew', padx=10)
         
         # Select radius File button
         self.select_radius_file_button = ttk.Button(self.calibration_subframe, text="Select Radius of Curvature Calibration Video", command=self.select_radius_file, style='Regular.TButton')
-        self.select_radius_file_button.grid(row=12+4, column=0, sticky='ew', padx=10, pady=5)
+        self.select_radius_file_button.grid(row=18+1, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the selected radius file's name
         self.radius_file_label = ttk.Label(self.calibration_subframe, text="No file selected", style='Regular.TLabel')
-        self.radius_file_label.grid(row=13+4, column=0, sticky='new', padx=10)
+        self.radius_file_label.grid(row=19+1, column=0, sticky='new', padx=10)
 
-        # Label to display the f
-        self.calibration_f_label = ttk.Label(self.calibration_subframe, text=r"f value: μm/px", style='Regular.TLabel')
-        self.calibration_f_label.grid(row=14+4, column=0, sticky='sew', padx=10)
+        # Frame for f value label and entry side by side
+        self.f_frame = ttk.Frame(self.calibration_subframe)
+        self.f_frame.grid(row=20+1, column=0, sticky='w', padx=10, pady=(5, 5))
 
-        # f display
-        self.f_display = tk.Entry(self.calibration_subframe, textvariable = self.f, validate='key', validatecommand=vcmd)
-        self.f_display.grid(row=15+4, column=0, sticky="esw", padx=10, pady=(5, 5))
+        self.calibration_f_label = ttk.Label(self.f_frame, text=r"f value (μm/px):", style='Regular.TLabel')
+        self.calibration_f_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
+
+        self.f_display = ttk.Entry(self.f_frame, width=15, validate='key', validatecommand=vcmd)
+        self.f_display.grid(row=0, column=1, sticky='w')
 
         # Calibrate radius button
         self.execute_radius_calibration = ttk.Button(self.calibration_subframe, text="Find Radius", command=self.run_radius_calibration, style='Regular.TButton')
-        self.execute_radius_calibration.grid(row=16+4, column=0, sticky='ew', padx=10, pady=5)
+        self.execute_radius_calibration.grid(row=22+1, column=0, sticky='ew', padx=10, pady=5)
 
-        # Label to display the radius
-        self.calibration_radius_label = ttk.Label(self.calibration_subframe, text="Radius:", style='Regular.TLabel')
-        self.calibration_radius_label.grid(row=17+4, column=0, sticky='sew', padx=10)
+        # Frame for radius label and entry side by side
+        self.radius_frame = ttk.Frame(self.calibration_subframe)
+        self.radius_frame.grid(row=23+1, column=0, sticky='w', padx=10, pady=(5, 5))
 
-        # Radius display
-        self.radius_display = tk.Entry(self.calibration_subframe, textvariable = self.radius, validate='key', validatecommand=vcmd)
-        self.radius_display.grid(row=18+4, column=0, sticky="esw", padx=10, pady=(5, 5)) 
+        self.calibration_radius_label = ttk.Label(self.radius_frame, text="Radius of Curvature:", style='Regular.TLabel')
+        self.calibration_radius_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
+
+        self.radius_display = ttk.Entry(self.radius_frame, width=15, textvariable=self.radius, validate='key', validatecommand=vcmd)
+        self.radius_display.grid(row=0, column=1, sticky='w')
         
         # endregion
         
@@ -286,32 +322,36 @@ class SFA_FECO_UI:
         vertical_separator.grid(row=0, column=1, rowspan=7, sticky='ns', padx=10)
 
         # region Step 1: Prep
-        prep_label = ttk.Label(self.root, text="STEP 3: Prep", style='Step.TLabel', font=20)
-        prep_label.grid(row=0, column=2, sticky='ew', padx=10)
-
+        
         # Subframe for Raw Video selection
         self.raw_video_subframe = ttk.Frame(self.root)
-        self.raw_video_subframe.grid(row=1, column=2, sticky='ew')
+        self.raw_video_subframe.grid(row=0, column=2, sticky='new', pady=(25,0))
+
+        prep_label = ttk.Label(self.raw_video_subframe, text="STEP 3: Prep", style='Step.TLabel', font=20)
+        prep_label.grid(row=0, column=0, sticky='ew', padx=10)
 
         self.raw_video_subframe.columnconfigure(0, weight=1)
 
         # Raw video data select button
         self.select_raw_button = ttk.Button(self.raw_video_subframe, text="Select Video for Distance Calculation", command=self.select_raw_video, style='Regular.TButton')
-        self.select_raw_button.grid(row=0, column=0, sticky='ew', padx=10, pady=5)
+        self.select_raw_button.grid(row=1, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the selected file's name
         self.raw_file_label = ttk.Label(self.raw_video_subframe, text="No file selected", style='Regular.TLabel')
-        self.raw_file_label.grid(row=1, column=0, sticky='ew', padx=10)
+        self.raw_file_label.grid(row=2, column=0, sticky='ew', padx=10)
 
         # Crop/Preprocess button
         self.crop_button = ttk.Button(self.raw_video_subframe, text="Crop", command=self.open_crop_preprocess_window, style='Regular.TButton')
-        self.crop_button.grid(row=2, column=0, sticky='ew', padx=10, pady=5)
+        self.crop_button.grid(row=3, column=0, sticky='ew', padx=10, pady=5)
+
+        calibrate_separator1 = ttk.Separator(self.raw_video_subframe, orient="horizontal")
+        calibrate_separator1.grid(row=4, column=0, sticky='ew', pady=10)
 
         # Subframe for Generate Motion Profile
-        self.motion_profile_subframe = ttk.Frame(self.root)
-        self.motion_profile_subframe.grid(row=2, column=2, sticky='ew')
+        self.motion_profile_subframe = ttk.Frame(self.raw_video_subframe)
+        self.motion_profile_subframe.grid(row=5, column=0, sticky='ew')
 
-        self.motion_profile_subframe.columnconfigure(0, weight=1)
+        self.motion_profile_subframe.columnconfigure(0, weight=1)        
 
         # Subframe for motion output file selection
         self.motion_output_subframe = ttk.Frame(self.motion_profile_subframe)
@@ -354,17 +394,16 @@ class SFA_FECO_UI:
         self.doublet_radio.grid(row=0, column=1, sticky='w')
         # endregion
 
-        # Add a vertical separator between columns
-        vertical_separator = ttk.Separator(self.root, orient="vertical")
-        vertical_separator.grid(row=0, column=3, rowspan=7, sticky='ns', padx=10)
+        calibrate_separator1 = ttk.Separator(self.raw_video_subframe, orient="horizontal")
+        calibrate_separator1.grid(row=6, column=0, sticky='ew', pady=10)
 
         # region Step 2: Analyze
-        step3_label = ttk.Label(self.root, text="STEP 4: Analyze", style='Step.TLabel', font=20)
-        step3_label.grid(row=0, column=4, sticky='ew', padx=10)
+        step3_label = ttk.Label(self.raw_video_subframe, text="STEP 4: Analyze", style='Step.TLabel', font=20)
+        step3_label.grid(row=7, column=0, sticky='ew', padx=10)
 
         # region Subframe for Data File Selection
-        self.motion_profile_file_subframe = ttk.Frame(self.root)
-        self.motion_profile_file_subframe.grid(row=1, column=4, sticky='ew')
+        self.motion_profile_file_subframe = ttk.Frame(self.raw_video_subframe)
+        self.motion_profile_file_subframe.grid(row=8, column=0, sticky='ew')
 
         self.motion_profile_file_subframe.columnconfigure(0, weight=1)
 
@@ -374,12 +413,12 @@ class SFA_FECO_UI:
 
         # File field for the data file
         self.motion_profile_file_label = ttk.Label(self.motion_profile_file_subframe, text="No file selected", style='Regular.TLabel')
-        self.motion_profile_file_label.grid(row=1, column=0, sticky='enw', padx=10)
+        self.motion_profile_file_label.grid(row=1, column=0, sticky='enw', padx=10, pady=(0, 10))
         # endregion
 
         # region Subframe for Analyze
-        self.analyze_subframe = ttk.Frame(self.root)
-        self.analyze_subframe.grid(row=2, column=4, sticky='ew')
+        self.analyze_subframe = ttk.Frame(self.raw_video_subframe)
+        self.analyze_subframe.grid(row=10, column=0, sticky='ew')
 
         self.analyze_subframe.columnconfigure(0, weight=1)
 
@@ -396,7 +435,7 @@ class SFA_FECO_UI:
 
         # Analyze button
         self.analyze_button = ttk.Button(self.analyze_subframe, text="Analyze", command=self.analyze, style='Regular.TButton')
-        self.analyze_button.grid(row=2, column=0, sticky='ew', padx=10, pady=5)
+        self.analyze_button.grid(row=2, column=0, sticky='ew', padx=10, pady=(0,20))
         '''
         # Estimate Turnaround button
         self.estimate_turnaround_button = ttk.Button(self.analyze_subframe, text="Estimate Turnaround of Output", command=self.estimate_turnaround, style='Regular.TButton')
@@ -405,8 +444,8 @@ class SFA_FECO_UI:
         # endregion
 
         # region Subframe for Split functionality
-        self.split_subframe = ttk.Frame(self.root)
-        self.split_subframe.grid(row=3, column=4, sticky='ew')
+        self.split_subframe = ttk.Frame(self.raw_video_subframe)
+        self.split_subframe.grid(row=11, column=0, sticky='ew')
 
         self.split_subframe.columnconfigure(0, weight=1)
 
@@ -447,15 +486,15 @@ class SFA_FECO_UI:
 
         # Add a vertical separator between columns
         vertical_separator = ttk.Separator(self.root, orient="vertical")
-        vertical_separator.grid(row=0, column=5, rowspan=7, sticky='ns', padx=10)
-
-        # region Step 3: Visualize
-        step4_label = ttk.Label(self.root, text="STEP 5: Visualize", style='Step.TLabel', font=20)
-        step4_label.grid(row=0, column=6, sticky='ew', padx=10)
+        vertical_separator.grid(row=0, column=3, rowspan=7, sticky='ns', padx=10)
 
         # Subframe for visualization controls
         self.visualize_subframe = ttk.Frame(self.root)
-        self.visualize_subframe.grid(row=1, column=6, sticky='new', padx=10, pady=10)
+        self.visualize_subframe.grid(row=0, column=4, sticky='new', padx=10, pady=25)
+
+        # region Step 3: Visualize
+        step4_label = ttk.Label(self.visualize_subframe, text="STEP 5: Visualize", style='Step.TLabel', font=20)
+        step4_label.pack(anchor='w', pady=(0, 5))
 
         # --- Camera FPS row ---
         fps_frame = ttk.Frame(self.visualize_subframe)
@@ -536,11 +575,11 @@ class SFA_FECO_UI:
         # endregion
 
         # Ensure all 4 main regions (columns 0, 2, 4, 6) have equal horizontal weight
-        for col in [0, 2, 4, 6]:
+        for col in [0, 2, 4]:
             self.root.grid_columnconfigure(col, weight=1, uniform="region")
 
         # Optionally, make separators take minimal space
-        for sep_col in [1, 3, 5]:
+        for sep_col in [1, 3]:
             self.root.grid_columnconfigure(sep_col, weight=0)
 
         self.javaPrompt()
@@ -550,6 +589,9 @@ class SFA_FECO_UI:
 
         geometry = self.root.geometry()
         self.internal_flags.update({"geometry": geometry})
+
+        loadCali = self.load_previous_var.get()
+        self.internal_flags.update({"auto_load_calibration": loadCali})
 
         cache_dir = os.path.join(os.getcwd(), "cache")
         flag_path = os.path.join(cache_dir, "internal.json")
@@ -577,6 +619,7 @@ class SFA_FECO_UI:
             relief="raised",
             width=10
         )
+        self.btn_style.configure('TCheckbutton', padding=(0, 0, 0, 0))
     
     def select_wavelength_calibration_file(self):
         """
@@ -1049,10 +1092,19 @@ class SFA_FECO_UI:
 
             defaultFlags = {
                 "skip_java_warning": False,
-                "geometry": f"{window_width}x{window_height}+300+100"
+                "geometry": f"{window_width}x{window_height}+300+100",
+                "auto_load_calibration": True
             }
 
             return defaultFlags
+
+    def load_calibration(self, loadPrev, fileName = None):
+        # implement loading calibration logic
+        pass
+
+    def save_calibration(self):
+        # implement saving calibration logic
+        pass
 
     def check_java(self):
         # Quick check if "java" is in PATH
