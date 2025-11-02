@@ -67,6 +67,7 @@ class SFA_FECO_UI:
         self.split_file_path = None
         self.data_file_path = None
         self.analyze_output_file_path = None
+        self.motion_output_file_path = None
 
         self.roi_offset = 0
         self.analysis_x_offset = None
@@ -563,15 +564,30 @@ class SFA_FECO_UI:
         self.force_mode = tk.StringVar(value="in")  # separate variable for force visualization
 
         self.force_radio_in = ttk.Radiobutton(
-            force_radio_frame, text="In", variable=self.force_mode, value="in", style='Regular.TRadiobutton'
+            force_radio_frame, text="In Run", variable=self.force_mode, value="in", style='Regular.TRadiobutton'
         )
         self.force_radio_in.pack(side='left', padx=(0, 10))
 
         self.force_radio_out = ttk.Radiobutton(
-            force_radio_frame, text="Out", variable=self.force_mode, value="out", style='Regular.TRadiobutton'
+            force_radio_frame, text="Out Run", variable=self.force_mode, value="out", style='Regular.TRadiobutton'
         )
         self.force_radio_out.pack(side='left', padx=(0, 10))
 
+        # --- Radio buttons for log/linear y ---
+        linear_radio_frame = ttk.Frame(self.visualize_subframe)
+        linear_radio_frame.pack(anchor='w', pady=(0, 8))
+
+        self.scale_mode = tk.StringVar(value="linear")  # separate variable for force visualization
+
+        self.force_radio_linear = ttk.Radiobutton(
+            linear_radio_frame, text="Linear Plot", variable=self.scale_mode, value="linear", style='Regular.TRadiobutton'
+        )
+        self.force_radio_linear.pack(side='left', padx=(0, 10))
+
+        self.force_radio_log = ttk.Radiobutton(
+            linear_radio_frame, text="Semilog Plot", variable=self.scale_mode, value="log", style='Regular.TRadiobutton'
+        )
+        self.force_radio_log.pack(side='left', padx=(0, 10))
 
         # --- Visualize Force button ---
         self.visualize_force_button = ttk.Button(
@@ -1021,9 +1037,9 @@ class SFA_FECO_UI:
 
     def visualize_force_over_distance(self):
         if self.force_mode.get() == "in":
-            ForceVsDistanceWindow(self.force_mode.get(), self.dispDistPairsIn, int(self.k_var.get()))
+            ForceVsDistanceWindow(self.force_mode.get(), self.dispDistPairsIn, int(self.k_var.get()), self.scale_mode.get())
         else:
-            ForceVsDistanceWindow(self.force_mode.get(), self.dispDistPairsOut, int(self.k_var.get()))
+            ForceVsDistanceWindow(self.force_mode.get(), self.dispDistPairsOut, int(self.k_var.get()), self.scale_mode.get())
 
     def getFile(self):
         if self.javaExists:
@@ -1244,7 +1260,7 @@ class SFA_FECO_UI:
                 "calibration_parameters": self.calibration_parameters,
                 "thickness_video_file": self.thickness_input_file_path,
                 "mica_thickness": float(str(self.mica_thickness)[:4]), 
-                "fringe_number": float(self.fringe_entry.get()),
+                "fringe_number": int(self.fringe_entry.get()),
                 "lambdas": {
                     "odd": self.lambdaOdd,
                     "even": self.lambdaEven
@@ -2818,6 +2834,12 @@ class TimeVsDistanceWindow:
         self.ax.set_title(f"Time vs Distance Scatter Plot {mode}")
         self.ax.grid(True)
 
+        self.instruction_text = self.fig.text(
+            0.5, 0.95,  # x, y in figure coordinates
+            "Click and drag to select linear region for velocity calculation.",
+            ha='center', va='center', fontsize=10
+        )
+
         # Add horizontal span selector
         self.span = SpanSelector(self.ax, self.on_select, direction='horizontal', useblit=True,
                                  props=dict(alpha=0.3, facecolor='red'))
@@ -2846,6 +2868,13 @@ class TimeVsDistanceWindow:
         # NumPy linear regression
         self.slope, self.intercept = np.polyfit(selected_x, selected_y, 1)
 
+        # Compute predicted y-values and R²
+        y_pred = self.slope * selected_x + self.intercept
+        residuals = selected_y - y_pred
+        ss_res = np.sum(residuals**2)
+        ss_tot = np.sum((selected_y - np.mean(selected_y))**2)
+        r2 = 1 - (ss_res / ss_tot)
+
         # Store current axes limits
         xlim = self.ax.get_xlim()
         ylim = self.ax.get_ylim()
@@ -2857,13 +2886,18 @@ class TimeVsDistanceWindow:
         if self.current_line is not None:
             self.current_line.remove()
 
-        # Plot new regression line
-        self.current_line, = self.ax.plot(self.y_vals, self.x_line, color='green', linewidth=2)
+        # Plot new regression line with legend label showing m, b, R²
+        label = fr"m = {self.slope:.3f} $\mathit{{nm/s}}$, b = {self.intercept:.3f} $\mathit{{nm}}$, R² = {r2:.3f}"
+        self.current_line, = self.ax.plot(self.y_vals, self.x_line, color='green', linewidth=2, label=label)
 
         # Restore original axes limits to prevent autoscaling
         self.ax.set_xlim(xlim)
         self.ax.set_ylim(ylim)
 
+        # Add/update legend
+        self.ax.legend(loc="best")
+
+        # Redraw canvas
         self.fig.canvas.draw()
 
         self.calcDisplacementDistancePairs()
@@ -2874,7 +2908,7 @@ class TimeVsDistanceWindow:
 
 
 class ForceVsDistanceWindow:
-    def __init__(self, mode, pairs, springConstant):
+    def __init__(self, mode, pairs, springConstant, y_scale='linear'):
         self.mode = mode
         self.springConstant = springConstant
         self.pairs = pairs
@@ -2892,6 +2926,7 @@ class ForceVsDistanceWindow:
         plt.ylabel(r"Force/Radius, $\mathit{F/R}$ (mN/m)")
         plt.title(f"Force vs Distance Scatter Plot {mode}")
         plt.grid(True)
+        plt.yscale(y_scale)
         plt.show()
 
 if __name__ == "__main__":
