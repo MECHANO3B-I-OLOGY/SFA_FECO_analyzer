@@ -40,7 +40,7 @@ class distance:
         def rightHandSide():
             muMica = self.calcMuMica(self.lambdaD)
 
-            innerTerm = (self.muMica - self.mu)/(self.muMica + self.mu)
+            innerTerm = (muMica - self.mu)/(muMica + self.mu)
             upperTerm = (1- innerTerm**2)*math.sin(2*math.pi*self.lambdaOdd/self.lambdaD)
             lowerTerm = -2*(innerTerm) + (1+ (innerTerm**2))*math.cos(2*math.pi*self.lambdaOdd/self.lambdaD)
 

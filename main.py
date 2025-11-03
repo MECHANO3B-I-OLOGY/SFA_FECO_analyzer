@@ -13,7 +13,7 @@ import tkinter as tk
 import _tkinter
 
 from enums import CalibrationValues
-from PIL import Image, ImageSequence
+from PIL import Image, ImageSequence, ImageTk
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.widgets import Cursor, RectangleSelector, Slider, SpanSelector
 from screeninfo import get_monitors
@@ -507,6 +507,26 @@ class SFA_FECO_UI:
         step4_label = ttk.Label(self.visualize_subframe, text="STEP 5: Visualize", style='Step.TLabel', font=20)
         step4_label.pack(anchor='w', pady=(0, 5))
 
+        setupSelectorFrame = ttk.Frame(self.visualize_subframe)
+        setupSelectorFrame.pack(anchor='w', pady=(0, 5))
+
+        self.setupLabel = ttk.Label(setupSelectorFrame, text="Setup: ", style='Regular.TLabel')
+        self.setupLabel.pack(side='left', padx=(0, 5))
+
+        self.setupEntryVar = tk.StringVar(value=str(self.calibration_values["setup"])) 
+        self.setupEntry = ttk.Entry(setupSelectorFrame, textvariable=self.setupEntryVar, width=25, style='Regular.TEntry')
+        self.setupEntry.pack(side='left', padx=(0, 5))
+        self.setupEntry.config(state="readonly")
+
+        self.setupButton = ttk.Button(
+            setupSelectorFrame,
+            text="Select Setup",
+            command=self.selectSetupWindow,
+            style='Regular.TButton',
+            width=15
+        )
+        self.setupButton.pack(fill='x', pady=5)
+
         # --- Camera FPS row ---
         fps_frame = ttk.Frame(self.visualize_subframe)
         fps_frame.pack(anchor='w', pady=(0, 5))
@@ -764,7 +784,7 @@ class SFA_FECO_UI:
         self.thickness_display.insert(0, str(abs(thickness))[:4])
         
         # Disable the widget again to make it read-only
-        self.thickness_display.config(state="disabled")
+        self.thickness_display.config(state="readonly")
     
     def select_radius_file(self):
         """Select input file for radius. Updates label."""
@@ -1027,10 +1047,17 @@ class SFA_FECO_UI:
             error_popup("Invalid input, must be numeric")
             return False  # Reject input if it’s not a number
 
+    def selectSetupWindow(self):
+        with open("setups.json", "r") as f:
+            temp = json.load(f)
+        ImageSelectorWindow(root, temp, default_key=str(self.setupEntryVar.get()))
+
     #mode, wave_lines, split_frame_num, fps
 
     def visualize_distance_over_time(self):
-        TimeVsDistanceWindow(self.visualize_mode.get(), self.wave_lines, int(self.split_var.get()), int(self.camera_fps_var.get()), [self.lambdaOdd, self.lambdaEven], self.calibration_parameters, int(self.fringe_entry.get()))
+        with open("setups.json", "r") as f:
+            temp = json.load(f)
+        TimeVsDistanceWindow(self.visualize_mode.get(), self.wave_lines, int(self.split_var.get()), int(self.camera_fps_var.get()), [self.lambdaOdd, self.lambdaEven], self.calibration_parameters, int(self.fringe_entry.get()), temp[str(self.setupEntryVar.get())][2])
 
     #class ForceVsDistanceWindow:
         #def __init__(self, mode, wave_lines, split_frame_num, springConstant):
@@ -1074,6 +1101,9 @@ class SFA_FECO_UI:
             self.dispDistPairsIn = pairs
         else:
             self.dispDistPairsOut = pairs
+
+    def setSetup(self, setup):
+        self.setupEntryVar.set(setup)
 
     def loadInternalJSON(self):
         def is_geometry_on_screen(geometry):
@@ -1167,7 +1197,7 @@ class SFA_FECO_UI:
                 },
                 "thickness_video_file": "",
                 "mica_thickness": np.NaN, 
-                "fringe_number": np.NaN,
+                "fringe_number": 0,
                 "lambdas": {
                     "odd": np.NaN,
                     "even": np.NaN
@@ -1176,6 +1206,7 @@ class SFA_FECO_UI:
                 "f_value": np.NaN,
                 "radius": np.NaN, 
                 "turnaround_frame": 0,
+                "setup": "Mica Mica Symmetric",
                 "fps": 2,
                 "spring_constant": 0
             }
@@ -1236,6 +1267,8 @@ class SFA_FECO_UI:
 
         self.split_var.set(str(self.split_frame_num))
 
+        self.setupEntryVar.set(str(self.calibration_values["setup"])) 
+
         self.camera_fps_var.set(str(self.calibration_values["fps"]))
 
         self.k_var.set(str(self.calibration_values["spring_constant"]))
@@ -1269,6 +1302,7 @@ class SFA_FECO_UI:
                 "f_value": float(self.f_display.get()),
                 "radius": float(self.radius_display.get()), 
                 "turnaround_frame": int(self.split_frame_num),
+                "setup": str(self.setupEntryVar.get()),
                 "fps": int(self.camera_fps_var.get()),
                 "spring_constant":  int(self.k_var.get())
             }
@@ -2795,9 +2829,157 @@ class RadiusMeasurementWindow:
         self.callback(radius)  # Return value via callback
         plt.close(self.fig)  # Close the window after calculation
 
+class ImageSelectorWindow(tk.Toplevel):
+    def __init__(self, parent, items_with_images, default_key=None):
+        """
+        Creates a window with a scrolling list on the left, and two stacked images on the right.
+
+        Args:
+            parent: parent Tk window (e.g., root)
+            items_with_images: dict of the form
+                {
+                    "Label 1": ["path/to/image1a.png", "path/to/image1b.png", "function_name"],
+                    "Label 2": ["path/to/image2a.png", "path/to/image2b.png", "function_name"],
+                    ...
+                }
+            default_key: (optional) which key to select and show by default
+        """
+        super().__init__(parent)
+        self.title("Image Selector")
+        self.items_with_images = items_with_images
+        self.default_key = default_key
+
+        self.geometry("900x600")      # starting window size (wider & taller)
+        self.minsize(700, 500)
+
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
+
+        # Track images for resizing
+        self.original_images = [None, None]
+        self.displayed_images = [None, None]
+
+        # --- Main Layout ---
+        self.main_frame = ttk.Frame(self)
+        self.main_frame.pack(fill="both", expand=True)
+
+        self.main_frame.columnconfigure(0, weight=0)
+        self.main_frame.columnconfigure(1, weight=1)
+        self.main_frame.rowconfigure(0, weight=1)
+
+        # --- Left: Scrollable listbox ---
+        self.list_frame = ttk.Frame(self.main_frame)
+        self.list_frame.grid(row=0, column=0, sticky="ns", padx=5, pady=5)
+
+        self.scrollbar = ttk.Scrollbar(self.list_frame, orient="vertical")
+        self.listbox = tk.Listbox(self.list_frame, yscrollcommand=self.scrollbar.set, height=20)
+        self.scrollbar.config(command=self.listbox.yview)
+        self.scrollbar.pack(side="right", fill="y")
+        self.listbox.pack(side="left", fill="both", expand=True)
+
+        for label in self.items_with_images.keys():
+            self.listbox.insert(tk.END, label)
+
+        # --- Right: Image Display Area ---
+        self.image_frame = ttk.Frame(self.main_frame)
+        self.image_frame.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
+        self.image_frame.rowconfigure(0, weight=1)
+        self.image_frame.rowconfigure(1, weight=1)
+        self.image_frame.columnconfigure(0, weight=1)
+
+        self.image_label_top = ttk.Label(self.image_frame, anchor="center")
+        self.image_label_top.grid(row=0, column=0, sticky="nsew")
+
+        self.image_label_bottom = ttk.Label(self.image_frame, anchor="center")
+        self.image_label_bottom.grid(row=1, column=0, sticky="nsew")
+
+        # Bind events
+        self.listbox.bind("<<ListboxSelect>>", self.on_select)
+        self.image_frame.bind("<Configure>", self.on_resize)
+
+        # --- If default_key provided, preselect it ---
+        if self.default_key and self.default_key in self.items_with_images:
+            idx = list(self.items_with_images.keys()).index(self.default_key)
+            self.listbox.selection_set(idx)
+            self.listbox.activate(idx)
+            self.listbox.see(idx)
+            self.show_item(self.default_key)
+
+    def on_select(self, event):
+        """Triggered when user clicks a list item."""
+        selection = self.listbox.curselection()
+        if not selection:
+            return
+        selected_label = self.listbox.get(selection[0])
+        self.show_item(selected_label)
+
+    def show_item(self, label):
+        """Display images for a given key."""
+        img_info = self.items_with_images.get(label)
+        if not img_info:
+            return
+
+        # Only use first two entries (ignore function name or extra info)
+        img_paths = img_info[:2]
+        top_path, bottom_path = (img_paths + [None, None])[:2]
+
+        self.original_images[0] = self.load_image(top_path)
+        self.original_images[1] = self.load_image(bottom_path)
+        self.update_displayed_images()
+
+    def load_image(self, path):
+        if not path:
+            return None
+        try:
+            return Image.open(path)
+        except Exception as e:
+            print(f"Error loading {path}: {e}")
+            return None
+
+    def update_displayed_images(self):
+        top_h = self.image_label_top.winfo_height()
+        bottom_h = self.image_label_bottom.winfo_height()
+        width = self.image_frame.winfo_width()
+
+        # Guard: skip if dimensions not ready yet
+        if top_h <= 1 or bottom_h <= 1 or width <= 1:
+            # Try again after 50ms
+            self.after(50, self.update_displayed_images)
+            return
+
+        for i, (img, label, height) in enumerate(
+            zip(self.original_images,
+                [self.image_label_top, self.image_label_bottom],
+                [top_h, bottom_h])
+        ):
+            if img is None:
+                label.config(image="", text="No image available")
+                self.displayed_images[i] = None
+                continue
+
+            aspect_ratio = img.width / img.height
+            new_height = max(1, height - 10)
+            new_width = max(1, min(int(new_height * aspect_ratio), width - 10))
+            resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+            tk_img = ImageTk.PhotoImage(resized)
+            label.config(image=tk_img, text="")
+            self.displayed_images[i] = tk_img
+
+    def on_resize(self, event):
+        if any(self.original_images):
+            self.update_displayed_images()
+
+    def on_close(self):
+        selection = self.listbox.curselection()
+        selected_label = self.listbox.get(selection[0])
+
+        app.setSetup(selected_label)
+
+        self.destroy()
+
 class TimeVsDistanceWindow:
 
-    def __init__(self, mode, wave_lines, split_frame_num, fps, lambdas, parameters, n):
+    def __init__(self, mode, wave_lines, split_frame_num, fps, lambdas, parameters, n, equation):
         self.mode = mode
         self.split_frame_num = split_frame_num
         self.slope = None
@@ -2817,7 +2999,7 @@ class TimeVsDistanceWindow:
         self.dist = dist.distance(lambdas[0], lambdas[1], n=n)
 
         x_vals = parameters["slope"]*(x_vals-parameters["offset"]) + parameters["intercept"]
-        self.x_vals = np.array(self.dist.arrayDistance(x_vals, "realDCalc"))
+        self.x_vals = np.array(self.dist.arrayDistance(x_vals, equation))
 
         # Create figure and scatter plot
         self.fig, self.ax = plt.subplots(figsize=(10, 6))

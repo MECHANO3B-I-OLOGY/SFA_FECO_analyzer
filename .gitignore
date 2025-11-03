@@ -10,7 +10,9 @@
 
 __pycache__
 .venv
-cache
+cache/*
 CXD_data
 venv
 Output/*
+
+!setups.json
