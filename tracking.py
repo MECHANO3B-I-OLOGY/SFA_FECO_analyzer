@@ -211,6 +211,55 @@ def robust_smooth_1d(xs, smooth=True, base_window=21, polyorder=3):
 
     return xs_smooth
 
+def enforce_monotonic_wave(xs):
+    """
+    Given a 1D array of x positions along the wave (ordered by y),
+    enforce monotonic decrease before the minimum and monotonic increase after,
+    replacing violations with linear interpolation between surrounding points.
+    """
+    xs = np.array(xs, dtype=float)
+    n = len(xs)
+    if n < 3:
+        return xs  # too few points
+
+    # Find index of minimum (minima)
+    min_idx = np.argmin(xs)
+
+    # --- Before the minima: enforce decreasing (x[i] <= x[i-1]) ---
+    i = 1
+    while i < min_idx:
+        if xs[i] > xs[i - 1]:
+            # find next j > i where xs[j] < xs[i - 1]
+            j = i + 1
+            while j < min_idx and xs[j] >= xs[i - 1]:
+                j += 1
+            if j < n:
+                # Linear interpolate between (i-1) and j
+                for k in range(i, j):
+                    t = (k - (i - 1)) / (j - (i - 1))
+                    xs[k] = xs[i - 1] + t * (xs[j] - xs[i - 1])
+            i = j
+        else:
+            i += 1
+
+    # --- After the minima: enforce increasing (x[i] >= x[i-1]) ---
+    i = min_idx + 1
+    while i < n:
+        if xs[i] < xs[i - 1]:
+            # find next j > i where xs[j] > xs[i - 1]
+            j = i + 1
+            while j < n and xs[j] <= xs[i - 1]:
+                j += 1
+            if j < n:
+                for k in range(i, j):
+                    t = (k - (i - 1)) / (j - (i - 1))
+                    xs[k] = xs[i - 1] + t * (xs[j] - xs[i - 1])
+            i = j
+        else:
+            i += 1
+
+    return xs
+
 def new_analyze_and_append_waves(
         image, 
         wave_threshold=0, 
@@ -366,6 +415,42 @@ def new_analyze_and_append_waves(
 
     wave_lines = clipped_wave_lines
     '''
+
+    if smooth:
+        corrected_wave_lines = []
+        for wave_line in wave_lines:
+            ys, xs = zip(*wave_line)
+            xs_corrected = enforce_monotonic_wave(xs)
+            corrected_wave_lines.append(list(zip(ys, xs_corrected)))
+
+        wave_lines = corrected_wave_lines
+
+    # --- Apply adaptive Savitzky-Golay smoothing ---
+    if smooth and len(wave_lines) > 0:
+        smoothed_wave_lines = []
+        for wave_line in wave_lines:
+            ys, xs = zip(*wave_line)
+            ys = np.array(ys)
+            xs = np.array(xs)
+            n = len(xs)
+
+            # Apply smoothing only if enough data points exist
+            if n >= (smooth_polyorder + 3):
+                # Choose adaptive window length (odd, ≤ n)
+                window_len = min(smooth_window, n // 2 * 2 + 1)
+                window_len = max(3, window_len)  # Ensure at least 3
+                polyorder = min(smooth_polyorder, window_len - 2)
+
+                try:
+                    xs_smooth = robust_smooth_1d(xs, smooth=True, base_window=smooth_window, polyorder=smooth_polyorder)
+                except ValueError:
+                    xs_smooth = xs  # Fallback if filter fails
+            else:
+                xs_smooth = xs  # Too few points, skip smoothing
+
+            smoothed_wave_lines.append(list(zip(ys, xs_smooth)))
+
+        wave_lines = smoothed_wave_lines
 
     return wave_lines
 
