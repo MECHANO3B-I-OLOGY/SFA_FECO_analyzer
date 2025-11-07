@@ -89,6 +89,7 @@ class SFA_FECO_UI:
         self.lambdaOdd = self.calibration_values["lambdas"]["odd"]
         self.lambdaEven = self.calibration_values["lambdas"]["even"]
         self.calibration_parameters = self.calibration_values["calibration_parameters"]
+        self.scale = self.calibration_values["magnification_scale"]
         self.f = self.calibration_values["f_value"]
         self.radius = self.calibration_values["radius"]
         self.split_frame_num = self.calibration_values["turnaround_frame"]
@@ -308,6 +309,18 @@ class SFA_FECO_UI:
         )
         self.magnification_image_label.grid(row=19, column=0, sticky='new', padx=10)
 
+        # Frame for f value label and entry side by side
+        self.scale_frame = ttk.Frame(self.calibration_subframe)
+        self.scale_frame.grid(row=20, column=0, sticky='w', padx=10, pady=(5, 5))
+
+        self.scale_label = ttk.Label(self.scale_frame, text=r"scale (μm/tick):", style='Regular.TLabel')
+        self.scale_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
+
+        self.scale_display = ttk.Entry(self.scale_frame, width=15, validate='key')
+        self.scale_display.grid(row=0, column=1, sticky='w')
+
+        self.scale_display.insert(0, str(self.scale))
+
         # Button to calculate magnification factor
         self.calculate_magnification_button = ttk.Button(
             self.calibration_subframe,
@@ -315,11 +328,11 @@ class SFA_FECO_UI:
             command=self.calculate_magnification_factor,  # define this method later
             style='Regular.TButton'
         )
-        self.calculate_magnification_button.grid(row=20, column=0, sticky='ew', padx=10, pady=5)
+        self.calculate_magnification_button.grid(row=21, column=0, sticky='ew', padx=10, pady=5)
 
         # Frame for f value label and entry side by side
         self.f_frame = ttk.Frame(self.calibration_subframe)
-        self.f_frame.grid(row=21, column=0, sticky='w', padx=10, pady=(5, 5))
+        self.f_frame.grid(row=22, column=0, sticky='w', padx=10, pady=(5, 5))
 
         self.calibration_f_label = ttk.Label(self.f_frame, text=r"f value (μm/px):", style='Regular.TLabel')
         self.calibration_f_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
@@ -331,22 +344,22 @@ class SFA_FECO_UI:
 
         # Select radius File button
         self.select_radius_file_button = ttk.Button(self.calibration_subframe, text="Select Radius of Curvature Calibration Video", command=self.select_radius_file, style='Regular.TButton')
-        self.select_radius_file_button.grid(row=18+4, column=0, sticky='ew', padx=10, pady=5)
+        self.select_radius_file_button.grid(row=23, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the selected radius file's name
         self.radius_file_label = ttk.Label(self.calibration_subframe, text="No file selected", style='Regular.TLabel')
-        self.radius_file_label.grid(row=19+4, column=0, sticky='new', padx=10)
+        self.radius_file_label.grid(row=24, column=0, sticky='new', padx=10)
 
 
         # Calibrate radius button
         self.execute_radius_calibration = ttk.Button(self.calibration_subframe, text="Find Radius", command=self.run_radius_calibration, style='Regular.TButton')
-        self.execute_radius_calibration.grid(row=24, column=0, sticky='ew', padx=10, pady=5)
+        self.execute_radius_calibration.grid(row=25, column=0, sticky='ew', padx=10, pady=5)
 
         # Frame for radius label and entry side by side
         self.radius_frame = ttk.Frame(self.calibration_subframe)
-        self.radius_frame.grid(row=23+2, column=0, sticky='w', padx=10, pady=(5, 5))
+        self.radius_frame.grid(row=26, column=0, sticky='w', padx=10, pady=(5, 5))
 
-        self.calibration_radius_label = ttk.Label(self.radius_frame, text="Radius of Curvature:", style='Regular.TLabel')
+        self.calibration_radius_label = ttk.Label(self.radius_frame, text=r"Radius of Curvature (μm):", style='Regular.TLabel')
         self.calibration_radius_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
 
         self.radius_display = ttk.Entry(self.radius_frame, width=15, textvariable=str(self.radius), validate='key')
@@ -830,7 +843,7 @@ class SFA_FECO_UI:
             msg = "Please select an input file"
             error_popup(msg)
             return
-        Magnification_Calculation_Window(self.magnification_file)
+        Magnification_Calculation_Window(self.magnification_file, int(self.scale_display.get()))
 
     def select_radius_file(self):
         """Select input file for radius. Updates label."""
@@ -847,7 +860,9 @@ class SFA_FECO_UI:
         RadiusMeasurementWindow(self.radius_input_file_path, self.f, self.callback_radius)
 
     def callback_radius(self, r):
-        self.radius.set(str(r))
+        self.radius = r
+        self.radius_display.delete(0, "end")
+        self.radius_display.insert(0, str(self.radius)[:5])
 
     def select_raw_video(self):
         """
@@ -1139,6 +1154,11 @@ class SFA_FECO_UI:
         self.lambdaOdd = lambdas[0]
         self.lambdaEven = lambdas[1]
 
+    def setF(self, f):
+        self.f = f
+        self.f_display.delete(0, "end")
+        self.f_display.insert(0, str(self.f)[:5])
+
     def setWaveLines(self, wave_lines):
         self.wave_lines = wave_lines
 
@@ -1249,6 +1269,7 @@ class SFA_FECO_UI:
                     "even": np.NaN
                 },
                 "magnification_image_file": "",
+                "magnification_scale": 0,
                 "radius_video_file": "",
                 "f_value": np.NaN,
                 "radius": np.NaN, 
@@ -1314,11 +1335,14 @@ class SFA_FECO_UI:
         self.fringe_entry.delete(0, "end")
         self.fringe_entry.insert(0, str(self.calibration_values["fringe_number"]))
 
+        self.scale_display.delete(0, "end")
+        self.scale_display.insert(0, str(self.scale))
+
         self.f_display.delete(0, "end")
         self.f_display.insert(0, str(self.f))
 
         self.radius_display.delete(0, "end")
-        self.radius_display.insert(0, str(self.f))
+        self.radius_display.insert(0, str(self.radius)[:5])
 
         self.split_var.set(str(self.split_frame_num))
 
@@ -1353,6 +1377,7 @@ class SFA_FECO_UI:
                     "odd": self.lambdaOdd,
                     "even": self.lambdaEven
                 },
+                "magnification_scale": int(self.scale_display.get()),
                 "magnification_image_file": self.magnification_file,
                 "radius_video_file": self.radius_input_file_path,
                 "f_value": float(self.f_display.get()),
@@ -2387,8 +2412,9 @@ class Magnification_Calculation_Window:
         callback (function): Optional function to call with the extracted pixel data (numpy array).
     """
 
-    def __init__(self, file_path):
+    def __init__(self, file_path, scale):
         self.file_path = file_path
+        self.scale = scale
         self.image = Image.open(file_path).convert("L")  # Ensure grayscale
         self.image_array = np.array(self.image)
 
@@ -2405,7 +2431,7 @@ class Magnification_Calculation_Window:
         # Add instruction text
         self.instruction_text = self.fig.text(
             0.5, 0.95,
-            "Drag to select a horizontal region including only the major and semi-major tick lines. Press Enter to confirm or Esc to cancel.",
+            "Drag to select a horizontal region including all tick lines. Press Enter to confirm or Esc to cancel.",
             ha="center", va="center", fontsize=10
         )
 
@@ -2461,17 +2487,10 @@ class Magnification_Calculation_Window:
         avg_brightness = np.mean(self.image_array[:, x_min:x_max], axis=1)
         self.selected_data = list(zip(y_values, avg_brightness))
 
-        print(f"\nSelected region: X = [{x_min}, {x_max}]")
-        print("Extracted (y, avg_brightness) data:")
-        # Optionally, print a subset for readability
-        for tup in self.selected_data[:10]:
-            print(tup)
-        if len(self.selected_data) > 10:
-            print(f"... ({len(self.selected_data)} total rows)")
-
         # Find peaks using your existing tracking function
-        peaks = tracking.arbitrary_gaussian_fits(self.selected_data)["means"]
-        print(f"Found peaks at rows: {peaks}")
+        peaks = tracking.arbitrary_gaussian_fits(self.selected_data, plot=False, max_gaussians = 100)["means"]
+
+        self.calcF(peaks)
 
         self.ax.clear()
         self.ax.imshow(self.image_array, cmap="gray", aspect="auto")
@@ -2479,7 +2498,7 @@ class Magnification_Calculation_Window:
         # Draw horizontal lines at peaks across the entire width
         image_width = self.image_array.shape[1]
         for peak_y in peaks:
-            self.ax.hlines(y=peak_y, xmin=0, xmax=image_width, color="lime", linestyle="--", linewidth=1.5)
+            self.ax.hlines(y=peak_y, xmin=1, xmax=image_width -1, color="lime", linestyle="--", linewidth=1.5)
 
         # Draw vertical lines for selected region
         self.ax.axvline(x=x_min, color="red", linestyle="--", linewidth=1.5)
@@ -2491,6 +2510,13 @@ class Magnification_Calculation_Window:
 
         self.instruction_text.set_text("Tick lines found, close to confirm or reselect region")
         self.fig.canvas.draw_idle()
+
+    def calcF(self, peaks):
+        sumDist = 0
+        for i in range(len(peaks) - 1):
+            sumDist += peaks[i+1] - peaks[i]
+        avg = sumDist / (len(peaks) - 1)
+        app.setF(avg/(self.scale))
 
     def cancel_selection(self):
         """Clears selection and redraws image."""
@@ -3008,7 +3034,6 @@ class RadiusMeasurementWindow:
         D_diff = abs(y_d1 - y_bottom)  # Only the difference matters
         radius = (X / self.f) ** 2 / (8 * D_diff)
 
-        print(f"Calculated Radius: {radius:.4f}")
         self.callback(radius)  # Return value via callback
         plt.close(self.fig)  # Close the window after calculation
 
