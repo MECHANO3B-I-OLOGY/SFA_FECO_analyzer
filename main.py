@@ -82,6 +82,7 @@ class SFA_FECO_UI:
 
         self.wavelength_calibration_video_file_path = self.calibration_values["mercury_video_file"]
         self.thickness_input_file_path = self.calibration_values["thickness_video_file"]
+        self.magnification_file = self.calibration_values["magnification_image_file"]
         self.radius_input_file_path = self.calibration_values["radius_video_file"]
 
         self.mica_thickness = self.calibration_values["mica_thickness"]
@@ -290,17 +291,35 @@ class SFA_FECO_UI:
         prep_label = ttk.Label(self.calibration_subframe, text="STEP 2: Radius of Curvature Calibration", style='Step.TLabel', font=20)
         prep_label.grid(row=17+1, column=0, sticky='ew', padx=10)
         
-        # Select radius File button
-        self.select_radius_file_button = ttk.Button(self.calibration_subframe, text="Select Radius of Curvature Calibration Video", command=self.select_radius_file, style='Regular.TButton')
-        self.select_radius_file_button.grid(row=18+1, column=0, sticky='ew', padx=10, pady=5)
+        # --- Magnification Calibration Section ---
+        self.select_magnification_image_button = ttk.Button(
+            self.calibration_subframe,
+            text="Select Magnification Image",
+            command=self.select_magnification_file,  # define this method later
+            style='Regular.TButton'
+        )
+        self.select_magnification_image_button.grid(row=18, column=0, sticky='ew', padx=10, pady=5)
 
-        # Label to display the selected radius file's name
-        self.radius_file_label = ttk.Label(self.calibration_subframe, text="No file selected", style='Regular.TLabel')
-        self.radius_file_label.grid(row=19+1, column=0, sticky='new', padx=10)
+        # Label to display selected magnification image file
+        self.magnification_image_label = ttk.Label(
+            self.calibration_subframe,
+            text="No file selected",
+            style='Regular.TLabel'
+        )
+        self.magnification_image_label.grid(row=19, column=0, sticky='new', padx=10)
+
+        # Button to calculate magnification factor
+        self.calculate_magnification_button = ttk.Button(
+            self.calibration_subframe,
+            text="Calculate Magnification Factor",
+            command=self.calculate_magnification_factor,  # define this method later
+            style='Regular.TButton'
+        )
+        self.calculate_magnification_button.grid(row=20, column=0, sticky='ew', padx=10, pady=5)
 
         # Frame for f value label and entry side by side
         self.f_frame = ttk.Frame(self.calibration_subframe)
-        self.f_frame.grid(row=20+1, column=0, sticky='w', padx=10, pady=(5, 5))
+        self.f_frame.grid(row=21, column=0, sticky='w', padx=10, pady=(5, 5))
 
         self.calibration_f_label = ttk.Label(self.f_frame, text=r"f value (μm/px):", style='Regular.TLabel')
         self.calibration_f_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
@@ -310,13 +329,22 @@ class SFA_FECO_UI:
 
         self.f_display.insert(0, str(self.f))
 
+        # Select radius File button
+        self.select_radius_file_button = ttk.Button(self.calibration_subframe, text="Select Radius of Curvature Calibration Video", command=self.select_radius_file, style='Regular.TButton')
+        self.select_radius_file_button.grid(row=18+4, column=0, sticky='ew', padx=10, pady=5)
+
+        # Label to display the selected radius file's name
+        self.radius_file_label = ttk.Label(self.calibration_subframe, text="No file selected", style='Regular.TLabel')
+        self.radius_file_label.grid(row=19+4, column=0, sticky='new', padx=10)
+
+
         # Calibrate radius button
         self.execute_radius_calibration = ttk.Button(self.calibration_subframe, text="Find Radius", command=self.run_radius_calibration, style='Regular.TButton')
-        self.execute_radius_calibration.grid(row=22+1, column=0, sticky='ew', padx=10, pady=5)
+        self.execute_radius_calibration.grid(row=24, column=0, sticky='ew', padx=10, pady=5)
 
         # Frame for radius label and entry side by side
         self.radius_frame = ttk.Frame(self.calibration_subframe)
-        self.radius_frame.grid(row=23+1, column=0, sticky='w', padx=10, pady=(5, 5))
+        self.radius_frame.grid(row=23+2, column=0, sticky='w', padx=10, pady=(5, 5))
 
         self.calibration_radius_label = ttk.Label(self.radius_frame, text="Radius of Curvature:", style='Regular.TLabel')
         self.calibration_radius_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
@@ -785,7 +813,25 @@ class SFA_FECO_UI:
         
         # Disable the widget again to make it read-only
         self.thickness_display.config(state="readonly")
+
+    def select_magnification_file(self):
+        """Select input file for Calibrate Thickness. Updates label."""
+        self.magnification_file = self.getFile()
+        if self.magnification_file:
+
+            if len(self.magnification_file) > self.MAX_FILE_DISP_LENGTH:
+                data_file_text = '...' + self.magnification_file[len(self.magnification_file) - self.MAX_FILE_DISP_LENGTH:]
+                self.magnification_image_label.config(text=data_file_text)
+            else:
+                self.magnification_image_label.config(text=self.magnification_file) 
     
+    def calculate_magnification_factor(self):
+        if(not self.magnification_file): 
+            msg = "Please select an input file"
+            error_popup(msg)
+            return
+        Magnification_Calculation_Window(self.magnification_file)
+
     def select_radius_file(self):
         """Select input file for radius. Updates label."""
         self.radius_input_file_path = self.getFile()
@@ -1202,6 +1248,7 @@ class SFA_FECO_UI:
                     "odd": np.NaN,
                     "even": np.NaN
                 },
+                "magnification_image_file": "",
                 "radius_video_file": "",
                 "f_value": np.NaN,
                 "radius": np.NaN, 
@@ -1245,6 +1292,14 @@ class SFA_FECO_UI:
                 self.thickness_file_label.config(text=data_file_text)
             else:
                 self.thickness_file_label.config(text=self.thickness_input_file_path) 
+
+        if self.magnification_file:
+
+            if len(self.magnification_file) > self.MAX_FILE_DISP_LENGTH:
+                data_file_text = '...' + self.magnification_file[len(self.magnification_file) - self.MAX_FILE_DISP_LENGTH:]
+                self.magnification_image_label.config(text=data_file_text)
+            else:
+                self.magnification_image_label.config(text=self.magnification_file) 
 
         if self.radius_input_file_path != "":
             if len(self.radius_input_file_path) > self.MAX_FILE_DISP_LENGTH:
@@ -1298,6 +1353,7 @@ class SFA_FECO_UI:
                     "odd": self.lambdaOdd,
                     "even": self.lambdaEven
                 },
+                "magnification_image_file": self.magnification_file,
                 "radius_video_file": self.radius_input_file_path,
                 "f_value": float(self.f_display.get()),
                 "radius": float(self.radius_display.get()), 
@@ -2315,6 +2371,133 @@ class Mica_Thickness_Calibration_Window:
     def close_figure(self):
         """Closes the Matplotlib figure and cleans up resources."""
         plt.close(self.fig)  # Close the specific figure 
+
+class Magnification_Calculation_Window:
+    """
+    A tool for selecting a horizontal region from a TIFF image and saving its pixel values.
+
+    Features:
+        1. Displays the image (converted to grayscale).
+        2. Allows user to select a horizontal region using a click-and-drag motion.
+        3. Extracts and stores the pixel values within the selected region.
+        4. Invokes an optional callback function with the extracted pixel array.
+
+    Parameters:
+        file_path (str): Path to the TIFF image.
+        callback (function): Optional function to call with the extracted pixel data (numpy array).
+    """
+
+    def __init__(self, file_path):
+        self.file_path = file_path
+        self.image = Image.open(file_path).convert("L")  # Ensure grayscale
+        self.image_array = np.array(self.image)
+
+        self.selected_region = None
+        self.selected_data = None
+
+        # Create figure and axes
+        self.fig, self.ax = plt.subplots(figsize=(8, 6))
+        self.ax.imshow(self.image_array, cmap="gray", aspect="auto")
+        self.ax.set_title("Select Horizontal Region")
+        self.ax.set_xlabel("X (pixels)")
+        self.ax.set_ylabel("Y (pixels)")
+
+        # Add instruction text
+        self.instruction_text = self.fig.text(
+            0.5, 0.95,
+            "Drag to select a horizontal region including only the major and semi-major tick lines. Press Enter to confirm or Esc to cancel.",
+            ha="center", va="center", fontsize=10
+        )
+
+        # Span selector for horizontal selection
+        self.span = SpanSelector(
+            self.ax,
+            onselect=self.on_select,
+            direction="horizontal",
+            useblit=True,
+            interactive=True,
+            props=dict(alpha=0.3, facecolor="red"),  # 'props' replaces 'rectprops' in newer versions
+        )
+
+        # Connect keypress events
+        self.fig.canvas.mpl_connect("key_press_event", self.on_key_press)
+
+        plt.show()
+
+    def on_select(self, x_min, x_max):
+        """Handles selection of the horizontal region."""
+        self.selected_region = (int(x_min), int(x_max))
+        self.update_overlay()
+
+    def update_overlay(self):
+        """Draws vertical lines to show the selected region."""
+        self.ax.clear()
+        self.ax.imshow(self.image_array, cmap="gray", aspect="auto")
+        if self.selected_region:
+            x_min, x_max = self.selected_region
+            self.ax.axvline(x_min, color="red", linestyle="--", linewidth=1.5)
+            self.ax.axvline(x_max, color="red", linestyle="--", linewidth=1.5)
+        self.ax.set_xlabel("X (pixels)")
+        self.ax.set_ylabel("Y (pixels)")
+        self.ax.set_title("Selected Region Preview")
+        self.fig.canvas.draw_idle()
+
+    def on_key_press(self, event):
+        """Handles Enter/Esc key presses."""
+        if event.key == "enter" and self.selected_region is not None:
+            self.confirm_selection()
+        elif event.key == "escape":
+            self.cancel_selection()
+
+    def confirm_selection(self):
+        """Extracts average brightness per row, finds peaks, and overlays horizontal lines at peaks."""
+        x_min, x_max = sorted(self.selected_region)
+        # Clip within bounds
+        x_min = max(0, x_min)
+        x_max = min(self.image_array.shape[1], x_max)
+
+        # Compute average brightness per row
+        y_values = np.arange(self.image_array.shape[0])
+        avg_brightness = np.mean(self.image_array[:, x_min:x_max], axis=1)
+        self.selected_data = list(zip(y_values, avg_brightness))
+
+        print(f"\nSelected region: X = [{x_min}, {x_max}]")
+        print("Extracted (y, avg_brightness) data:")
+        # Optionally, print a subset for readability
+        for tup in self.selected_data[:10]:
+            print(tup)
+        if len(self.selected_data) > 10:
+            print(f"... ({len(self.selected_data)} total rows)")
+
+        # Find peaks using your existing tracking function
+        peaks = tracking.arbitrary_gaussian_fits(self.selected_data)["means"]
+        print(f"Found peaks at rows: {peaks}")
+
+        self.ax.clear()
+        self.ax.imshow(self.image_array, cmap="gray", aspect="auto")
+
+        # Draw horizontal lines at peaks across the entire width
+        image_width = self.image_array.shape[1]
+        for peak_y in peaks:
+            self.ax.hlines(y=peak_y, xmin=0, xmax=image_width, color="lime", linestyle="--", linewidth=1.5)
+
+        # Draw vertical lines for selected region
+        self.ax.axvline(x=x_min, color="red", linestyle="--", linewidth=1.5)
+        self.ax.axvline(x=x_max, color="red", linestyle="--", linewidth=1.5)
+
+        self.ax.set_xlabel("X (pixels)")
+        self.ax.set_ylabel("Y (pixels)")
+        self.ax.set_title("Selected Region with Detected Lines")
+
+        self.instruction_text.set_text("Tick lines found, close to confirm or reselect region")
+        self.fig.canvas.draw_idle()
+
+    def cancel_selection(self):
+        """Clears selection and redraws image."""
+        self.selected_region = None
+        self.update_overlay()
+        self.instruction_text.set_text("Selection cleared. Drag again to select a region.")
+
 
 class Motion_Analysis_Window:
     """

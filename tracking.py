@@ -11,8 +11,9 @@ from PIL import Image, ImageTk, ImageSequence, ImageFilter
 from pprint import pprint 
 from scipy.interpolate import splprep, splev, UnivariateSpline
 from scipy.optimize import curve_fit
-from scipy.signal import savgol_filter, medfilt
+from scipy.signal import savgol_filter, medfilt, find_peaks
 from scipy import stats
+from sklearn.mixture import GaussianMixture
 
 from enums import *
 from exceptions import error_popup, warning_popup
@@ -705,3 +706,167 @@ def perform_turnaround_estimation(motion_profile_file_path, centerline_csv_path,
     # print(estimated_turnaround)
 
     return estimated_turnaround
+
+def _sum_of_neg_gaussians(x, *params):
+    """
+    Sum of *positive-amplitude* Gaussians.
+    params: [A1, mu1, sigma1, A2, mu2, sigma2, ...]
+    """
+    x = np.asarray(x)
+    y = np.zeros_like(x)
+    n = len(params) // 3
+    for i in range(n):
+        A = params[3*i + 0]
+        mu = params[3*i + 1]
+        sigma = params[3*i + 2]
+        if sigma <= 0:
+            continue
+        y += A * np.exp(-0.5 * ((x - mu)/sigma)**2)
+    return y
+
+# --- NEW MODEL FUNCTION ---
+def _linear_baseline_plus_gaussians(x, m, c, *gauss_params):
+    """
+    A linear baseline (m*x + c) minus a sum of Gaussians.
+    """
+    baseline = m * x + c
+    # _sum_of_neg_gaussians returns positive dips, so we subtract them
+    dips = _sum_of_neg_gaussians(x, *gauss_params) 
+    return baseline - dips
+
+def arbitrary_gaussian_fits(data, plot=True,
+                                        max_gaussians=15, prominence=1.0):
+    """
+    Fit downward-going Gaussian dips with a fitted linear baseline.
+    
+    Fits baseline (slope, intercept) and Gaussian parameters 
+    (amplitude, center, width).
+    """
+    x = np.array([p[0] for p in data], dtype=float)
+    y = np.array([p[1] for p in data], dtype=float)
+
+    # --- CHANGED: Estimate linear baseline ---
+    # We need a good initial guess for the baseline to find the dips.
+    # We do this by iteratively fitting a line and removing points 
+    # that are clearly dips (far below the line).
+    
+    # Start with a simple polyfit on all data
+    m_est, c_est = np.polyfit(x, y, 1)
+    
+    # Iteratively refine by removing dips
+    current_x, current_y = x, y
+    for _ in range(3): # 3 iterations is usually enough
+        baseline_guess = m_est * current_x + c_est
+        residuals = current_y - baseline_guess # Dips will be negative
+        
+        # Keep only points that are *not* part of a major dip
+        # (e.g., points above the line or only slightly below)
+        std_dev = np.std(residuals)
+        keep_indices = residuals > -1.5 * std_dev
+        
+        if np.sum(keep_indices) < 2: # Failsafe
+            break 
+            
+        current_x, current_y = current_x[keep_indices], current_y[keep_indices]
+        m_est, c_est = np.polyfit(current_x, current_y, 1)
+
+    # This is our initial guess for the baseline
+    y_baseline_est = m_est * x + c_est
+    
+    # Invert residual (from the *estimated* baseline) to treat dips as peaks
+    residual = y_baseline_est - y 
+    residual = np.clip(residual, 0, None) # Ignore points *above* the baseline
+
+    # Seed Gaussian centers with peaks
+    peaks, _ = find_peaks(residual, prominence=prominence)
+    if len(peaks) == 0:
+        peaks = [np.argmax(residual)]
+
+    # Keep only the most prominent dips if too many
+    if len(peaks) > max_gaussians:
+        peaks = peaks[np.argsort(residual[peaks])[-max_gaussians:]]
+
+    n_gauss = len(peaks)
+
+    # --- CHANGED: Initial guess now includes m and c ---
+    # p0 = [m, c, A1, mu1, sigma1, A2, mu2, sigma2, ...]
+    p0 = [m_est, c_est] 
+    for idx in peaks:
+        A0 = residual[idx] # Amplitude *relative to estimated baseline*
+        mu0 = x[idx]
+        sigma0 = max(3.0, (x[-1]-x[0]) * 0.01)
+        p0 += [A0, mu0, sigma0]
+
+    # --- CHANGED: Bounds now include m and c ---
+    lower, upper = [], []
+    # Bounds for m and c (let them be pretty free)
+    lower += [-np.inf, -np.inf]
+    upper += [np.inf, np.inf]
+    
+    for _ in range(n_gauss):
+        lower += [0.0, x[0], 1e-3]
+        upper += [np.inf, x[-1], (x[-1]-x[0])*2]
+
+    # --- CHANGED: Weight flat regions more to anchor the baseline ---
+    sigma_weights = np.ones_like(y)
+    # 'flat_indices' are where the residual (dip depth) is small
+    flat_indices = np.where(residual < prominence)[0]
+    # Give flat regions a smaller sigma (higher weight)
+    sigma_weights[flat_indices] = 0.1 
+
+    # --- CHANGED: Nonlinear fit with the new model function ---
+    popt, pcov = curve_fit(
+        _linear_baseline_plus_gaussians, # Use new model
+        x, y,
+        p0=p0,
+        bounds=(lower, upper),
+        sigma=sigma_weights,
+        maxfev=20000
+    )
+
+    # --- CHANGED: Parse optimized parameters (m, c are first) ---
+    m_fit, c_fit = popt[0], popt[1]
+    gauss_popt = popt[2:] # The rest are Gaussian params
+    
+    amps, mus, sigs = [], [], []
+    for i in range(n_gauss):
+        amps.append(gauss_popt[3*i])
+        mus.append(gauss_popt[3*i + 1])
+        sigs.append(gauss_popt[3*i + 2])
+
+    # Dense curve for plotting
+    x_dense = np.linspace(np.min(x), np.max(x), 2000)
+    y_fit = _linear_baseline_plus_gaussians(x_dense, *popt)
+    
+    # --- CHANGED: Calculate the fitted baseline for plotting ---
+    y_baseline_fit = m_fit * x_dense + c_fit
+
+    if plot:
+        plt.figure(figsize=(10,5))
+        plt.plot(x, y, label='data', lw=1)
+        plt.plot(x_dense, y_fit, label=f'fit (n={n_gauss})', lw=2)
+        
+        # --- CHANGED: Plot the new fitted baseline ---
+        plt.plot(x_dense, y_baseline_fit, '--', color='gray', label='fitted baseline')
+        
+        # individual Gaussians (plotted *relative to the fitted baseline*)
+        for A, mu, sigma in zip(amps, mus, sigs):
+            plt.plot(x_dense, y_baseline_fit - A*np.exp(-0.5*((x_dense-mu)/sigma)**2),
+                     '--', alpha=0.7)
+        
+        plt.legend()
+        plt.ylim(bottom=min(y_fit.min(), y.min()) - 10) # Adjust y-limits
+        plt.show()
+
+    return {
+        "baseline_slope": m_fit,
+        "baseline_intercept": c_fit,
+        "amplitudes": np.array(amps),
+        "means": np.array(mus),
+        "sigmas": np.array(sigs),
+        "popt": popt,
+        "pcov": pcov,
+        "x_dense": x_dense,
+        "y_fit": y_fit,
+        "n_gauss": n_gauss
+    }
