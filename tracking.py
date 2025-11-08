@@ -734,7 +734,7 @@ def _linear_baseline_plus_gaussians(x, m, c, *gauss_params):
     dips = _sum_of_neg_gaussians(x, *gauss_params) 
     return baseline - dips
 
-def arbitrary_gaussian_fits(data, plot=True, max_gaussians=15, prominence=1.0):
+def arbitrary_gaussian_fits(data, plot=True, max_gaussians=15, prominence=1):
     """
     Fit downward-going Gaussian dips with a fitted linear baseline.
     
@@ -777,7 +777,8 @@ def arbitrary_gaussian_fits(data, plot=True, max_gaussians=15, prominence=1.0):
     residual = np.clip(residual, 0, None) # Ignore points *above* the baseline
 
     # Seed Gaussian centers with peaks
-    peaks, _ = find_peaks(residual, prominence=prominence)
+    residual_smooth = savgol_filter(residual, window_length=21, polyorder=3)
+    peaks, _ = find_peaks(residual_smooth, prominence=prominence)
     if len(peaks) == 0:
         peaks = [np.argmax(residual)]
 

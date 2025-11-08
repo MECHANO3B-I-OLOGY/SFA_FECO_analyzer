@@ -857,7 +857,7 @@ class SFA_FECO_UI:
                 self.radius_file_label.config(text=self.radius_input_file_path) 
 
     def run_radius_calibration(self): 
-        RadiusMeasurementWindow(self.radius_input_file_path, self.f, self.callback_radius)
+        RadiusMeasurementWindow(self.radius_input_file_path, self.f, self.calibration_parameters, self.callback_radius)
 
     def callback_radius(self, r):
         self.radius = r
@@ -1377,7 +1377,7 @@ class SFA_FECO_UI:
                     "odd": self.lambdaOdd,
                     "even": self.lambdaEven
                 },
-                "magnification_scale": int(self.scale_display.get()),
+                "magnification_scale": float(self.scale_display.get()),
                 "magnification_image_file": self.magnification_file,
                 "radius_video_file": self.radius_input_file_path,
                 "f_value": float(self.f_display.get()),
@@ -2415,7 +2415,8 @@ class Magnification_Calculation_Window:
     def __init__(self, file_path, scale):
         self.file_path = file_path
         self.scale = scale
-        self.image = Image.open(file_path).convert("L")  # Ensure grayscale
+        self.image = self.load_as_grayscale(self.file_path)
+          # Ensure grayscale
         self.image_array = np.array(self.image)
 
         self.selected_region = None
@@ -2424,7 +2425,7 @@ class Magnification_Calculation_Window:
         # Create figure and axes
         self.fig, self.ax = plt.subplots(figsize=(8, 6))
         self.ax.imshow(self.image_array, cmap="gray", aspect="auto")
-        self.ax.set_title("Select Horizontal Region")
+        self.ax.set_title("Magnification Scale Image")
         self.ax.set_xlabel("X (pixels)")
         self.ax.set_ylabel("Y (pixels)")
 
@@ -2449,6 +2450,28 @@ class Magnification_Calculation_Window:
         self.fig.canvas.mpl_connect("key_press_event", self.on_key_press)
 
         plt.show()
+
+    def load_as_grayscale(self, file_path):
+        # Open image with PIL
+        im = Image.open(file_path)
+        
+        # Convert to NumPy array to preserve bit depth & channels
+        arr = np.array(im)
+        
+        # If image has multiple channels (RGB or RGBA)
+        if arr.ndim == 3:
+            # Average across color channels to get grayscale
+            arr = arr.mean(axis=2)
+        
+        # Convert to float for normalization (handles 16-bit, etc.)
+        arr = arr.astype(np.float32)
+        
+        # Normalize safely to 0–255
+        arr = 255 * (arr - arr.min()) / (arr.max() - arr.min())
+        arr = arr.astype(np.uint8)
+        
+        # Return as Pillow image in "L" mode
+        return Image.fromarray(arr, mode="L")
 
     def on_select(self, x_min, x_max):
         """Handles selection of the horizontal region."""
@@ -2483,12 +2506,17 @@ class Magnification_Calculation_Window:
         x_max = min(self.image_array.shape[1], x_max)
 
         # Compute average brightness per row
-        y_values = np.arange(self.image_array.shape[0])
+        filtered = cv2.medianBlur(self.image_array, ksize=3)  # ksize must be odd (3, 5, 7, ...)
+
+        # Normalize to 0–255
+        normalized = cv2.normalize(filtered, None, 0, 255, cv2.NORM_MINMAX)
+
+        y_values = np.arange(normalized.shape[0])
         avg_brightness = np.mean(self.image_array[:, x_min:x_max], axis=1)
         self.selected_data = list(zip(y_values, avg_brightness))
 
         # Find peaks using your existing tracking function
-        peaks = tracking.arbitrary_gaussian_fits(self.selected_data, plot=False, max_gaussians = 100)["means"]
+        peaks = tracking.arbitrary_gaussian_fits(self.selected_data, plot=True, max_gaussians = 10, prominence=15)["means"]
 
         self.calcF(peaks)
 
@@ -2506,7 +2534,7 @@ class Magnification_Calculation_Window:
 
         self.ax.set_xlabel("X (pixels)")
         self.ax.set_ylabel("Y (pixels)")
-        self.ax.set_title("Selected Region with Detected Lines")
+        self.ax.set_title("Magnification Scale Image")
 
         self.instruction_text.set_text("Tick lines found, close to confirm or reselect region")
         self.fig.canvas.draw_idle()
@@ -2516,7 +2544,7 @@ class Magnification_Calculation_Window:
         for i in range(len(peaks) - 1):
             sumDist += peaks[i+1] - peaks[i]
         avg = sumDist / (len(peaks) - 1)
-        app.setF(avg/(self.scale))
+        app.setF(self.scale/avg)
 
     def cancel_selection(self):
         """Clears selection and redraws image."""
@@ -2937,7 +2965,7 @@ class Motion_Analysis_Window:
             print(f"Error saving wave centerlines to CSV: {e}")
 
 class RadiusMeasurementWindow:
-    def __init__(self, image_path, magnification_factor, callback):
+    def __init__(self, image_path, magnification_factor, calibration_parameters, callback):
         """
         Opens a window for the user to select three points on a TIFF image to calculate the radius of curvature.
 
@@ -2949,6 +2977,7 @@ class RadiusMeasurementWindow:
         self.image_path = image_path
         self.f = magnification_factor
         self.callback = callback
+        self.calibration_parameters = calibration_parameters
         self.points = []  # Store selected points
 
         # Load the image
@@ -3011,6 +3040,7 @@ class RadiusMeasurementWindow:
     def process_points(self):
         """Determines D1, Xtop, and Xbottom based on point locations and calculates the radius."""
         x_sorted = sorted(self.points, key=lambda p: p[0])  # Sort by x-coordinate
+        print(x_sorted)
 
         # Compute x-distance pairs
         dists = [abs(x_sorted[i][0] - x_sorted[j][0]) for i in range(3) for j in range(i + 1, 3)]
