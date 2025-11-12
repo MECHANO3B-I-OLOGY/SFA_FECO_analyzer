@@ -289,7 +289,7 @@ def new_analyze_and_append_waves(
         max_missing_rows: Maximum number of consecutive rows where a wave can be missing 
             before terminating it.
         min_points_per_wave: Minimum number of points for a wave line to be considered valid.
-        smooth: Whether to apply Savitzky–Golay smoothing to wave lines.
+        smooth: Whether to apply Savitzky-Golay smoothing to wave lines.
         smooth_window: Base window length for the smoothing filter (auto-adjusts per wave).
         smooth_polyorder: Polynomial order for smoothing.
 

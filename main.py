@@ -334,7 +334,7 @@ class SFA_FECO_UI:
         self.f_frame = ttk.Frame(self.calibration_subframe)
         self.f_frame.grid(row=22, column=0, sticky='w', padx=10, pady=(5, 5))
 
-        self.calibration_f_label = ttk.Label(self.f_frame, text=r"f value (μm/px):", style='Regular.TLabel')
+        self.calibration_f_label = ttk.Label(self.f_frame, text=r"f value (px/μm):", style='Regular.TLabel')
         self.calibration_f_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
 
         self.f_display = ttk.Entry(self.f_frame, width=15, validate='key')
@@ -359,7 +359,7 @@ class SFA_FECO_UI:
         self.radius_frame = ttk.Frame(self.calibration_subframe)
         self.radius_frame.grid(row=26, column=0, sticky='w', padx=10, pady=(5, 5))
 
-        self.calibration_radius_label = ttk.Label(self.radius_frame, text=r"Radius of Curvature (μm):", style='Regular.TLabel')
+        self.calibration_radius_label = ttk.Label(self.radius_frame, text=r"Radius of Curvature (m):", style='Regular.TLabel')
         self.calibration_radius_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
 
         self.radius_display = ttk.Entry(self.radius_frame, width=15, textvariable=str(self.radius), validate='key')
@@ -759,7 +759,18 @@ class SFA_FECO_UI:
         self.calibration_completion_label.config(text="Calibration completed")
         self.calibration_parameters = parameters
 
+    
+
     def setDispersionEntries(self, d1,d2,d3,avg,std):
+        def exponentFormatting(num):
+            s = f"{num:.10g}"  
+            if 'e' in s or 'E' in s:
+                mantissa, exp = s.split('e')
+                mantissa = mantissa[:6]
+                return f"{mantissa}e{exp}"
+            else:
+                return s[:6]
+
         self.dispersion1_entry.config(state="normal")
         self.dispersion2_entry.config(state="normal")
         self.dispersion3_entry.config(state="normal")
@@ -767,19 +778,19 @@ class SFA_FECO_UI:
         self.dispersionStd_entry.config(state="normal")
 
         self.dispersion1_entry.delete(0, "end")
-        self.dispersion1_entry.insert(0, str(d1)[:6])
+        self.dispersion1_entry.insert(0, exponentFormatting(d1))
 
         self.dispersion2_entry.delete(0, "end")
-        self.dispersion2_entry.insert(0, str(d2)[:6])
+        self.dispersion2_entry.insert(0, exponentFormatting(d2))
 
         self.dispersion3_entry.delete(0, "end")
-        self.dispersion3_entry.insert(0, str(d3)[:6])
+        self.dispersion3_entry.insert(0, exponentFormatting(d3))
 
         self.dispersionAvg_entry.delete(0, "end")
-        self.dispersionAvg_entry.insert(0, str(avg)[:6])
+        self.dispersionAvg_entry.insert(0, exponentFormatting(avg))
 
         self.dispersionStd_entry.delete(0, "end")
-        self.dispersionStd_entry.insert(0, str(std)[:6])
+        self.dispersionStd_entry.insert(0, exponentFormatting(std))
 
         self.dispersion1_entry.config(state="readonly")
         self.dispersion2_entry.config(state="readonly")
@@ -843,7 +854,7 @@ class SFA_FECO_UI:
             msg = "Please select an input file"
             error_popup(msg)
             return
-        Magnification_Calculation_Window(self.magnification_file, int(self.scale_display.get()))
+        Magnification_Calculation_Window(self.magnification_file, float(self.scale_display.get()))
 
     def select_radius_file(self):
         """Select input file for radius. Updates label."""
@@ -1968,6 +1979,7 @@ class Wavelength_Calibration_Window:
         else:
             return
 
+
         app.setDispersionEntries(self.dispersion1,self.dispersion2,self.dispersion3,self.dispersionAvg,self.dispersionStd)
         
         calibration_equation = {"slope": self.dispersionAvg, "intercept": CalibrationValues.HG_GREEN.value, "offset": x_values[0]}
@@ -2443,7 +2455,7 @@ class Magnification_Calculation_Window:
             direction="horizontal",
             useblit=True,
             interactive=True,
-            props=dict(alpha=0.3, facecolor="red"),  # 'props' replaces 'rectprops' in newer versions
+            props=dict(alpha=0.3, facecolor="red"),  
         )
 
         # Connect keypress events
@@ -2544,7 +2556,7 @@ class Magnification_Calculation_Window:
         for i in range(len(peaks) - 1):
             sumDist += peaks[i+1] - peaks[i]
         avg = sumDist / (len(peaks) - 1)
-        app.setF(self.scale/avg)
+        app.setF(avg/self.scale)
 
     def cancel_selection(self):
         """Clears selection and redraws image."""
@@ -2987,6 +2999,11 @@ class RadiusMeasurementWindow:
         # Initialize the figure and axes
         self.fig, self.ax = plt.subplots()
         self.ax.imshow(self.image, cmap='gray')
+
+        self.ax.set_xlabel("Pixels")
+        self.ax.set_ylabel("Pixels")
+        self.secax = self.ax.secondary_xaxis('top', functions=(self.pixToWave, self.waveToPix))
+        self.secax.set_xlabel(r"Wavelength, $\it{\lambda}$ (nm)")
         self.update_title()
 
         # Enable interactive zoom and pan
@@ -2997,6 +3014,61 @@ class RadiusMeasurementWindow:
         self.cursor = Cursor(self.ax, useblit=True, color='red', linewidth=1)
 
         plt.show()
+
+    def update_secondary_axis(self, event):
+        """Safely sync the top wavelength axis limits with the main axis."""
+        try:
+            # quick sanity checks
+            if not hasattr(self, "secax") or self.secax is None:
+                return
+            if not hasattr(self, "ax") or self.ax is None:
+                return
+            # ensure figure still exists
+            if not plt.fignum_exists(getattr(self, "fig").number):
+                return
+
+            # If there's no canvas/manager/toolbar, bail out
+            canvas = getattr(self, "fig", None).canvas
+            manager = getattr(canvas, "manager", None)
+            toolbar = getattr(manager, "toolbar", None)
+            # set_xlim is cheap; do it only if everything looks OK
+            if toolbar is None or manager is None or canvas is None:
+                # still safe to set limits (no toolbar update) — but check ax exists
+                self.secax.set_xlim(self.ax.get_xlim())
+                return
+
+            # normal case: set limits
+            self.secax.set_xlim(self.ax.get_xlim())
+
+        except _tkinter.TclError:
+            # occurs when Tk widgets were destroyed mid-update; ignore
+            return
+        except Exception:
+            # swallow any other race-condition exceptions silently
+            return
+
+    def pixToWave(self, x):
+        return self.calibration_parameters["slope"]*(x  - self.calibration_parameters["offset"]) + self.calibration_parameters["intercept"]
+
+    def waveToPix(self, lam):
+        return (lam - self.calibration_parameters["intercept"]) / self.calibration_parameters["slope"] + self.calibration_parameters["offset"] 
+
+    def refresh_secondary_axis(self):
+        """Ensure the top wavelength axis exists and is visible after crop/redraw."""
+        if not hasattr(self, "fig") or not plt.fignum_exists(self.fig.number):
+            return
+
+        # Remove old secax if it exists to avoid conflicts
+        if getattr(self, "secax", None) is not None:
+            try:
+                self.secax.remove()
+            except Exception:
+                pass
+
+        # Create a new secondary x-axis on top
+        self.secax = self.ax.secondary_xaxis('top', functions=(self.pixToWave, self.waveToPix))
+        self.secax.set_xlabel(r"Wavelength, $\it{\lambda}$ (nm)")
+
 
     def update_title(self):
         """Updates the title to reflect instructions and current state."""
@@ -3039,18 +3111,26 @@ class RadiusMeasurementWindow:
 
     def process_points(self):
         """Determines D1, Xtop, and Xbottom based on point locations and calculates the radius."""
-        x_sorted = sorted(self.points, key=lambda p: p[0])  # Sort by x-coordinate
-        print(x_sorted)
+        x_sorted = sorted(self.points, key=lambda p: p[0])  # Sort by x-coordinates
 
-        # Compute x-distance pairs
-        dists = [abs(x_sorted[i][0] - x_sorted[j][0]) for i in range(3) for j in range(i + 1, 3)]
-        min_dist_idx = np.argsort(dists)[:2]  # Get indices of two smallest distances
+        min_dist_idx = []
+        min_dist = np.inf
+
+        for i in range(3):
+            for j in range(i+1,3):
+                if abs(x_sorted[i][0] - x_sorted[j][0]) < min_dist:
+                    min_dist = abs(x_sorted[i][0] - x_sorted[j][0])
+                    min_dist_idx = [i,j]
 
         # Assign Xtop and Xbottom based on their y-values
-        Xtop, Xbottom = sorted([self.points[min_dist_idx[0]], self.points[min_dist_idx[1]]], key=lambda p: p[1])
+        Xbottom, Xtop = sorted([self.points[min_dist_idx[0]], self.points[min_dist_idx[1]]], key=lambda p: p[1])
 
         # Assign D1 as the remaining point
         D1 = [p for p in self.points if p not in (Xtop, Xbottom)][0]
+
+        #print(Xtop)
+        #print(Xbottom)
+        #print(D1)
 
         # Extract coordinates
         x_top, y_top = Xtop
@@ -3058,11 +3138,19 @@ class RadiusMeasurementWindow:
         x_d1, y_d1 = D1
 
         # Calculate X distance
-        X = abs(x_top - x_bottom)
+        X = abs(y_top - y_bottom)
+
+        x_d1 = (self.calibration_parameters["slope"] * (x_d1 - self.calibration_parameters["offset"]) + self.calibration_parameters["intercept"]) 
+        x_bottom = (self.calibration_parameters["slope"] * (x_bottom - self.calibration_parameters["offset"]) + self.calibration_parameters["intercept"]) 
 
         # Compute radius using the formula
-        D_diff = abs(y_d1 - y_bottom)  # Only the difference matters
-        radius = (X / self.f) ** 2 / (8 * D_diff)
+        D_diff = abs(x_d1 - x_bottom)  # Only the difference matters
+
+        #print(D_diff)
+
+        radius = (((X / (self.f/10e-6))) ** 2 ) / (8 * (D_diff*10e-9))
+
+        #print(radius)
 
         self.callback(radius)  # Return value via callback
         plt.close(self.fig)  # Close the window after calculation
