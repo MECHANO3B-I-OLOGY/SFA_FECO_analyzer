@@ -734,89 +734,104 @@ def _linear_baseline_plus_gaussians(x, m, c, *gauss_params):
     dips = _sum_of_neg_gaussians(x, *gauss_params) 
     return baseline - dips
 
-def arbitrary_gaussian_fits(data, plot=True, max_gaussians=15, prominence=1):
+def arbitrary_gaussian_fits(
+    data, 
+    plot=True, 
+    min_gaussians=1, 
+    max_gaussians=15, 
+    prominence=1, 
+    invert_peaks=False
+):
     """
-    Fit downward-going Gaussian dips with a fitted linear baseline.
-    
-    Fits baseline (slope, intercept) and Gaussian parameters 
-    (amplitude, center, width).
+    Fit Gaussian features (either dips or peaks) with a fitted linear baseline.
+
+    Parameters
+    ----------
+    data : array-like
+        List of (x, y) points.
+    plot : bool
+        Whether to plot the fit result.
+    min_gaussians : int
+        Minimum number of Gaussians to fit.
+    max_gaussians : int
+        Maximum number of Gaussians to fit.
+    prominence : float
+        Peak prominence for peak detection.
+    invert_peaks : bool
+        If False, fits downward dips (default).
+        If True, fits upward peaks.
     """
     x = np.array([p[0] for p in data], dtype=float)
     y = np.array([p[1] for p in data], dtype=float)
 
-    # --- CHANGED: Estimate linear baseline ---
-    # We need a good initial guess for the baseline to find the dips.
-    # We do this by iteratively fitting a line and removing points 
-    # that are clearly dips (far below the line).
-    
-    # Start with a simple polyfit on all data
+    # --- Estimate linear baseline ---
     m_est, c_est = np.polyfit(x, y, 1)
-    
-    # Iteratively refine by removing dips
     current_x, current_y = x, y
-    for _ in range(3): # 3 iterations is usually enough
+    for _ in range(3):
         baseline_guess = m_est * current_x + c_est
-        residuals = current_y - baseline_guess # Dips will be negative
-        
-        # Keep only points that are *not* part of a major dip
-        # (e.g., points above the line or only slightly below)
+        residuals = current_y - baseline_guess
         std_dev = np.std(residuals)
         keep_indices = residuals > -1.5 * std_dev
-        
-        if np.sum(keep_indices) < 2: # Failsafe
-            break 
-            
+        if np.sum(keep_indices) < 2:
+            break
         current_x, current_y = current_x[keep_indices], current_y[keep_indices]
         m_est, c_est = np.polyfit(current_x, current_y, 1)
-
-    # This is our initial guess for the baseline
     y_baseline_est = m_est * x + c_est
-    
-    # Invert residual (from the *estimated* baseline) to treat dips as peaks
-    residual = y_baseline_est - y 
-    residual = np.clip(residual, 0, None) # Ignore points *above* the baseline
 
-    # Seed Gaussian centers with peaks
+    # --- Compute residuals depending on desired fit type ---
+    if invert_peaks:
+        # Fitting upward peaks
+        residual = y - y_baseline_est
+    else:
+        # Fitting downward dips
+        residual = y_baseline_est - y
+
+    residual = np.clip(residual, 0, None)
     residual_smooth = savgol_filter(residual, window_length=21, polyorder=3)
     peaks, _ = find_peaks(residual_smooth, prominence=prominence)
+
     if len(peaks) == 0:
         peaks = [np.argmax(residual)]
 
-    # Keep only the most prominent dips if too many
-    if len(peaks) > max_gaussians:
+    # --- Clamp between min and max ---
+    if len(peaks) < min_gaussians:
+        # Pad with repeats of most prominent peak
+        peaks = list(peaks)
+        while len(peaks) < min_gaussians:
+            peaks.append(peaks[-1])
+    elif len(peaks) > max_gaussians:
         peaks = peaks[np.argsort(residual[peaks])[-max_gaussians:]]
 
     n_gauss = len(peaks)
 
-    # --- CHANGED: Initial guess now includes m and c ---
-    # p0 = [m, c, A1, mu1, sigma1, A2, mu2, sigma2, ...]
-    p0 = [m_est, c_est] 
+    # --- Initial guess ---
+    p0 = [m_est, c_est]
     for idx in peaks:
-        A0 = residual[idx] # Amplitude *relative to estimated baseline*
+        A0 = residual[idx]
         mu0 = x[idx]
         sigma0 = max(3.0, (x[-1]-x[0]) * 0.01)
         p0 += [A0, mu0, sigma0]
 
-    # --- CHANGED: Bounds now include m and c ---
-    lower, upper = [], []
-    # Bounds for m and c (let them be pretty free)
-    lower += [-np.inf, -np.inf]
-    upper += [np.inf, np.inf]
-    
+    lower, upper = [-np.inf, -np.inf], [np.inf, np.inf]
     for _ in range(n_gauss):
         lower += [0.0, x[0], 1e-3]
         upper += [np.inf, x[-1], (x[-1]-x[0])*2]
 
-    # --- CHANGED: Weight flat regions more to anchor the baseline ---
     sigma_weights = np.ones_like(y)
-    # 'flat_indices' are where the residual (dip depth) is small
     flat_indices = np.where(residual < prominence)[0]
-    # Give flat regions a smaller sigma (higher weight)
-    sigma_weights[flat_indices] = 0.1 
+    sigma_weights[flat_indices] = 0.1
 
-    # --- CHANGED: Nonlinear fit with the new model function ---
+    # --- Choose model function depending on fit direction ---
+    def model_func(x, m, c, *params):
+        baseline = m * x + c
+        peaksum = _sum_of_neg_gaussians(x, *params)
+        if invert_peaks:
+            return baseline + peaksum
+        else:
+            return baseline - peaksum
+
     popt, pcov = curve_fit(
-        _linear_baseline_plus_gaussians, # Use new model
+        model_func,
         x, y,
         p0=p0,
         bounds=(lower, upper),
@@ -824,38 +839,31 @@ def arbitrary_gaussian_fits(data, plot=True, max_gaussians=15, prominence=1):
         maxfev=20000
     )
 
-    # --- CHANGED: Parse optimized parameters (m, c are first) ---
     m_fit, c_fit = popt[0], popt[1]
-    gauss_popt = popt[2:] # The rest are Gaussian params
-    
+    gauss_popt = popt[2:]
     amps, mus, sigs = [], [], []
     for i in range(n_gauss):
         amps.append(gauss_popt[3*i])
         mus.append(gauss_popt[3*i + 1])
         sigs.append(gauss_popt[3*i + 2])
 
-    # Dense curve for plotting
     x_dense = np.linspace(np.min(x), np.max(x), 2000)
-    y_fit = _linear_baseline_plus_gaussians(x_dense, *popt)
-    
-    # --- CHANGED: Calculate the fitted baseline for plotting ---
+    y_fit = model_func(x_dense, *popt)
     y_baseline_fit = m_fit * x_dense + c_fit
 
     if plot:
         plt.figure(figsize=(10,5))
         plt.plot(x, y, label='data', lw=1)
         plt.plot(x_dense, y_fit, label=f'fit (n={n_gauss})', lw=2)
-        
-        # --- CHANGED: Plot the new fitted baseline ---
         plt.plot(x_dense, y_baseline_fit, '--', color='gray', label='fitted baseline')
-        
-        # individual Gaussians (plotted *relative to the fitted baseline*)
         for A, mu, sigma in zip(amps, mus, sigs):
-            plt.plot(x_dense, y_baseline_fit - A*np.exp(-0.5*((x_dense-mu)/sigma)**2),
-                     '--', alpha=0.7)
-        
+            y_g = A * np.exp(-0.5 * ((x_dense - mu)/sigma)**2)
+            if invert_peaks:
+                plt.plot(x_dense, y_baseline_fit + y_g, '--', alpha=0.7)
+            else:
+                plt.plot(x_dense, y_baseline_fit - y_g, '--', alpha=0.7)
         plt.legend()
-        plt.ylim(bottom=min(y_fit.min(), y.min()) - 10) # Adjust y-limits
+        plt.ylim(bottom=min(y_fit.min(), y.min()) - 10)
         plt.show()
 
     return {

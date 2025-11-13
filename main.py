@@ -291,6 +291,26 @@ class SFA_FECO_UI:
 
         prep_label = ttk.Label(self.calibration_subframe, text="STEP 2: Radius of Curvature Calibration", style='Step.TLabel', font=20)
         prep_label.grid(row=17+1, column=0, sticky='ew', padx=10)
+
+        setupSelectorFrame = ttk.Frame(self.calibration_subframe)
+        setupSelectorFrame.grid(row=18+1, column=0, sticky='ew', padx=10, pady=(5, 10))
+
+        self.setupLabel = ttk.Label(setupSelectorFrame, text="Setup: ", style='Regular.TLabel')
+        self.setupLabel.pack(side='left', padx=(0, 5))
+
+        self.setupEntryVar = tk.StringVar(value=str(self.calibration_values["setup"])) 
+        self.setupEntry = ttk.Entry(setupSelectorFrame, textvariable=self.setupEntryVar, width=25, style='Regular.TEntry')
+        self.setupEntry.pack(side='left', padx=(0, 5))
+        self.setupEntry.config(state="readonly")
+
+        self.setupButton = ttk.Button(
+            setupSelectorFrame,
+            text="Select Setup",
+            command=self.selectSetupWindow,
+            style='Regular.TButton',
+            width=15
+        )
+        self.setupButton.pack(fill='x', pady=5)
         
         # --- Magnification Calibration Section ---
         self.select_magnification_image_button = ttk.Button(
@@ -299,7 +319,7 @@ class SFA_FECO_UI:
             command=self.select_magnification_file,  # define this method later
             style='Regular.TButton'
         )
-        self.select_magnification_image_button.grid(row=18, column=0, sticky='ew', padx=10, pady=5)
+        self.select_magnification_image_button.grid(row=18+2, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display selected magnification image file
         self.magnification_image_label = ttk.Label(
@@ -307,11 +327,11 @@ class SFA_FECO_UI:
             text="No file selected",
             style='Regular.TLabel'
         )
-        self.magnification_image_label.grid(row=19, column=0, sticky='new', padx=10)
+        self.magnification_image_label.grid(row=19+2, column=0, sticky='new', padx=10)
 
         # Frame for f value label and entry side by side
         self.scale_frame = ttk.Frame(self.calibration_subframe)
-        self.scale_frame.grid(row=20, column=0, sticky='w', padx=10, pady=(5, 5))
+        self.scale_frame.grid(row=20+2, column=0, sticky='w', padx=10, pady=(5, 5))
 
         self.scale_label = ttk.Label(self.scale_frame, text=r"scale (μm/tick):", style='Regular.TLabel')
         self.scale_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
@@ -328,11 +348,11 @@ class SFA_FECO_UI:
             command=self.calculate_magnification_factor,  # define this method later
             style='Regular.TButton'
         )
-        self.calculate_magnification_button.grid(row=21, column=0, sticky='ew', padx=10, pady=5)
+        self.calculate_magnification_button.grid(row=21+2, column=0, sticky='ew', padx=10, pady=5)
 
         # Frame for f value label and entry side by side
         self.f_frame = ttk.Frame(self.calibration_subframe)
-        self.f_frame.grid(row=22, column=0, sticky='w', padx=10, pady=(5, 5))
+        self.f_frame.grid(row=22+2, column=0, sticky='w', padx=10, pady=(5, 5))
 
         self.calibration_f_label = ttk.Label(self.f_frame, text=r"f value (px/μm):", style='Regular.TLabel')
         self.calibration_f_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
@@ -344,20 +364,20 @@ class SFA_FECO_UI:
 
         # Select radius File button
         self.select_radius_file_button = ttk.Button(self.calibration_subframe, text="Select Radius of Curvature Calibration Video", command=self.select_radius_file, style='Regular.TButton')
-        self.select_radius_file_button.grid(row=23, column=0, sticky='ew', padx=10, pady=5)
+        self.select_radius_file_button.grid(row=23+2, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the selected radius file's name
         self.radius_file_label = ttk.Label(self.calibration_subframe, text="No file selected", style='Regular.TLabel')
-        self.radius_file_label.grid(row=24, column=0, sticky='new', padx=10)
+        self.radius_file_label.grid(row=24+2, column=0, sticky='new', padx=10)
 
 
         # Calibrate radius button
         self.execute_radius_calibration = ttk.Button(self.calibration_subframe, text="Find Radius", command=self.run_radius_calibration, style='Regular.TButton')
-        self.execute_radius_calibration.grid(row=25, column=0, sticky='ew', padx=10, pady=5)
+        self.execute_radius_calibration.grid(row=25+2, column=0, sticky='ew', padx=10, pady=5)
 
         # Frame for radius label and entry side by side
         self.radius_frame = ttk.Frame(self.calibration_subframe)
-        self.radius_frame.grid(row=26, column=0, sticky='w', padx=10, pady=(5, 5))
+        self.radius_frame.grid(row=26+2, column=0, sticky='w', padx=10, pady=(5, 5))
 
         self.calibration_radius_label = ttk.Label(self.radius_frame, text=r"Radius of Curvature (m):", style='Regular.TLabel')
         self.calibration_radius_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
@@ -547,26 +567,6 @@ class SFA_FECO_UI:
         # region Step 3: Visualize
         step4_label = ttk.Label(self.visualize_subframe, text="STEP 5: Visualize", style='Step.TLabel', font=20)
         step4_label.pack(anchor='w', pady=(0, 5))
-
-        setupSelectorFrame = ttk.Frame(self.visualize_subframe)
-        setupSelectorFrame.pack(anchor='w', pady=(0, 5))
-
-        self.setupLabel = ttk.Label(setupSelectorFrame, text="Setup: ", style='Regular.TLabel')
-        self.setupLabel.pack(side='left', padx=(0, 5))
-
-        self.setupEntryVar = tk.StringVar(value=str(self.calibration_values["setup"])) 
-        self.setupEntry = ttk.Entry(setupSelectorFrame, textvariable=self.setupEntryVar, width=25, style='Regular.TEntry')
-        self.setupEntry.pack(side='left', padx=(0, 5))
-        self.setupEntry.config(state="readonly")
-
-        self.setupButton = ttk.Button(
-            setupSelectorFrame,
-            text="Select Setup",
-            command=self.selectSetupWindow,
-            style='Regular.TButton',
-            width=15
-        )
-        self.setupButton.pack(fill='x', pady=5)
 
         # --- Camera FPS row ---
         fps_frame = ttk.Frame(self.visualize_subframe)
@@ -868,7 +868,9 @@ class SFA_FECO_UI:
                 self.radius_file_label.config(text=self.radius_input_file_path) 
 
     def run_radius_calibration(self): 
-        RadiusMeasurementWindow(self.radius_input_file_path, self.f, self.calibration_parameters, self.callback_radius)
+        with open("setups.json", "r") as f:
+            temp = json.load(f)
+        RadiusMeasurementWindow(self.radius_input_file_path, self.f, self.calibration_parameters, [self.lambdaOdd, self.lambdaEven], int(self.fringe_entry.get()), temp[str(self.setupEntryVar.get())][2], self.callback_radius)
 
     def callback_radius(self, r):
         self.radius = r
@@ -996,7 +998,8 @@ class SFA_FECO_UI:
                 self.motion_output_file_path,
                 self.calibration_parameters,
                 self.analyze_output_file_path,
-                self.callback_handle_crop_offset,
+                self.get_mode(),
+                self.callback_handle_crop_offset
             )
         else:
             error_popup("Please enter a valid output file name.")
@@ -2528,7 +2531,7 @@ class Magnification_Calculation_Window:
         self.selected_data = list(zip(y_values, avg_brightness))
 
         # Find peaks using your existing tracking function
-        peaks = tracking.arbitrary_gaussian_fits(self.selected_data, plot=True, max_gaussians = 10, prominence=15)["means"]
+        peaks = tracking.arbitrary_gaussian_fits(self.selected_data, plot=True, max_gaussians = 15, prominence=15)["means"]
 
         self.calcF(peaks)
 
@@ -2579,11 +2582,12 @@ class Motion_Analysis_Window:
     DELETION_MODE = 'delete'
     FIGURE_SIZE = (12, 4)
 
-    def __init__(self, motion_profile_file_path, calibration_parameters, output_file_path, offset_callback=None) -> None:
+    def __init__(self, motion_profile_file_path, calibration_parameters, output_file_path, modality, offset_callback=None) -> None:
         self.y_offset = 0
         self.x_offset_start = 0
         self.x_offset_end = 0
         self.calibration_parameters = calibration_parameters
+        self.modality = modality
         self.offset_callback = offset_callback
 
         self.output_filename = output_file_path
@@ -2977,7 +2981,7 @@ class Motion_Analysis_Window:
             print(f"Error saving wave centerlines to CSV: {e}")
 
 class RadiusMeasurementWindow:
-    def __init__(self, image_path, magnification_factor, calibration_parameters, callback):
+    def __init__(self, image_path, magnification_factor, calibration_parameters, lambdas, n, equation, callback):
         """
         Opens a window for the user to select three points on a TIFF image to calculate the radius of curvature.
 
@@ -2990,6 +2994,9 @@ class RadiusMeasurementWindow:
         self.f = magnification_factor
         self.callback = callback
         self.calibration_parameters = calibration_parameters
+        self.lambdas = lambdas
+        self.n = n
+        self.equation = equation
         self.points = []  # Store selected points
 
         # Load the image
@@ -3128,9 +3135,9 @@ class RadiusMeasurementWindow:
         # Assign D1 as the remaining point
         D1 = [p for p in self.points if p not in (Xtop, Xbottom)][0]
 
-        #print(Xtop)
-        #print(Xbottom)
-        #print(D1)
+        print(Xtop)
+        print(Xbottom)
+        print(D1)
 
         # Extract coordinates
         x_top, y_top = Xtop
@@ -3143,14 +3150,18 @@ class RadiusMeasurementWindow:
         x_d1 = (self.calibration_parameters["slope"] * (x_d1 - self.calibration_parameters["offset"]) + self.calibration_parameters["intercept"]) 
         x_bottom = (self.calibration_parameters["slope"] * (x_bottom - self.calibration_parameters["offset"]) + self.calibration_parameters["intercept"]) 
 
+        self.dist = dist.distance(self.lambdas[0], self.lambdas[1], n=self.n)
+
+        x_d1, x_bottom = np.array(self.dist.arrayDistance([x_d1, x_bottom], self.equation))
+
         # Compute radius using the formula
         D_diff = abs(x_d1 - x_bottom)  # Only the difference matters
 
-        #print(D_diff)
+        print(D_diff)
 
         radius = (((X / (self.f/10e-6))) ** 2 ) / (8 * (D_diff*10e-9))
 
-        #print(radius)
+        print(radius)
 
         self.callback(radius)  # Return value via callback
         plt.close(self.fig)  # Close the window after calculation
