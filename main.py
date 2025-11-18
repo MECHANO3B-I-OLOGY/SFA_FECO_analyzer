@@ -1139,9 +1139,9 @@ class SFA_FECO_UI:
 
     def visualize_force_over_distance(self):
         if self.force_mode.get() == "in":
-            ForceVsDistanceWindow(self.force_mode.get(), self.dispDistPairsIn, int(self.k_var.get()), self.scale_mode.get())
+            ForceVsDistanceWindow(self.force_mode.get(), self.dispDistPairsIn, int(self.k_var.get()), float(self.radius_display.get()), self.scale_mode.get())
         else:
-            ForceVsDistanceWindow(self.force_mode.get(), self.dispDistPairsOut, int(self.k_var.get()), self.scale_mode.get())
+            ForceVsDistanceWindow(self.force_mode.get(), self.dispDistPairsOut, int(self.k_var.get()), float(self.radius_display.get()), self.scale_mode.get())
 
     def getFile(self):
         if self.javaExists:
@@ -1229,12 +1229,23 @@ class SFA_FECO_UI:
             except Exception:
                 pass
         else:
-
+            # internal.json does not exist yet
             defaultFlags = {
                 "skip_java_warning": False,
                 "geometry": f"{window_width}x{window_height}+300+100",
                 "auto_load_calibration": True
             }
+
+            # Load requirements.txt into internal flags (first-run only)
+            req_path = "requirements.txt"
+            if os.path.exists(req_path):
+                with open(req_path, "r") as f:
+                    requirements_text = f.read()
+                defaultFlags["requirements"] = requirements_text
+
+            # delete temporary copy if it exists (mirroring pseudocode)
+            # (only delete if you earlier created one—safe to keep)
+            # os.remove("requirements.json")  # only if you actually create this
 
             return defaultFlags
 
@@ -3135,10 +3146,6 @@ class RadiusMeasurementWindow:
         # Assign D1 as the remaining point
         D1 = [p for p in self.points if p not in (Xtop, Xbottom)][0]
 
-        print(Xtop)
-        print(Xbottom)
-        print(D1)
-
         # Extract coordinates
         x_top, y_top = Xtop
         x_bottom, y_bottom = Xbottom
@@ -3157,11 +3164,7 @@ class RadiusMeasurementWindow:
         # Compute radius using the formula
         D_diff = abs(x_d1 - x_bottom)  # Only the difference matters
 
-        print(D_diff)
-
         radius = (((X / (self.f/10e-6))) ** 2 ) / (8 * (D_diff*10e-9))
-
-        print(radius)
 
         self.callback(radius)  # Return value via callback
         plt.close(self.fig)  # Close the window after calculation
@@ -3427,9 +3430,10 @@ class TimeVsDistanceWindow:
 
 
 class ForceVsDistanceWindow:
-    def __init__(self, mode, pairs, springConstant, y_scale='linear'):
+    def __init__(self, mode, pairs, springConstant, radius, y_scale='linear'):
         self.mode = mode
         self.springConstant = springConstant
+        self.radius = radius
         self.pairs = pairs
 
         x_vals = []
