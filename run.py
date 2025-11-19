@@ -98,47 +98,61 @@ if __name__ == "__main__":
     requirements_path = "requirements.txt"
     internal = load_internal()
 
-    # Compute current requirements hash
     if pathlib.Path(requirements_path).exists():
         current_req_hash = hash_file(requirements_path)
     else:
         current_req_hash = None
 
-    # CASE 1 — internal.json does NOT exist
-    if internal is None:
-        print("⚙️ No internal.json found — building fresh environment...")
+    venv_exists = pathlib.Path("venv").exists()
 
-        # Always recreate venv to ensure consistency
-        if pathlib.Path("venv").exists():
+    # -------------------------------------------------
+    # CASE 1 — internal.json does NOT exist
+    # -------------------------------------------------
+    if internal is None:
+        print("⚙️ No internal.json found — full setup...")
+
+        # Always rebuild venv
+        if venv_exists:
             shutil.rmtree("venv")
 
         s = setup()
         s.setup()
 
-        # save requirements hash to internal.json
         save_internal({"requirements": current_req_hash})
 
-    # CASE 2 — internal.json exists
+    # -------------------------------------------------
+    # CASE 2 — internal.json exists, BUT venv is missing
+    # -------------------------------------------------
+    elif not venv_exists:
+        print("❗ internal.json exists but venv is missing — rebuilding environment...")
+
+        s = setup()
+        s.setup()
+
+        # Update stored requirements hash in case the file changed
+        internal["requirements"] = current_req_hash
+        save_internal(internal)
+
+    # -------------------------------------------------
+    # CASE 3 — internal.json exists AND venv exists
+    # -------------------------------------------------
     else:
         stored_hash = internal.get("requirements", None)
 
-        # requirements changed → rebuild venv
         if stored_hash != current_req_hash:
             print("🔁 Requirements changed — rebuilding venv...")
 
-            if pathlib.Path("venv").exists():
-                shutil.rmtree("venv")
+            shutil.rmtree("venv")
 
             s = setup()
             s.setup()
 
-            # update internal.json
             internal["requirements"] = current_req_hash
             save_internal(internal)
 
         else:
             print("✔ Requirements unchanged — using existing venv")
 
-    # finally run program
+    # Finally, run main
     run = run()
     run.runProgram()

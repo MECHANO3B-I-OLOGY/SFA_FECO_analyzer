@@ -1217,37 +1217,27 @@ class SFA_FECO_UI:
         window_height = int(screen_height * self.DEFAULT_HEIGHT_RATIO)
 
         # Load existing flags if file exists
-        if os.path.exists(flag_path):
-            try:
-                with open(flag_path, "r") as f:
-                    temp = json.load(f)
-                    if not is_geometry_on_screen(temp["geometry"]):
-                        temp.update({"geometry": f"{window_width}x{window_height}+300+100"})
+        with open(flag_path, "r") as f:
+            temp = json.load(f)
+            if "skip_java_warning" in temp:
+                try:
+                        if not is_geometry_on_screen(temp["geometry"]):
+                            temp.update({"geometry": f"{window_width}x{window_height}+300+100"})
 
-                    return temp
-                    
-            except Exception:
-                pass
-        else:
-            # internal.json does not exist yet
-            defaultFlags = {
-                "skip_java_warning": False,
-                "geometry": f"{window_width}x{window_height}+300+100",
-                "auto_load_calibration": True
-            }
+                        return temp
+                        
+                except Exception:
+                    pass
+            else:
+                # internal.json does not exist yet
+                defaultFlags = {
+                    "skip_java_warning": False,
+                    "geometry": f"{window_width}x{window_height}+300+100",
+                    "auto_load_calibration": True,
+                    "requirements": temp["requirements"]
+                }
 
-            # Load requirements.txt into internal flags (first-run only)
-            req_path = "requirements.txt"
-            if os.path.exists(req_path):
-                with open(req_path, "r") as f:
-                    requirements_text = f.read()
-                defaultFlags["requirements"] = requirements_text
-
-            # delete temporary copy if it exists (mirroring pseudocode)
-            # (only delete if you earlier created one—safe to keep)
-            # os.remove("requirements.json")  # only if you actually create this
-
-            return defaultFlags
+                return defaultFlags
 
     def load_calibration(self, loadPrev, fileName = None):
         cache_dir = os.path.join(os.getcwd(), "cache")
@@ -1407,7 +1397,7 @@ class SFA_FECO_UI:
                 "radius_video_file": self.radius_input_file_path,
                 "f_value": float(self.f_display.get()),
                 "radius": float(self.radius_display.get()), 
-                "turnaround_frame": int(self.split_frame_num),
+                "turnaround_frame": int(self.split_var.get()),
                 "setup": str(self.setupEntryVar.get()),
                 "fps": int(self.camera_fps_var.get()),
                 "spring_constant":  int(self.k_var.get())
