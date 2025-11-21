@@ -48,6 +48,11 @@ def toolbar_update_ignore_tclerror(self):
 
 backend_tk.NavigationToolbar2Tk.update = toolbar_update_ignore_tclerror
 
+def resource(path):
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, path)
+    return path
+
 class SFA_FECO_UI:
     """
         Main UI function for SFA FECO 
@@ -1217,27 +1222,27 @@ class SFA_FECO_UI:
         window_height = int(screen_height * self.DEFAULT_HEIGHT_RATIO)
 
         # Load existing flags if file exists
-        with open(flag_path, "r") as f:
-            temp = json.load(f)
-            if "skip_java_warning" in temp:
-                try:
-                        if not is_geometry_on_screen(temp["geometry"]):
-                            temp.update({"geometry": f"{window_width}x{window_height}+300+100"})
+        
+        if os.path.exists(resource(flag_path)):
+            try:
+                with open(resource(flag_path), "r") as f:
+                    temp = json.load(f)
+                    if not is_geometry_on_screen(temp["geometry"]):
+                        temp.update({"geometry": f"{window_width}x{window_height}+300+100"})
 
-                        return temp
-                        
-                except Exception:
-                    pass
-            else:
-                # internal.json does not exist yet
-                defaultFlags = {
-                    "skip_java_warning": False,
-                    "geometry": f"{window_width}x{window_height}+300+100",
-                    "auto_load_calibration": True,
-                    "requirements": temp["requirements"]
-                }
+                    return temp
+                    
+            except Exception:
+                pass
+        else:
+            # internal.json does not exist yet
+            defaultFlags = {
+                "skip_java_warning": False,
+                "geometry": f"{window_width}x{window_height}+300+100",
+                "auto_load_calibration": True,
+            }
 
-                return defaultFlags
+            return defaultFlags
 
     def load_calibration(self, loadPrev, fileName = None):
         cache_dir = os.path.join(os.getcwd(), "cache")
