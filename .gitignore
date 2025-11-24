@@ -10,7 +10,9 @@
 
 __pycache__
 .venv
+build
 cache/*
+dist
 CXD_data
 venv
 Output/*
