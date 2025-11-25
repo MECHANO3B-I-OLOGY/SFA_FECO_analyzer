@@ -10,7 +10,7 @@ from deprecation import deprecated
 from PIL import Image, ImageTk, ImageSequence, ImageFilter
 from pprint import pprint 
 from scipy.interpolate import splprep, splev, UnivariateSpline
-from scipy.optimize import curve_fit
+from scipy.optimize import curve_fit, minimize
 from scipy.signal import savgol_filter, medfilt, find_peaks
 from scipy import stats
 from sklearn.mixture import GaussianMixture
@@ -558,6 +558,132 @@ def analyze_and_append_waves(image,
 
     return wave_lines
 
+def gaussian(x, A, mu, sigma, offset):
+    return A * np.exp(-(x - mu)**2 / (2 * sigma**2)) + offset
+
+
+def best_shift_for_row(row_data, template_x, template_gauss):
+    """
+    Compute best horizontal shift of a Gaussian template to match the row data.
+    Returns the shift and the resulting peak position (mu + shift).
+    """
+
+    def loss(shift):
+        shifted_x = template_x + shift
+        # Since interpolation is not used, clip to bounds
+        valid = (shifted_x >= 0) & (shifted_x < len(row_data))
+        if not np.any(valid):
+            return np.inf
+        interp_template = np.zeros_like(template_gauss)
+        interp_template[valid] = template_gauss[valid]
+        return np.sum((row_data - interp_template)**2)
+
+    res = minimize(loss, x0=0.0, method="Nelder-Mead")
+    shift = float(res.x[0])
+
+    return shift
+
+def track_wave(seed_y, mu0, x_template, y_template, image, direction=1, window=15):
+    """
+    Track a wave starting from seed_y and mu0.
+    direction = +1 for downward, -1 for upward
+    """
+
+    H, W = image.shape
+    wave_points = [(seed_y, mu0)]
+    prev_mu = mu0
+
+    y_range = range(seed_y + direction, H if direction > 0 else -1, direction)
+
+    for y in y_range:
+        row = image[y, :].astype(float)
+
+        # Define local horizontal window
+        x_start = max(0, int(prev_mu - window))
+        x_end   = min(W, int(prev_mu + window))
+        row_local = row[x_start:x_end]
+
+        # Interpolate template to match local window size
+        t_len = len(row_local)
+        x_dense_local = np.linspace(0, t_len - 1, len(x_template))
+        y_template_local = np.interp(np.arange(t_len), x_dense_local, y_template)
+
+        # Compute cross-correlation
+        corr = np.correlate(row_local - row_local.mean(),
+                            y_template_local - y_template_local.mean(),
+                            mode='valid')
+        best_shift = np.argmax(corr) - (len(y_template_local) // 2)
+
+        new_mu = prev_mu + best_shift
+        new_mu = max(0, min(W - 1, new_mu))
+
+        wave_points.append((y, new_mu))
+        prev_mu = new_mu
+
+    if direction < 0:
+        wave_points = list(reversed(wave_points))
+    return wave_points
+
+def gaussianWaveDetection(image, seed_points, search_window=10):
+    """
+    Track FECO waves from user-selected seed points.
+    image: 2D numpy array
+    seed_points: list of (x, y)
+    search_window: pixels left/right to look in next row
+    """
+    H, W = image.shape
+    waves = []
+
+    for seed_x, seed_y in seed_points:
+        wave_coords = []
+
+        # Start at seed
+        prev_x = seed_x
+
+        for y in range(seed_y, -1, -1):  # upward
+            row = image[y, :]
+            left = max(0, int(prev_x - search_window))
+            right = min(W, int(prev_x + search_window))
+            local_row = row[left:right]
+
+            # Find local maxima
+            peaks, _ = find_peaks(local_row)
+            if len(peaks) == 0:
+                x_new = prev_x
+            else:
+                # pick peak closest to previous
+                peak_positions = peaks + left
+                x_new = peak_positions[np.argmin(np.abs(peak_positions - prev_x))]
+
+            wave_coords.append((y, x_new))
+            prev_x = x_new
+
+        wave_coords.reverse()
+
+        # Track downward
+        prev_x = seed_x
+        for y in range(seed_y + 1, H):
+            row = image[y, :]
+            left = max(0, int(prev_x - search_window))
+            right = min(W, int(prev_x + search_window))
+            local_row = row[left:right]
+
+            peaks, _ = find_peaks(local_row)
+            if len(peaks) == 0:
+                x_new = prev_x
+            else:
+                peak_positions = peaks + left
+                x_new = peak_positions[np.argmin(np.abs(peak_positions - prev_x))]
+
+            wave_coords.append((y, x_new))
+            prev_x = x_new
+
+        waves.append(wave_coords)
+
+    print(waves)
+
+    return waves
+
 def perform_turnaround_estimation(motion_profile_file_path, centerline_csv_path, x_offset = 0, y_offset = 0):
     """
     Estimate the turnaround points for each wave by performing leftward and rightward 
@@ -740,7 +866,8 @@ def arbitrary_gaussian_fits(
     min_gaussians=1, 
     max_gaussians=15, 
     prominence=1, 
-    invert_peaks=False
+    invert_peaks=False,
+    forced_peaks=None
 ):
     """
     Fit Gaussian features (either dips or peaks) with a fitted linear baseline.
@@ -748,18 +875,9 @@ def arbitrary_gaussian_fits(
     Parameters
     ----------
     data : array-like
-        List of (x, y) points.
-    plot : bool
-        Whether to plot the fit result.
-    min_gaussians : int
-        Minimum number of Gaussians to fit.
-    max_gaussians : int
-        Maximum number of Gaussians to fit.
-    prominence : float
-        Peak prominence for peak detection.
-    invert_peaks : bool
-        If False, fits downward dips (default).
-        If True, fits upward peaks.
+        List of (x,y) points.
+    forced_peaks : list of x positions from the GUI (optional)
+        If provided, these override automatic peak detection.
     """
     x = np.array([p[0] for p in data], dtype=float)
     y = np.array([p[1] for p in data], dtype=float)
@@ -778,50 +896,76 @@ def arbitrary_gaussian_fits(
         m_est, c_est = np.polyfit(current_x, current_y, 1)
     y_baseline_est = m_est * x + c_est
 
-    # --- Compute residuals depending on desired fit type ---
+    # --- Compute residual depending on dip/peak detection ---
     if invert_peaks:
-        # Fitting upward peaks
         residual = y - y_baseline_est
     else:
-        # Fitting downward dips
         residual = y_baseline_est - y
 
     residual = np.clip(residual, 0, None)
     residual_smooth = savgol_filter(residual, window_length=21, polyorder=3)
-    peaks, _ = find_peaks(residual_smooth, prominence=prominence)
 
-    if len(peaks) == 0:
-        peaks = [np.argmax(residual)]
+    # ==========================================================
+    # === NEW: Forced peak locations override peak detection ===
+    # ==========================================================
+    if forced_peaks is not None and len(forced_peaks) > 0:
+        # Use forced peaks directly
+        forced_peaks = np.array(forced_peaks, dtype=float)
 
-    # --- Clamp between min and max ---
-    if len(peaks) < min_gaussians:
-        # Pad with repeats of most prominent peak
-        peaks = list(peaks)
-        while len(peaks) < min_gaussians:
-            peaks.append(peaks[-1])
-    elif len(peaks) > max_gaussians:
-        peaks = peaks[np.argsort(residual[peaks])[-max_gaussians:]]
+        # Keep only those inside data range
+        forced_peaks = forced_peaks[(forced_peaks >= x[0]) & (forced_peaks <= x[-1])]
+        forced_peaks = np.sort(forced_peaks)
 
-    n_gauss = len(peaks)
+        n_gauss = len(forced_peaks)
 
-    # --- Initial guess ---
-    p0 = [m_est, c_est]
-    for idx in peaks:
-        A0 = residual[idx]
-        mu0 = x[idx]
-        sigma0 = max(3.0, (x[-1]-x[0]) * 0.01)
-        p0 += [A0, mu0, sigma0]
+        # Build initial guess: amplitude = local residual, sigma = small default
+        p0 = [m_est, c_est]
+        for mu0 in forced_peaks:
+            idx = np.argmin(np.abs(x - mu0))
+            A0 = residual[idx]
+            sigma0 = max(3.0, (x[-1] - x[0]) * 0.01)
+            p0 += [A0, mu0, sigma0]
 
-    lower, upper = [-np.inf, -np.inf], [np.inf, np.inf]
-    for _ in range(n_gauss):
-        lower += [0.0, x[0], 1e-3]
-        upper += [np.inf, x[-1], (x[-1]-x[0])*2]
+        # Bounds: restrict mu near forced peaks (±5 pixels)
+        lower = [-np.inf, -np.inf]
+        upper = [np.inf, np.inf]
+        for mu0 in forced_peaks:
+            lower += [0.0, mu0 - 5, 1e-3]             # amplitude≥0, mu near forced
+            upper += [np.inf, mu0 + 5, (x[-1]-x[0])/2]
 
+    else:
+        # ===================================================
+        # === ORIGINAL peak detection section remains here ===
+        # ===================================================
+        peaks, _ = find_peaks(residual_smooth, prominence=prominence)
+        if len(peaks) == 0:
+            peaks = [np.argmax(residual)]
+
+        if len(peaks) < min_gaussians:
+            peaks = list(peaks)
+            while len(peaks) < min_gaussians:
+                peaks.append(peaks[-1])
+        elif len(peaks) > max_gaussians:
+            peaks = peaks[np.argsort(residual[peaks])[-max_gaussians:]]
+
+        n_gauss = len(peaks)
+
+        p0 = [m_est, c_est]
+        lower, upper = [-np.inf, -np.inf], [np.inf, np.inf]
+        for idx in peaks:
+            A0 = residual[idx]
+            mu0 = x[idx]
+            sigma0 = max(3.0, (x[-1]-x[0]) * 0.01)
+            p0 += [A0, mu0, sigma0]
+
+            lower += [0.0, x[0], 1e-3]
+            upper += [np.inf, x[-1], (x[-1]-x[0])*2]
+
+    # --- Continue as before ---
     sigma_weights = np.ones_like(y)
     flat_indices = np.where(residual < prominence)[0]
     sigma_weights[flat_indices] = 0.1
 
-    # --- Choose model function depending on fit direction ---
     def model_func(x, m, c, *params):
         baseline = m * x + c
         peaksum = _sum_of_neg_gaussians(x, *params)
@@ -841,6 +985,7 @@ def arbitrary_gaussian_fits(
 
     m_fit, c_fit = popt[0], popt[1]
     gauss_popt = popt[2:]
+
     amps, mus, sigs = [], [], []
     for i in range(n_gauss):
         amps.append(gauss_popt[3*i])
@@ -849,13 +994,14 @@ def arbitrary_gaussian_fits(
 
     x_dense = np.linspace(np.min(x), np.max(x), 2000)
     y_fit = model_func(x_dense, *popt)
-    y_baseline_fit = m_fit * x_dense + c_fit
 
+    # --- Plot remains unchanged ---
     if plot:
         plt.figure(figsize=(10,5))
         plt.plot(x, y, label='data', lw=1)
         plt.plot(x_dense, y_fit, label=f'fit (n={n_gauss})', lw=2)
-        plt.plot(x_dense, y_baseline_fit, '--', color='gray', label='fitted baseline')
+        y_baseline_fit = m_fit * x_dense + c_fit
+        plt.plot(x_dense, y_baseline_fit, '--', color='gray', label='baseline')
         for A, mu, sigma in zip(amps, mus, sigs):
             y_g = A * np.exp(-0.5 * ((x_dense - mu)/sigma)**2)
             if invert_peaks:
@@ -863,7 +1009,6 @@ def arbitrary_gaussian_fits(
             else:
                 plt.plot(x_dense, y_baseline_fit - y_g, '--', alpha=0.7)
         plt.legend()
-        plt.ylim(bottom=min(y_fit.min(), y.min()) - 10)
         plt.show()
 
     return {
@@ -874,7 +1019,7 @@ def arbitrary_gaussian_fits(
         "sigmas": np.array(sigs),
         "popt": popt,
         "pcov": pcov,
+        "n_gauss": n_gauss,
         "x_dense": x_dense,
         "y_fit": y_fit,
-        "n_gauss": n_gauss
-    }
+    } 

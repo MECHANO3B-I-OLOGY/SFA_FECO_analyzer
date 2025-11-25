@@ -109,23 +109,50 @@ class SFA_FECO_UI:
         # Configure validation to accept only numbers
         vcmd = (root.register(self.validate_numeric_input), '%P')
 
+        # === Add scrollable root frame ===
+        self.canvas = tk.Canvas(self.root)
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+
+        # Scrollbars
+        self.v_scroll = ttk.Scrollbar(self.root, orient="vertical", command=self.canvas.yview)
+        self.v_scroll.grid(row=0, column=1, sticky="ns")
+
+        self.h_scroll = ttk.Scrollbar(self.root, orient="horizontal", command=self.canvas.xview)
+        self.h_scroll.grid(row=1, column=0, sticky="ew")
+
+        self.canvas.configure(yscrollcommand=self.v_scroll.set, xscrollcommand=self.h_scroll.set)
+
+        # Make root window expandable
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
+
+        # Frame INSIDE the canvas that will hold your entire UI
+        self.main_frame = ttk.Frame(self.canvas)
+        self.canvas.create_window((0, 0), window=self.main_frame, anchor="nw")
+
+        # Update scroll region whenever the frame changes size
+        def update_scroll_region(event):
+            self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+        self.main_frame.bind("<Configure>", update_scroll_region)
+
         # Setup styles
         self.setup_styles()
 
         # Configure grid layout for the root window
         for i in range(40):
-            self.root.grid_rowconfigure(i, weight=0)
-        self.root.grid_columnconfigure(0, weight=1)
-        self.root.grid_columnconfigure(1, weight=0)
-        self.root.grid_columnconfigure(2, weight=1)
-        self.root.grid_columnconfigure(3, weight=0)
-        self.root.grid_columnconfigure(4, weight=1)
+            self.main_frame.grid_rowconfigure(i, weight=0)
+        self.main_frame.grid_columnconfigure(0, weight=1)
+        self.main_frame.grid_columnconfigure(1, weight=0)
+        self.main_frame.grid_columnconfigure(2, weight=1)
+        self.main_frame.grid_columnconfigure(3, weight=0)
+        self.main_frame.grid_columnconfigure(4, weight=1)
 
 
         # region Subframe for Calibration
         # --- Calibration Load/Save Buttons and Checkbox ---
         # Frame to hold load/save buttons and checkbox together
-        self.calibration_subframe = ttk.Frame(self.root)
+        self.calibration_subframe = ttk.Frame(self.main_frame)
         self.calibration_subframe.grid(row=0, column=0, rowspan=2, sticky='ew', pady=(25,0))
 
         self.calibration_buttons_frame = ttk.Frame(self.calibration_subframe)
@@ -395,13 +422,13 @@ class SFA_FECO_UI:
         # endregion
         
         # Add a vertical separator between columns
-        vertical_separator = ttk.Separator(self.root, orient="vertical")
+        vertical_separator = ttk.Separator(self.main_frame, orient="vertical")
         vertical_separator.grid(row=0, column=1, rowspan=7, sticky='ns', padx=10)
 
         # region Step 1: Prep
         
         # Subframe for Raw Video selection
-        self.raw_video_subframe = ttk.Frame(self.root)
+        self.raw_video_subframe = ttk.Frame(self.main_frame)
         self.raw_video_subframe.grid(row=0, column=2, sticky='new', pady=(25,0))
 
         prep_label = ttk.Label(self.raw_video_subframe, text="STEP 3: Prep", style='Step.TLabel', font=20)
@@ -562,11 +589,11 @@ class SFA_FECO_UI:
         # endregion
 
         # Add a vertical separator between columns
-        vertical_separator = ttk.Separator(self.root, orient="vertical")
+        vertical_separator = ttk.Separator(self.main_frame, orient="vertical")
         vertical_separator.grid(row=0, column=3, rowspan=7, sticky='ns', padx=10)
 
         # Subframe for visualization controls
-        self.visualize_subframe = ttk.Frame(self.root)
+        self.visualize_subframe = ttk.Frame(self.main_frame)
         self.visualize_subframe.grid(row=0, column=4, sticky='new', padx=10, pady=25)
 
         # region Step 3: Visualize
@@ -639,6 +666,11 @@ class SFA_FECO_UI:
         )
         self.force_radio_out.pack(side='left', padx=(0, 10))
 
+        self.force_radio_full = ttk.Radiobutton(
+            force_radio_frame, text="Full Run", variable=self.force_mode, value="full", style='Regular.TRadiobutton'
+        )
+        self.force_radio_full.pack(side='left', padx=(0, 10))
+
         # --- Radio buttons for log/linear y ---
         linear_radio_frame = ttk.Frame(self.visualize_subframe)
         linear_radio_frame.pack(anchor='w', pady=(0, 8))
@@ -668,11 +700,11 @@ class SFA_FECO_UI:
 
         # Ensure all 4 main regions (columns 0, 2, 4, 6) have equal horizontal weight
         for col in [0, 2, 4]:
-            self.root.grid_columnconfigure(col, weight=1, uniform="region")
+            self.main_frame.grid_columnconfigure(col, weight=1, uniform="region")
 
         # Optionally, make separators take minimal space
         for sep_col in [1, 3]:
-            self.root.grid_columnconfigure(sep_col, weight=0)
+            self.main_frame.grid_columnconfigure(sep_col, weight=0)
 
         self.javaPrompt()
 
@@ -1145,8 +1177,11 @@ class SFA_FECO_UI:
     def visualize_force_over_distance(self):
         if self.force_mode.get() == "in":
             ForceVsDistanceWindow(self.force_mode.get(), self.dispDistPairsIn, int(self.k_var.get()), float(self.radius_display.get()), self.scale_mode.get())
-        else:
+        elif self.force_mode.get() == "out":
             ForceVsDistanceWindow(self.force_mode.get(), self.dispDistPairsOut, int(self.k_var.get()), float(self.radius_display.get()), self.scale_mode.get())
+        else:
+            ForceVsDistanceWindow("full", (self.dispDistPairsIn, self.dispDistPairsOut), int(self.k_var.get()), float(self.radius_display.get()), self.scale_mode.get())
+
 
     def getFile(self):
         if self.javaExists:
@@ -1739,7 +1774,7 @@ class Wavelength_Calibration_Window:
         self.instruction_text = self.fig.text(
             0.5, 0.95,  # Centered horizontally, near the top of the figure
             "Step 1: Select the region to crop by clicking and dragging. Press Enter to confirm.",
-            ha="center", va="center", fontsize=10
+            ha="center", va="center", fontsize=10, wrap=True
         )
 
         # Load and display the initial frame
@@ -1796,7 +1831,8 @@ class Wavelength_Calibration_Window:
     def update_instructions(self, text):
         """Updates the instruction text dynamically."""
         self.instruction_text.set_text(text)
-        self.fig.canvas.draw()
+        self.instruction_text.set_wrap(True)
+        self.fig.canvas.draw_idle()
 
     def scale_image(self, image):
         """Scales the image by the specified factor."""
@@ -2156,7 +2192,8 @@ class Mica_Thickness_Calibration_Window:
     def update_instructions(self, text):
         """Updates the instruction text dynamically."""
         self.instruction_text.set_text(text)
-        self.fig.canvas.draw()
+        self.instruction_text.set_wrap(True)
+        self.fig.canvas.draw_idle()
 
     def scale_image(self, image):
         """Scales the image by the specified factor."""
@@ -2586,6 +2623,7 @@ class Motion_Analysis_Window:
 
     CROPPING_MODE = 'crop'
     DELETION_MODE = 'delete'
+    PEAK_SELECT_MODE = 'peak_select'
     FIGURE_SIZE = (12, 4)
 
     def __init__(self, motion_profile_file_path, calibration_parameters, output_file_path, modality, offset_callback=None) -> None:
@@ -2604,6 +2642,7 @@ class Motion_Analysis_Window:
         self.cropping_complete = False
         self.crop_area = None
         self.deletion_areas = []
+        self.peak_points = []
 
         h, w = self.timelapse_image.shape
         aspect_ratio = w / h  # width / height
@@ -2649,8 +2688,8 @@ class Motion_Analysis_Window:
 
         plt.show(block=True)
 
-        if self.cropping_complete:
-            self.run_analysis()
+        #if self.cropping_complete:
+            #self.run_analysis()
 
     def offsetX(self,x , pos):
         return f"{int(x + self.x_offset_start)}"
@@ -2759,17 +2798,16 @@ class Motion_Analysis_Window:
         cropped_pil_image = Image.fromarray(self.cropped_image)
         cropped_pil_image.save(cropped_file_path)
 
-        # Deactivate the cropping RectangleSelector
-        self.rect_selector.set_active(False) 
+        # Deactivate cropping
+        self.rect_selector.set_active(False)
 
-        # Switch to deletion mode after cropping is complete
-        self.mode = Motion_Analysis_Window.DELETION_MODE
-
+        self.mode = Motion_Analysis_Window.PEAK_SELECT_MODE
         try:
             plt.close(self.fig)
         except Exception:
-            # Ignore any errors caused by Tkinter callbacks firing during close
-            pass # Close the figure to proceed
+            pass
+
+        self.show_peak_selection_window()
 
     def cancel_crop(self):
         """Cancel the current cropping selection and reset the mode."""
@@ -2789,6 +2827,47 @@ class Motion_Analysis_Window:
         # Ensure the RectangleSelector is active again for the next selection
         self.rect_selector.set_active(False)
         self.rect_selector.set_active(True)  # Reactivate to allow a new crop
+
+    # === NEW ===
+    def show_peak_selection_window(self):
+        """Show cropped image and let user click peaks."""
+        self.fig, self.ax = plt.subplots(figsize=(10,4))
+        self.ax.imshow(self.cropped_image, cmap='gray')
+        self.ax.set_title("Click peaks to mark them. Press Enter to continue.")
+
+        # Connect click + key
+        self.fig.canvas.mpl_connect("button_press_event", self.on_peak_click)
+        self.fig.canvas.mpl_connect("key_press_event", self.on_peak_keypress)
+
+        plt.show(block=True)
+
+    # === NEW ===
+    def on_peak_click(self, event):
+        """Save peak locations as the user clicks the cropped image."""
+        if event.inaxes != self.ax:
+            return
+        x, y = int(event.xdata), int(event.ydata)
+        self.peak_points.append((x, y))
+
+        # Visual feedback
+        self.ax.plot(x, y, 'ro')
+        self.fig.canvas.draw()
+
+    # === NEW ===
+    def on_peak_keypress(self, event):
+        """Finish peak selection when user hits Enter."""
+        if event.key == 'enter':
+            plt.close(self.fig)
+            self.after_peak_selection()
+
+        # === NEW ===
+    def after_peak_selection(self):
+        """Called once user finishes selecting peaks."""
+        print("User selected peaks:", self.peak_points)
+
+        # TODO later: use these peaks to improve wavefinding
+        # For now run your original wavefinding:
+        self.run_analysis()
 
     def confirm_deletion(self):
         """Apply deletions to the selected data and reapply calibrated axis ticks if applicable."""
@@ -2839,6 +2918,7 @@ class Motion_Analysis_Window:
     def run_analysis(self):
         """Run the analysis on the cropped image."""
         # Perform analysis on the cropped image
+        #self.wave_lines = tracking.gaussianWaveDetection(self.cropped_image, self.peak_points)
         self.wave_lines = tracking.new_analyze_and_append_waves(self.cropped_image,modality=app.mode_var.get())
 
         # Visualize the results and enable data deletion
@@ -3429,22 +3509,39 @@ class ForceVsDistanceWindow:
         self.mode = mode
         self.springConstant = springConstant
         self.radius = radius
-        self.pairs = pairs
-
-        x_vals = []
-        y_vals = []
-        for i in range(len(self.pairs)):
-            x_vals += [self.pairs[i][0]]
-            y_vals += [self.pairs[i][1]*self.springConstant*10e-8]
 
         plt.figure(figsize=(10, 6))
-        plt.scatter(x_vals, y_vals, color='blue', s=20)  # s controls point size
+
+        # --- Mode: "in" or "out" → pairs is one list ---
+        if mode in ("in", "out"):
+            x_vals = [p[0] for p in pairs]
+            y_vals = [p[1] * springConstant * 1e-7/radius for p in pairs]
+
+            color = "blue" if mode == "in" else "red"
+            label = f"{mode} data"
+
+            plt.scatter(x_vals, y_vals, color=color, s=20, label=label)
+
+        # --- Mode: "both" → plot both datasets ---
+        else:
+            in_pairs, out_pairs = pairs
+
+            # IN data
+            x_in = [p[0] for p in in_pairs]
+            y_in = [p[1] * springConstant * 1e-7/radius for p in in_pairs]
+            plt.scatter(x_in, y_in, color="blue", s=20, label="in")
+
+            # OUT data
+            x_out = [p[0] for p in out_pairs]
+            y_out = [p[1] * springConstant * 1e-7/radius for p in out_pairs]
+            plt.scatter(x_out, y_out, color="red", s=20, label="out")
 
         plt.xlabel(r"Distance, $\mathit{D}$ (nm)")
         plt.ylabel(r"Force/Radius, $\mathit{F/R}$ (mN/m)")
-        plt.title(f"Force vs Distance Scatter Plot {mode}")
+        plt.title("Force vs Distance Scatter Plot")
         plt.grid(True)
         plt.yscale(y_scale)
+        plt.legend()
         plt.show()
 
 if __name__ == "__main__":
