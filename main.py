@@ -120,7 +120,7 @@ class SFA_FECO_UI:
         self.v_scroll.grid(row=0, column=1, sticky="ns")
 
         self.h_scroll = ttk.Scrollbar(self.root, orient="horizontal", command=self.canvas.xview)
-        self.h_scroll.grid(row=1, column=0, sticky="ew")
+        self.h_scroll.grid(row=2, column=0, sticky="ew")
 
         self.canvas.configure(yscrollcommand=self.v_scroll.set, xscrollcommand=self.h_scroll.set)
 
@@ -273,8 +273,6 @@ class SFA_FECO_UI:
         self.dispersionStd_entry = ttk.Entry(self.dispersion_frame, width=15)
         self.dispersionStd_entry.grid(row=4, column=1, sticky='w', pady=2)
 
-        
-        
         self.dispersion1_entry.config(state="readonly")
         self.dispersion2_entry.config(state="readonly")
         self.dispersion3_entry.config(state="readonly")
@@ -424,7 +422,7 @@ class SFA_FECO_UI:
         self.radius_frame = ttk.Frame(self.radius_subframe)
         self.radius_frame.grid(row=10, column=0, sticky='w', padx=10, pady=(5, 5))
 
-        self.calibration_radius_label = ttk.Label(self.radius_frame, text=r"Radius of Curvature (m):", style='Regular.TLabel')
+        self.calibration_radius_label = ttk.Label(self.radius_frame, text=r"Radius of Curvature (cm):", style='Regular.TLabel')
         self.calibration_radius_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
 
         self.radius_display = ttk.Entry(self.radius_frame, width=15, textvariable=tk.StringVar(value=str(self.radius)), validate='key')
@@ -742,6 +740,18 @@ class SFA_FECO_UI:
         
         # endregion
 
+        self.status_var = tk.StringVar(value="")
+
+        self.status_bar = ttk.Label(
+            root,
+            textvariable=self.status_var,
+            relief="sunken",
+            anchor="w",
+            padding=3
+        )
+        self.status_bar.grid(row=1, column=0, sticky="ew")
+
+
         # Ensure all 4 main regions (columns 0, 2, 4, 6) have equal horizontal weight
         for col in [0, 2, 4]:
             self.main_frame.grid_columnconfigure(col, weight=1, uniform="region")
@@ -968,7 +978,7 @@ class SFA_FECO_UI:
         Fringe_Diameter_Window(self.diameter_input_file_path, f=self.f)
 
     def callback_radius(self, r):
-        self.radius = r
+        self.radius = r*100
         self.radius_display.delete(0, "end")
         self.radius_display.insert(0, str(self.radius)[:5])
 
@@ -1234,11 +1244,11 @@ class SFA_FECO_UI:
 
     def visualize_force_over_distance(self):
         if self.force_mode.get() == "in":
-            ForceVsDistanceWindow(self.force_mode.get(), self.dispDistPairsIn, int(self.k_var.get()), float(self.radius_display.get()), self.scale_mode.get())
+            ForceVsDistanceWindow(self.force_mode.get(), self.dispDistPairsIn, int(self.k_var.get()), float(self.radius_display.get())/100, self.scale_mode.get())
         elif self.force_mode.get() == "out":
-            ForceVsDistanceWindow(self.force_mode.get(), self.dispDistPairsOut, int(self.k_var.get()), float(self.radius_display.get()), self.scale_mode.get())
+            ForceVsDistanceWindow(self.force_mode.get(), self.dispDistPairsOut, int(self.k_var.get()), float(self.radius_display.get())/100, self.scale_mode.get())
         else:
-            ForceVsDistanceWindow("full", (self.dispDistPairsIn, self.dispDistPairsOut), int(self.k_var.get()), float(self.radius_display.get()), self.scale_mode.get())
+            ForceVsDistanceWindow("full", (self.dispDistPairsIn, self.dispDistPairsOut), int(self.k_var.get()), float(self.radius_display.get())/100, self.scale_mode.get())
 
 
     def getFile(self):
@@ -1286,6 +1296,11 @@ class SFA_FECO_UI:
     def setDiameter(self, diameter):
         self.diameter_display.delete(0, "end")
         self.diameter_display.insert(0, str(diameter)[:6])
+
+    def set_status(self, text):
+        """Update status bar text."""
+        self.status_var.set(text)
+        self.root.update_idletasks()
 
     def loadInternalJSON(self):
         def is_geometry_on_screen(geometry):
@@ -1648,8 +1663,9 @@ class Frame_Prep_Window:
         self.instruction_text = self.fig.text(
             0.5, 0.95,  # x, y in figure coordinates
             "Step 1: Select the region to crop (y-axis only). Drag to select, Enter to confirm.",
-            ha='center', va='center', fontsize=10
+            ha='center', va='center', fontsize=10, wrap=True
         )
+        self.instruction_text.set_wrap(True)
 
         # Create slider for frame selection using Matplotlib's Slider widget
         slider_ax = plt.axes([0.2, 0.05, 0.6, 0.03])  # position of the slider in figure coordinates
@@ -3165,14 +3181,28 @@ class RadiusMeasurementWindow:
         self.image = np.array(self.image)
 
         # Initialize the figure and axes
-        self.fig, self.ax = plt.subplots()
+        self.fig, self.ax = plt.subplots(figsize=(7,6))
         self.ax.imshow(self.image, cmap='gray')
+
+        self.instructions_ax = self.fig.add_axes([0.05, 0.88, 0.9, 0.1])
+        self.instructions_ax.axis("off")
+
+        self.instruction_text = self.instructions_ax.text(
+            0.5,
+            0.5,
+            f"Select 3 points (D1, Xtop, Xbottom) - Left Click to Add, Right Click to Undo, Enter to Confirm",
+            fontsize=10,
+            ha="center",
+            va="center",
+            wrap=True,
+        )
+        self.instruction_text.set_wrap(True)
 
         self.ax.set_xlabel("Pixels")
         self.ax.set_ylabel("Pixels")
         self.secax = self.ax.secondary_xaxis('top', functions=(self.pixToWave, self.waveToPix))
         self.secax.set_xlabel(r"Wavelength, $\it{\lambda}$ (nm)")
-        self.update_title()
+
 
         # Enable interactive zoom and pan
         self.fig.canvas.mpl_connect("button_press_event", self.on_click)
@@ -3236,13 +3266,6 @@ class RadiusMeasurementWindow:
         # Create a new secondary x-axis on top
         self.secax = self.ax.secondary_xaxis('top', functions=(self.pixToWave, self.waveToPix))
         self.secax.set_xlabel(r"Wavelength, $\it{\lambda}$ (nm)")
-
-
-    def update_title(self):
-        """Updates the title to reflect instructions and current state."""
-        title = f"Select 3 points (D1, Xtop, Xbottom) - Left Click to Add, Right Click to Undo, Enter to Confirm"
-        self.ax.set_title(title)
-        self.fig.canvas.draw()
 
     def on_click(self, event):
         """Handles user clicks to select and delete points."""
