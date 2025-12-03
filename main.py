@@ -89,6 +89,7 @@ class SFA_FECO_UI:
         self.thickness_input_file_path = self.calibration_values["thickness_video_file"]
         self.magnification_file = self.calibration_values["magnification_image_file"]
         self.radius_input_file_path = self.calibration_values["radius_video_file"]
+        self.diameter_input_file_path = self.calibration_values["diameter_video_file"]
 
         self.mica_thickness = self.calibration_values["mica_thickness"]
         self.lambdaOdd = self.calibration_values["lambdas"]["odd"]
@@ -97,6 +98,7 @@ class SFA_FECO_UI:
         self.scale = self.calibration_values["magnification_scale"]
         self.f = self.calibration_values["f_value"]
         self.radius = self.calibration_values["radius"]
+        self.diameter = self.calibration_values["diameter"]
         self.split_frame_num = self.calibration_values["turnaround_frame"]
 
         self.javaExists = self.check_java()
@@ -147,6 +149,8 @@ class SFA_FECO_UI:
         self.main_frame.grid_columnconfigure(2, weight=1)
         self.main_frame.grid_columnconfigure(3, weight=0)
         self.main_frame.grid_columnconfigure(4, weight=1)
+        self.main_frame.grid_columnconfigure(5, weight=0)
+        self.main_frame.grid_columnconfigure(6, weight=1)
 
 
         # region Subframe for Calibration
@@ -318,14 +322,23 @@ class SFA_FECO_UI:
         self.fringe_entry.insert(0, str(self.calibration_values["fringe_number"]))
 
         # Add a horizontal separator between rows
-        calibrate_separator2 = ttk.Separator(self.calibration_subframe, orient="horizontal")
-        calibrate_separator2.grid(row=16+1, column=0, sticky='ew', pady=10)
 
-        prep_label = ttk.Label(self.calibration_subframe, text="STEP 2: Radius of Curvature Calibration", style='Step.TLabel', font=20)
-        prep_label.grid(row=17+1, column=0, sticky='ew', padx=10)
 
-        setupSelectorFrame = ttk.Frame(self.calibration_subframe)
-        setupSelectorFrame.grid(row=18+1, column=0, sticky='ew', padx=10, pady=(5, 10))
+        # Add a vertical separator between columns
+        vertical_separator = ttk.Separator(self.main_frame, orient="vertical")
+        vertical_separator.grid(row=0, column=1, rowspan=7, sticky='ns', padx=10)
+
+        # region Step 1: Prep
+        
+        # Subframe for Raw Video selection
+        self.radius_subframe = ttk.Frame(self.main_frame)
+        self.radius_subframe.grid(row=0, column=2, sticky='new', pady=(25,0))
+
+        prep_label = ttk.Label(self.radius_subframe, text="STEP 2: Radius of Curvature Calibration", style='Step.TLabel', font=20)
+        prep_label.grid(row=0, column=0, sticky='ew', padx=10)
+
+        setupSelectorFrame = ttk.Frame(self.radius_subframe)
+        setupSelectorFrame.grid(row=1, column=0, sticky='ew', padx=10, pady=(5, 10))
 
         self.setupLabel = ttk.Label(setupSelectorFrame, text="Setup: ", style='Regular.TLabel')
         self.setupLabel.pack(side='left', padx=(0, 5))
@@ -346,24 +359,24 @@ class SFA_FECO_UI:
         
         # --- Magnification Calibration Section ---
         self.select_magnification_image_button = ttk.Button(
-            self.calibration_subframe,
+            self.radius_subframe,
             text="Select Magnification Image",
             command=self.select_magnification_file,  # define this method later
             style='Regular.TButton'
         )
-        self.select_magnification_image_button.grid(row=18+2, column=0, sticky='ew', padx=10, pady=5)
+        self.select_magnification_image_button.grid(row=2, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display selected magnification image file
         self.magnification_image_label = ttk.Label(
-            self.calibration_subframe,
+            self.radius_subframe,
             text="No file selected",
             style='Regular.TLabel'
         )
-        self.magnification_image_label.grid(row=19+2, column=0, sticky='new', padx=10)
+        self.magnification_image_label.grid(row=3, column=0, sticky='new', padx=10)
 
         # Frame for f value label and entry side by side
-        self.scale_frame = ttk.Frame(self.calibration_subframe)
-        self.scale_frame.grid(row=20+2, column=0, sticky='w', padx=10, pady=(5, 5))
+        self.scale_frame = ttk.Frame(self.radius_subframe)
+        self.scale_frame.grid(row=4, column=0, sticky='w', padx=10, pady=(5, 5))
 
         self.scale_label = ttk.Label(self.scale_frame, text=r"scale (μm/tick):", style='Regular.TLabel')
         self.scale_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
@@ -375,16 +388,16 @@ class SFA_FECO_UI:
 
         # Button to calculate magnification factor
         self.calculate_magnification_button = ttk.Button(
-            self.calibration_subframe,
+            self.radius_subframe,
             text="Calculate Magnification Factor",
             command=self.calculate_magnification_factor,  # define this method later
             style='Regular.TButton'
         )
-        self.calculate_magnification_button.grid(row=21+2, column=0, sticky='ew', padx=10, pady=5)
+        self.calculate_magnification_button.grid(row=5, column=0, sticky='ew', padx=10, pady=5)
 
         # Frame for f value label and entry side by side
-        self.f_frame = ttk.Frame(self.calibration_subframe)
-        self.f_frame.grid(row=22+2, column=0, sticky='w', padx=10, pady=(5, 5))
+        self.f_frame = ttk.Frame(self.radius_subframe)
+        self.f_frame.grid(row=6, column=0, sticky='w', padx=10, pady=(5, 5))
 
         self.calibration_f_label = ttk.Label(self.f_frame, text=r"f value (px/μm):", style='Regular.TLabel')
         self.calibration_f_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
@@ -395,41 +408,72 @@ class SFA_FECO_UI:
         self.f_display.insert(0, str(self.f))
 
         # Select radius File button
-        self.select_radius_file_button = ttk.Button(self.calibration_subframe, text="Select Radius of Curvature Calibration Video", command=self.select_radius_file, style='Regular.TButton')
-        self.select_radius_file_button.grid(row=23+2, column=0, sticky='ew', padx=10, pady=5)
+        self.select_radius_file_button = ttk.Button(self.radius_subframe, text="Select Radius of Curvature Calibration Video", command=self.select_radius_file, style='Regular.TButton')
+        self.select_radius_file_button.grid(row=7, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the selected radius file's name
-        self.radius_file_label = ttk.Label(self.calibration_subframe, text="No file selected", style='Regular.TLabel')
-        self.radius_file_label.grid(row=24+2, column=0, sticky='new', padx=10)
+        self.radius_file_label = ttk.Label(self.radius_subframe, text="No file selected", style='Regular.TLabel')
+        self.radius_file_label.grid(row=8, column=0, sticky='new', padx=10)
 
 
         # Calibrate radius button
-        self.execute_radius_calibration = ttk.Button(self.calibration_subframe, text="Find Radius", command=self.run_radius_calibration, style='Regular.TButton')
-        self.execute_radius_calibration.grid(row=25+2, column=0, sticky='ew', padx=10, pady=5)
+        self.execute_radius_calibration = ttk.Button(self.radius_subframe, text="Find Radius", command=self.run_radius_calibration, style='Regular.TButton')
+        self.execute_radius_calibration.grid(row=9, column=0, sticky='ew', padx=10, pady=5)
 
         # Frame for radius label and entry side by side
-        self.radius_frame = ttk.Frame(self.calibration_subframe)
-        self.radius_frame.grid(row=26+2, column=0, sticky='w', padx=10, pady=(5, 5))
+        self.radius_frame = ttk.Frame(self.radius_subframe)
+        self.radius_frame.grid(row=10, column=0, sticky='w', padx=10, pady=(5, 5))
 
         self.calibration_radius_label = ttk.Label(self.radius_frame, text=r"Radius of Curvature (m):", style='Regular.TLabel')
         self.calibration_radius_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
 
-        self.radius_display = ttk.Entry(self.radius_frame, width=15, textvariable=str(self.radius), validate='key')
+        self.radius_display = ttk.Entry(self.radius_frame, width=15, textvariable=tk.StringVar(value=str(self.radius)), validate='key')
         self.radius_display.grid(row=0, column=1, sticky='w')
 
         self.radius_display.insert(0, str(self.radius))
+
+        # Add a horizontal separator between rows
+        calibrate_separator1 = ttk.Separator(self.radius_subframe, orient="horizontal")
+        calibrate_separator1.grid(row=11, column=0, sticky='ew', pady=10)
+
+        prep_label = ttk.Label(self.radius_subframe, text="Optional: Diameter Calculation", style='Step.TLabel', font=20)
+        prep_label.grid(row=12, column=0, sticky='ew', padx=10)
+
+        # Select radius File button
+        self.select_diameter_file_button = ttk.Button(self.radius_subframe, text="Select Fringe Diameter Calculation Video", command=self.select_diameter_file, style='Regular.TButton')
+        self.select_diameter_file_button.grid(row=13, column=0, sticky='ew', padx=10, pady=5)
+
+        # Label to display the selected radius file's name
+        self.diameter_file_label = ttk.Label(self.radius_subframe, text="No file selected", style='Regular.TLabel')
+        self.diameter_file_label.grid(row=14, column=0, sticky='new', padx=10)
+
+        # Calibrate radius button
+        self.execute_diameter_calibration = ttk.Button(self.radius_subframe, text="Find Diameter", command=self.run_diameter_calibration, style='Regular.TButton')
+        self.execute_diameter_calibration.grid(row=15, column=0, sticky='ew', padx=10, pady=5)
+
+        # Frame for radius label and entry side by side
+        self.diameter_frame = ttk.Frame(self.radius_subframe)
+        self.diameter_frame.grid(row=16, column=0, sticky='w', padx=10, pady=(5, 5))
+
+        self.calibration_diameter_label = ttk.Label(self.diameter_frame, text=r"Fridge Diameter (μm):", style='Regular.TLabel')
+        self.calibration_diameter_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
+
+        self.diameter_display = ttk.Entry(self.diameter_frame, width=15, textvariable=str(self.diameter), validate='key')
+        self.diameter_display.grid(row=0, column=1, sticky='w')
+
+        self.diameter_display.insert(0, str(self.diameter))
         
         # endregion
         
         # Add a vertical separator between columns
         vertical_separator = ttk.Separator(self.main_frame, orient="vertical")
-        vertical_separator.grid(row=0, column=1, rowspan=7, sticky='ns', padx=10)
+        vertical_separator.grid(row=0, column=3, rowspan=7, sticky='ns', padx=10)
 
         # region Step 1: Prep
         
         # Subframe for Raw Video selection
         self.raw_video_subframe = ttk.Frame(self.main_frame)
-        self.raw_video_subframe.grid(row=0, column=2, sticky='new', pady=(25,0))
+        self.raw_video_subframe.grid(row=0, column=4, sticky='new', pady=(25,0))
 
         prep_label = ttk.Label(self.raw_video_subframe, text="STEP 3: Prep", style='Step.TLabel', font=20)
         prep_label.grid(row=0, column=0, sticky='ew', padx=10)
@@ -590,11 +634,11 @@ class SFA_FECO_UI:
 
         # Add a vertical separator between columns
         vertical_separator = ttk.Separator(self.main_frame, orient="vertical")
-        vertical_separator.grid(row=0, column=3, rowspan=7, sticky='ns', padx=10)
+        vertical_separator.grid(row=0, column=5, rowspan=7, sticky='ns', padx=10)
 
         # Subframe for visualization controls
         self.visualize_subframe = ttk.Frame(self.main_frame)
-        self.visualize_subframe.grid(row=0, column=4, sticky='new', padx=10, pady=25)
+        self.visualize_subframe.grid(row=0, column=6, sticky='new', padx=10, pady=25)
 
         # region Step 3: Visualize
         step4_label = ttk.Label(self.visualize_subframe, text="STEP 5: Visualize", style='Step.TLabel', font=20)
@@ -904,10 +948,24 @@ class SFA_FECO_UI:
             else:
                 self.radius_file_label.config(text=self.radius_input_file_path) 
 
+    def select_diameter_file(self):
+        """Select input file for radius. Updates label."""
+        self.diameter_input_file_path = self.getFile()
+        if self.diameter_input_file_path:
+
+            if len(self.diameter_input_file_path) > self.MAX_FILE_DISP_LENGTH:
+                data_file_text = '...' + self.diameter_input_file_path[len(self.diameter_input_file_path) - self.MAX_FILE_DISP_LENGTH:]
+                self.diameter_file_label.config(text=data_file_text)
+            else:
+                self.diameter_file_label.config(text=self.diameter_input_file_path) 
+
     def run_radius_calibration(self): 
         with open("setups.json", "r") as f:
             temp = json.load(f)
         RadiusMeasurementWindow(self.radius_input_file_path, self.f, self.calibration_parameters, [self.lambdaOdd, self.lambdaEven], int(self.fringe_entry.get()), temp[str(self.setupEntryVar.get())][2], self.callback_radius)
+
+    def run_diameter_calibration(self): 
+        Fringe_Diameter_Window(self.diameter_input_file_path, f=self.f)
 
     def callback_radius(self, r):
         self.radius = r
@@ -1225,6 +1283,10 @@ class SFA_FECO_UI:
     def setSetup(self, setup):
         self.setupEntryVar.set(setup)
 
+    def setDiameter(self, diameter):
+        self.diameter_display.delete(0, "end")
+        self.diameter_display.insert(0, str(diameter)[:6])
+
     def loadInternalJSON(self):
         def is_geometry_on_screen(geometry):
 
@@ -1328,6 +1390,8 @@ class SFA_FECO_UI:
                 "radius_video_file": "",
                 "f_value": np.NaN,
                 "radius": np.NaN, 
+                "diameter_video_file": "",
+                "diameter": np.NaN,
                 "turnaround_frame": 0,
                 "setup": "Mica Mica Symmetric",
                 "fps": 2,
@@ -1340,6 +1404,7 @@ class SFA_FECO_UI:
         self.wavelength_calibration_video_file_path = self.calibration_values["mercury_video_file"]
         self.thickness_input_file_path = self.calibration_values["thickness_video_file"]
         self.radius_input_file_path = self.calibration_values["radius_video_file"]
+        self.diameter_input_file_path = self.calibration_values["diameter_video_file"]
 
         self.mica_thickness = self.calibration_values["mica_thickness"]
         self.lambdaOdd = self.calibration_values["lambdas"]["odd"]
@@ -1347,6 +1412,7 @@ class SFA_FECO_UI:
         self.calibration_parameters = self.calibration_values["calibration_parameters"]
         self.f = self.calibration_values["f_value"]
         self.radius = self.calibration_values["radius"]
+        self.diameter = self.calibration_values["radius"]
         self.split_frame_num = self.calibration_values["turnaround_frame"]
 
         if self.wavelength_calibration_video_file_path != "":
@@ -1383,6 +1449,13 @@ class SFA_FECO_UI:
                 self.radius_file_label.config(text=data_file_text)
             else:
                 self.radius_file_label.config(text=self.radius_input_file_path) 
+
+        if self.diameter_input_file_path != "":
+            if len(self.diameter_input_file_path) > self.MAX_FILE_DISP_LENGTH:
+                data_file_text = '...' + self.diameter_input_file_path[len(self.diameter_input_file_path) - self.MAX_FILE_DISP_LENGTH:]
+                self.diameter_file_label.config(text=data_file_text)
+            else:
+                self.diameter_file_label.config(text=self.diameter_input_file_path) 
 
         self.thickness_display.delete(0, "end")
         self.thickness_display.insert(0, str(self.mica_thickness))
@@ -1437,6 +1510,8 @@ class SFA_FECO_UI:
                 "radius_video_file": self.radius_input_file_path,
                 "f_value": float(self.f_display.get()),
                 "radius": float(self.radius_display.get()), 
+                "diameter_video_file": self.diameter_input_file_path,
+                "diameter": float(self.diameter_display.get()),
                 "turnaround_frame": int(self.split_var.get()),
                 "setup": str(self.setupEntryVar.get()),
                 "fps": int(self.camera_fps_var.get()),
@@ -3243,6 +3318,184 @@ class RadiusMeasurementWindow:
 
         self.callback(radius)  # Return value via callback
         plt.close(self.fig)  # Close the window after calculation
+
+class Fringe_Diameter_Window:
+    """
+    A tool for selecting a horizontal region in an image or video frame
+    and computing the real-space distance of that region using a px/um scaling.
+
+    Parameters:
+        input_file_path (str): Path to the multi-frame image / video file.
+        callback (function): Called with the computed distance (in microns).
+        f (float): Conversion factor in px/um.
+                   Real_distance(um) = pixel_height / f
+    """
+
+    def __init__(self, input_file_path, f):
+        self.input_file_path = input_file_path
+        self.f = f                      # px per micrometer
+
+        # Load image or video as PIL
+        self.image = Image.open(self.input_file_path)
+
+        # State variables
+        self.crop_start_y = None
+        self.crop_end_y = None
+        self.temp_crop_rectangle = None
+        self.stage = 1
+        self.scale_factor = 1
+        self.cropped_image = None
+
+        # Create figure
+        self.fig, self.ax = plt.subplots(figsize=(8, 6))
+        plt.subplots_adjust(bottom=0.2, top=.85)
+
+        # Instruction text
+        self.instruction_text = self.fig.text(
+            0.5, 0.95,
+            "Step 1: Select a horizontal region near the peak of a fringe to calculate the fringe diameter.",
+            ha="center", va="center", fontsize=10, wrap=True
+        )
+
+        # Frame slider if needed
+        self.current_frame_index = 0
+        self.update_frame(0)
+
+        if hasattr(self.image, "n_frames"):
+            slider_ax = plt.axes([0.2, 0.05, 0.6, 0.03])
+            self.slider = Slider(slider_ax, "Frame", 0,
+                                 self.image.n_frames - 1,
+                                 valinit=0, valstep=1)
+            self.slider.on_changed(self.update_frame)
+        else:
+            self.slider = None
+
+        # Event bindings
+        self.fig.canvas.mpl_connect("button_press_event", self.handle_click)
+        self.fig.canvas.mpl_connect("motion_notify_event", self.drag_crop)
+        self.fig.canvas.mpl_connect("button_release_event", self.end_crop)
+        self.fig.canvas.mpl_connect("key_press_event", self.handle_key_press)
+
+        self.ax.set_xlabel("Pixels")
+        self.ax.set_ylabel("Pixels")
+        plt.show()
+
+    # ------------------------------------------
+    # Events and UI
+    # ------------------------------------------
+
+    def update_instructions(self, text):
+        self.instruction_text.set_text(text)
+        self.instruction_text.set_wrap(True)
+        self.fig.canvas.draw_idle()
+
+    def update_frame(self, value):
+        self.current_frame_index = int(value)
+        self.image.seek(self.current_frame_index)
+        scaled = self.scale_image(self.image)
+        self.display_image(scaled)
+
+    def scale_image(self, img):
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        w, h = img.size
+        return img.resize((int(w * self.scale_factor),
+                           int(h * self.scale_factor)),
+                           Image.LANCZOS)
+
+    def display_image(self, image):
+        self.ax.clear()
+        self.ax.imshow(np.array(image), cmap="gray")
+        self.ax.set_title(f"Frame {self.current_frame_index}")
+        self.update_instructions(
+            "Step 1: Select a horizontal region near the peak of a fringe. Press Enter to confirm."
+        )
+        self.fig.canvas.draw()
+
+    def handle_click(self, event):
+        if self.stage == 1 and event.inaxes == self.ax:
+            self.start_crop(event)
+
+    def start_crop(self, event):
+        self.cancel_crop()  # Clear previous selection
+        self.crop_start_y = event.ydata
+        self.temp_crop_rectangle = None
+        self.fig.canvas.draw()
+
+    def drag_crop(self, event):
+        if (
+            self.stage == 1
+            and self.crop_start_y is not None
+            and self.crop_end_y is None
+            and event.inaxes == self.ax
+        ):
+            if self.temp_crop_rectangle:
+                self.temp_crop_rectangle.remove()
+
+            y2 = event.ydata
+            self.temp_crop_rectangle = self.ax.add_patch(
+                plt.Rectangle(
+                    (0, min(self.crop_start_y, y2)),
+                    self.image.width,
+                    abs(y2 - self.crop_start_y),
+                    edgecolor="red",
+                    facecolor="none",
+                    linestyle="-",
+                    linewidth=1.5
+                )
+            )
+            self.fig.canvas.draw()
+
+    def end_crop(self, event):
+        if self.stage == 1 and self.crop_start_y is not None and event.inaxes == self.ax:
+            self.crop_end_y = event.ydata
+            self.update_instructions("Press Enter to confirm or Esc to reset.")
+            self.ax.axhline(y=self.crop_start_y, color="red")
+            self.ax.axhline(y=self.crop_end_y, color="red")
+            self.fig.canvas.draw()
+
+    def handle_key_press(self, event):
+        if event.key == "enter":
+            if self.stage == 1:
+                self.confirm_crop()
+        elif event.key == "escape":
+            if self.stage == 1:
+                self.cancel_crop()
+
+    # ------------------------------------------
+    # Crop confirmation
+    # ------------------------------------------
+
+    def confirm_crop(self):
+        if self.crop_start_y is None or self.crop_end_y is None:
+            self.update_instructions("No region selected. Try again.")
+            return
+
+        y1, y2 = sorted((int(self.crop_start_y), int(self.crop_end_y)))
+        self.image.seek(self.current_frame_index)
+
+        pixel_height = abs(y2 - y1)
+        real_distance_um = pixel_height / self.f  # µm
+
+        # Call user callback
+        app.setDiameter(real_distance_um)
+
+        # Close window
+        self.close_window()
+
+    def cancel_crop(self):
+        self.crop_start_y = None
+        self.crop_end_y = None
+        if self.temp_crop_rectangle:
+            try:
+                self.temp_crop_rectangle.remove()
+            except Exception:
+                pass
+            self.temp_crop_rectangle = None
+        self.update_frame(self.current_frame_index)
+
+    def close_window(self):
+        plt.close(self.fig)
 
 class ImageSelectorWindow(tk.Toplevel):
     def __init__(self, parent, items_with_images, default_key=None):

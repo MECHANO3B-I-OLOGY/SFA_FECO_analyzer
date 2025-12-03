@@ -1,10 +1,13 @@
-import hashlib
-import json
 import os
+import sys
+import subprocess
+import pathlib
+
+import os
+import sys
+import subprocess
 import pathlib
 import shutil
-import subprocess
-import sys
 
 class setup:
     def __init__(self, venv_dir="venv"):
@@ -59,100 +62,30 @@ class setup:
         self.install_requirements()
         print("Setup complete!")
 
-def load_internal():
-    path = pathlib.Path("cache/internal.json")
-    if path.exists():
-        try:
-            with open(path, "r") as f:
-                return json.load(f)
-        except:
-            return None
-    return None
-
-def save_internal(data):
-    pathlib.Path("cache").mkdir(exist_ok=True)
-    with open("cache/internal.json", "w") as f:
-        json.dump(data, f, indent=2)
-
-def hash_file(path):
-    with open(path, "rb") as f:
-        return hashlib.sha256(f.read()).hexdigest()
-
 class run:
 
     def __init__(self, venv_dir="venv"):
         self.venv_dir = venv_dir
 
     def get_venv_python(self):
-        if os.name == "nt":
+        """Return path to the Python executable inside the venv."""
+        if os.name == "nt":  # Windows
             return os.path.join(self.venv_dir, "Scripts", "python.exe")
-        else:
+        else:  # Linux/macOS
             return os.path.join(self.venv_dir, "bin", "python")
 
     def runProgram(self):
+        """Run the main script"""
         venv_python = self.get_venv_python()
+
         subprocess.run([venv_python, "main.py"])
 
-
 if __name__ == "__main__":
-    requirements_path = "requirements.txt"
-    internal = load_internal()
-
-    if pathlib.Path(requirements_path).exists():
-        current_req_hash = hash_file(requirements_path)
+    if not pathlib.Path("venv").exists():
+        setup = setup()
+        setup.setup()
     else:
-        current_req_hash = None
+        print(f"Using existing venv at venv")
 
-    venv_exists = pathlib.Path("venv").exists()
-
-    # -------------------------------------------------
-    # CASE 1 — internal.json does NOT exist
-    # -------------------------------------------------
-    if internal is None:
-        print("⚙️ No internal.json found — full setup...")
-
-        # Always rebuild venv
-        if venv_exists:
-            shutil.rmtree("venv")
-
-        s = setup()
-        s.setup()
-
-        save_internal({"requirements": current_req_hash})
-
-    # -------------------------------------------------
-    # CASE 2 — internal.json exists, BUT venv is missing
-    # -------------------------------------------------
-    elif not venv_exists:
-        print("❗ internal.json exists but venv is missing — rebuilding environment...")
-
-        s = setup()
-        s.setup()
-
-        # Update stored requirements hash in case the file changed
-        internal["requirements"] = current_req_hash
-        save_internal(internal)
-
-    # -------------------------------------------------
-    # CASE 3 — internal.json exists AND venv exists
-    # -------------------------------------------------
-    else:
-        stored_hash = internal.get("requirements", None)
-
-        if stored_hash != current_req_hash:
-            print("🔁 Requirements changed — rebuilding venv...")
-
-            shutil.rmtree("venv")
-
-            s = setup()
-            s.setup()
-
-            internal["requirements"] = current_req_hash
-            save_internal(internal)
-
-        else:
-            print("✔ Requirements unchanged — using existing venv")
-
-    # Finally, run main
     run = run()
     run.runProgram()
