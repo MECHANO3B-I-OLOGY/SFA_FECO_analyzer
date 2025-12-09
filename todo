@@ -4,10 +4,10 @@ future plans:
 
 - unified file selection strategy, in and out (and finish error catching)
 - scale window to screen (the right way?)
-- windows complied version files java cxd conversion
 
 finished:
 
+- windows complied version files java cxd conversion
 - fringe diameter -> flat contact diameter
 - Select linear difference of distance / time
 - Calculate force from non linear section

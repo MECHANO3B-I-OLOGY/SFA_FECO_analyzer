@@ -1599,9 +1599,9 @@ class SFA_FECO_UI:
     def cxdToTiff(self, file):
         if(file.lower().endswith(".cxd")):
             if platform == "win32":
-                command = [resource('.\\bfconverter\\bfconvert.bat'), file, f"{file[:-4]}.tiff"]
+                command = [resource('bfconverter\\bfconvert.bat'), file, f"{file[:-4]}.tiff"]
             else:
-                command = [resource('./bfconverter/bfconvert'), file, f"{file[:-4]}.tiff"]
+                command = [resource('bfconverter/bfconvert'), file, f"{file[:-4]}.tiff"]
             subprocess.run(command)
             file = file[:-4] + ".tiff"
         return file
@@ -3638,8 +3638,8 @@ class ImageSelectorWindow(tk.Toplevel):
         img_paths = img_info[:2]
         top_path, bottom_path = (img_paths + [None, None])[:2]
 
-        self.original_images[0] = self.load_image(top_path)
-        self.original_images[1] = self.load_image(bottom_path)
+        self.original_images[0] = self.load_image(resource(top_path))
+        self.original_images[1] = self.load_image(resource(bottom_path))
         self.update_displayed_images()
 
     def load_image(self, path):
