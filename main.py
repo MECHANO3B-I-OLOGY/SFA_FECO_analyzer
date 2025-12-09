@@ -16,6 +16,7 @@ from enums import CalibrationValues
 from PIL import Image, ImageSequence, ImageTk
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.widgets import Cursor, RectangleSelector, Slider, SpanSelector
+from scipy.signal import find_peaks
 from screeninfo import get_monitors
 from sys import platform
 from tkinter import ttk, filedialog
@@ -434,11 +435,11 @@ class SFA_FECO_UI:
         calibrate_separator1 = ttk.Separator(self.radius_subframe, orient="horizontal")
         calibrate_separator1.grid(row=11, column=0, sticky='ew', pady=10)
 
-        prep_label = ttk.Label(self.radius_subframe, text="Optional: Diameter Calculation", style='Step.TLabel', font=20)
+        prep_label = ttk.Label(self.radius_subframe, text="Optional: Flat Contact Calculation", style='Step.TLabel', font=20)
         prep_label.grid(row=12, column=0, sticky='ew', padx=10)
 
         # Select radius File button
-        self.select_diameter_file_button = ttk.Button(self.radius_subframe, text="Select Fringe Diameter Calculation Video", command=self.select_diameter_file, style='Regular.TButton')
+        self.select_diameter_file_button = ttk.Button(self.radius_subframe, text="Select Flat Contact Diameter Calculation Video", command=self.select_diameter_file, style='Regular.TButton')
         self.select_diameter_file_button.grid(row=13, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the selected radius file's name
@@ -1498,6 +1499,11 @@ class SFA_FECO_UI:
 
     def save_calibration(self, onClose):
         # implement saving calibration logic
+        cal = {
+            "slope": float(self.calibration_parameters["slope"]),
+            "intercept": float(self.calibration_parameters["intercept"]),
+            "offset": float(self.calibration_parameters["offset"]),
+        }
         temp = {
                 "mercury_video_file": self.wavelength_calibration_video_file_path,
                 "mercury_lines": {
@@ -1512,7 +1518,7 @@ class SFA_FECO_UI:
                     "average": float(self.dispersionAvg_entry.get()),
                     "standard_deviation": float(self.dispersionStd_entry.get())
                 },
-                "calibration_parameters": self.calibration_parameters,
+                "calibration_parameters": cal,
                 "thickness_video_file": self.thickness_input_file_path,
                 "mica_thickness": float(str(self.mica_thickness)[:4]), 
                 "fringe_number": int(self.fringe_entry.get()),
@@ -1532,12 +1538,14 @@ class SFA_FECO_UI:
                 "fps": int(self.camera_fps_var.get()),
                 "spring_constant":  int(self.k_var.get())
             }
+
+        print(temp)
         if onClose:
 
             cache_dir = os.path.join(os.getcwd(), "cache")
             flag_path = os.path.join(cache_dir, "previousCalibration.json")
             with open(flag_path, "w") as f:
-                json.dump(temp, f)
+                json.dump(temp, f, allow_nan=True)
         else:
             
             filename = filedialog.asksaveasfilename(
@@ -1841,7 +1849,6 @@ class Wavelength_Calibration_Window:
         self.crop_start_y = None
         self.crop_end_y = None
         self.temp_crop_rectangle = None
-        self.waves = None
         self.stage = 1
         self.scale_factor = 1
         self.cropped_image = None
@@ -2000,8 +2007,8 @@ class Wavelength_Calibration_Window:
             # Run wave analysis
             self.run_wave_detection(cropped_frame)
 
-            if self.waves is not None and len(self.waves) == self.num_waves:
-                self.selected_waves = [int(np.mean([point[1] for point in wave])) for wave in self.waves]
+            if self.peaks is not None and len(self.peaks) == self.num_waves:
+                self.selected_waves = self.peaks
                 self.update_overlay()
                 #self.calculate_transformation()
         else:
@@ -2023,23 +2030,42 @@ class Wavelength_Calibration_Window:
 
     def run_wave_detection(self, image):
         """Runs the wave analysis on the cropped image."""
-        self.waves = tracking.new_analyze_and_append_waves(np.array(image), wave_threshold=110,modality=app.mode_var.get(), smooth=False)
+
+        image = np.transpose(np.asarray(image))
+
+        filtered = cv2.medianBlur(image, ksize=5)
+        normalized = cv2.normalize(filtered, None, 0, 255, cv2.NORM_MINMAX)
+        filtered = cv2.medianBlur(normalized, ksize=3)
+        normalized = cv2.normalize(filtered, None, 0, 255, cv2.NORM_MINMAX)
+
+        y_values = np.arange(normalized.shape[0])
+        avg_brightness = np.mean(image, axis=1)
+
+        norm_255 = cv2.normalize(avg_brightness, None, 1, 255, cv2.NORM_MINMAX)
+        norm_255 = norm_255.flatten()
+        self.selected_data = list(zip(y_values, norm_255))
+
+        self.peaks, _ = find_peaks(
+            norm_255,
+            prominence=75,        # adjust based on your data scale
+            distance=10,         # ensures peaks don't cluster
+        )
+
         self.display_waves()
 
     def display_waves(self):
         """Displays the waves over the cropped image using Matplotlib."""
-        if self.waves and self.cropped_image is not None:
+        if self.peaks is not None and self.cropped_image is not None:
             self.ax.clear()
             self.ax.set_xlabel("Pixels")
             self.ax.set_ylabel("Pixels")
             self.ax.imshow(np.array(self.cropped_image), cmap="gray")
 
-            for wave_index, wave in enumerate(self.waves):
-                average_x = int(np.mean([point[1] for point in wave]))
-                if average_x not in self.wave_x_avgs:
-                    self.wave_x_avgs.append(average_x) 
-                if 0 <= average_x < self.cropped_image.width:
-                    self.ax.axvline(x=average_x, color="lime", linestyle="-")
+            cropped_image = np.asarray(self.cropped_image)
+
+            image_height = cropped_image.shape[0]
+            for peak_y in self.peaks:
+                self.ax.vlines(x=peak_y, ymin=1, ymax=image_height -1, color="lime", linestyle="--", linewidth=1.5)
 
             self.fig.canvas.draw()
 
@@ -2055,7 +2081,7 @@ class Wavelength_Calibration_Window:
             closest_wave = None
             min_distance = float("inf")
 
-            for wave_x in self.wave_x_avgs:
+            for wave_x in self.peaks:
                 distance = abs(wave_x - x)
                 if distance < min_distance:
                     min_distance = distance
@@ -2069,7 +2095,7 @@ class Wavelength_Calibration_Window:
         """Redraws the waves and highlights selected waves."""
         self.ax.clear()
         self.ax.imshow(np.array(self.cropped_image), cmap="gray")
-        for wave_x in self.wave_x_avgs:
+        for wave_x in self.peaks:
             color = "red" if wave_x in self.selected_waves else "lime"
             self.ax.axvline(x=wave_x, color=color, linestyle="-")
         self.ax.set_xlabel("Pixels")
