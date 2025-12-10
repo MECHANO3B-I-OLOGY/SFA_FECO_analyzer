@@ -971,7 +971,7 @@ class SFA_FECO_UI:
                 self.diameter_file_label.config(text=self.diameter_input_file_path) 
 
     def run_radius_calibration(self): 
-        with open("setups.json", "r") as f:
+        with open(resource("setups.json"), "r") as f:
             temp = json.load(f)
         RadiusMeasurementWindow(self.radius_input_file_path, self.f, self.calibration_parameters, [self.lambdaOdd, self.lambdaEven], int(self.fringe_entry.get()), temp[str(self.setupEntryVar.get())][2], self.callback_radius)
 
@@ -2096,7 +2096,7 @@ class Wavelength_Calibration_Window:
         self.ax.imshow(np.array(self.cropped_image), cmap="gray")
         for wave_x in self.peaks:
             color = "red" if wave_x in self.selected_waves else "lime"
-            self.ax.axvline(x=wave_x, color=color, linestyle="-")
+            self.ax.axvline(x=wave_x, color=color, linestyle="--")
         self.ax.set_xlabel("Pixels")
         self.ax.set_ylabel("Pixels")
         self.fig.canvas.draw()
@@ -2447,7 +2447,7 @@ class Mica_Thickness_Calibration_Window:
         self.ax.set_ylabel("Pixels")
 
         for avg_x in self.filtered_averages:
-            self.ax.axvline(x=avg_x, color='lime', linestyle='-')
+            self.ax.axvline(x=avg_x, color='lime', linestyle='--')
 
         self.refresh_secondary_axis()  
         
@@ -2504,7 +2504,7 @@ class Mica_Thickness_Calibration_Window:
             color = 'lime'  # Green for unselected
             if avg_x in self.selected_waves:
                 color = 'red'  # Red for selected
-            self.ax.axvline(x=avg_x, color=color, linestyle='-')
+            self.ax.axvline(x=avg_x, color=color, linestyle='--')
 
         self.refresh_secondary_axis()
 
