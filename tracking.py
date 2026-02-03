@@ -9,10 +9,11 @@ import os
 from deprecation import deprecated
 from PIL import Image, ImageTk, ImageSequence, ImageFilter
 from pprint import pprint 
+from scipy import stats
 from scipy.interpolate import splprep, splev, UnivariateSpline
+from scipy.ndimage import median_filter
 from scipy.optimize import curve_fit, minimize
 from scipy.signal import savgol_filter, medfilt, find_peaks
-from scipy import stats
 from sklearn.mixture import GaussianMixture
 
 from enums import *
@@ -260,6 +261,132 @@ def enforce_monotonic_wave(xs):
             i += 1
 
     return xs
+
+def newer_analyze_and_append_waves(image, userPeaks, edgeBound=3):
+    height, width = image.shape
+
+    image = median_filter(image, size=3)
+    image = median_filter(image, size=3)
+
+    avg = 0
+    for peak in userPeaks:
+        avg += peak[1]
+    midpoint = int(avg/len(userPeaks))
+
+    midline = []
+
+    for i in range(width):
+        avg = 0
+        for j in range(-1*edgeBound + 1, edgeBound):
+            avg += image[int(midpoint + j)][i]
+        midline += [avg/(edgeBound*2 - 1)]
+
+    midline = [x if x >= 80 else 0 for x in midline]
+    
+    peaks = find_peaks(midline, prominence = 10)
+
+    minDist = np.inf
+    true = None
+    for peak in peaks[0]:
+        
+        if abs(peak - userPeaks[0][0] < minDist):
+            minDist = abs(peak - userPeaks[0][0])
+            true = peak
+
+    wavePeak = (midpoint, true)
+
+    save = true
+
+    output = []
+
+    for i in range(midpoint - 1, edgeBound, -1):
+        line = []
+        for j in range(width):
+            avg = 0
+            for k in range(-1*edgeBound + 1, edgeBound):
+                avg += image[int(i + k)][j]
+            line += [avg/(edgeBound*2 - 1)]
+
+        line = [x if x >= 80 else 0 for x in line]
+
+        peaks = find_peaks(line, prominence = 10)[0]
+        if len(output) == 0:
+            compare = save
+        else:
+            compare = output[-1][1]
+
+        minDist = np.inf
+        true = None
+        for peak in reversed(peaks):
+            if abs(peak - compare) < minDist:
+                minDist = abs(peak - compare)
+                true = peak
+
+        output += [(i, true)]
+
+    output.reverse()
+
+    output += [wavePeak]
+
+    temp = []
+
+    for i in range(midpoint + 1, height - edgeBound):
+        line = []
+        for j in range(width):
+            avg = 0
+            for k in range(-1*edgeBound + 1, edgeBound):
+                avg += image[int(i + k)][j]
+            line += [avg/(edgeBound*2 - 1)]
+
+        line = [x if x >= 80 else 0 for x in line]
+
+        peaks = find_peaks(line, prominence = 10)[0]
+        if len(temp) == 0:
+            compare = save
+        else:
+            compare = temp[-1][1]
+
+        minDist = np.inf
+        true = None
+        for peak in reversed(peaks):
+            if abs(peak - compare) < minDist:
+                minDist = abs(peak - compare)
+                true = peak
+
+        temp += [(i, true)]
+
+    output += temp
+
+    rows = np.array([p[0] for p in output])
+    cols = np.array([p[1] for p in output])
+
+    # First smooth (loose)
+    window = min(11, len(cols) // 2 * 2 + 1)
+    cols = savgol_filter(cols, window_length=window, polyorder=2).astype(int)
+
+    # Directional enforcement
+    mid_idx = np.argmin(np.abs(rows - midpoint))
+
+    for i in range(mid_idx - 1, -1, -1):
+        cols[i] = max(cols[i], cols[i + 1])
+
+    for i in range(mid_idx + 1, len(cols)):
+        cols[i] = max(cols[i], cols[i - 1])
+
+    # Second smooth (tight)
+    window = min(7, len(cols) // 2 * 2 + 1)
+    cols = savgol_filter(cols, window_length=window, polyorder=2).astype(int)
+
+    for i in range(mid_idx - 1, -1, -1):
+        cols[i] = max(cols[i], cols[i + 1])
+
+    for i in range(mid_idx + 1, len(cols)):
+        cols[i] = max(cols[i], cols[i - 1])
+
+    output = list(zip(rows, cols))
+
+    return [output]
+
 
 def new_analyze_and_append_waves(
         image, 
