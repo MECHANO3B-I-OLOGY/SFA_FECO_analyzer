@@ -1229,14 +1229,14 @@ class SFA_FECO_UI:
             return False  # Reject input if it’s not a number
 
     def selectSetupWindow(self):
-        with open("setups.json", "r") as f:
+        with open(resource("setups.json"), "r") as f:
             temp = json.load(f)
         ImageSelectorWindow(root, temp, default_key=str(self.setupEntryVar.get()))
 
     #mode, wave_lines, split_frame_num, fps
 
     def visualize_distance_over_time(self):
-        with open("setups.json", "r") as f:
+        with open(resource("setups.json"), "r") as f:
             temp = json.load(f)
         TimeVsDistanceWindow(self.visualize_mode.get(), self.wave_lines, int(self.split_var.get()), int(self.camera_fps_var.get()), [self.lambdaOdd, self.lambdaEven], self.calibration_parameters, int(self.fringe_entry.get()), temp[str(self.setupEntryVar.get())][2])
 
