@@ -3035,7 +3035,7 @@ class Motion_Analysis_Window:
         """Run the analysis on the cropped image."""
         # Perform analysis on the cropped image
         #self.wave_lines = tracking.gaussianWaveDetection(self.cropped_image, self.peak_points)
-        self.wave_lines = tracking.newer_analyze_and_append_waves(self.cropped_image, self.peak_points)
+        self.wave_lines = tracking.newer_analyze_and_append_waves(self.cropped_image, self.peak_points, modality=app.mode_var.get())
         #self.wave_lines = tracking.new_analyze_and_append_waves(self.cropped_image,modality=app.mode_var.get())
 
         # Visualize the results and enable data deletion

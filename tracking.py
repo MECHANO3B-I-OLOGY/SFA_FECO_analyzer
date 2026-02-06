@@ -262,130 +262,207 @@ def enforce_monotonic_wave(xs):
 
     return xs
 
-def newer_analyze_and_append_waves(image, userPeaks, edgeBound=3):
+def newer_analyze_and_append_waves(image, userPeaks, edgeBound=3, modality="singlet", minStep=5, penalty=2000, inertia=[.15, 1.2]):
     height, width = image.shape
 
     image = median_filter(image, size=3)
-    image = median_filter(image, size=3)
+    #image = median_filter(image, size=3)
 
-    avg = 0
-    for peak in userPeaks:
-        avg += peak[1]
-    midpoint = int(avg/len(userPeaks))
+    # ----- midpoint (same as before) -----
+    midpoint = int(sum(p[1] for p in userPeaks) / len(userPeaks))
 
+    # ----- build midline -----
     midline = []
-
     for i in range(width):
         avg = 0
-        for j in range(-1*edgeBound + 1, edgeBound):
-            avg += image[int(midpoint + j)][i]
-        midline += [avg/(edgeBound*2 - 1)]
+        for j in range(-edgeBound + 1, edgeBound):
+            avg += image[midpoint + j][i]
+        midline.append(avg / (edgeBound * 2 - 1))
 
-    midline = [x if x >= 80 else 0 for x in midline]
-    
-    peaks = find_peaks(midline, prominence = 10)
+    midline = [x if x >= 100 else 0 for x in midline]
 
-    minDist = np.inf
-    true = None
-    for peak in peaks[0]:
-        
-        if abs(peak - userPeaks[0][0] < minDist):
-            minDist = abs(peak - userPeaks[0][0])
-            true = peak
+    mid_peaks = find_peaks(midline, prominence=10)[0]
 
-    wavePeak = (midpoint, true)
-
-    save = true
-
-    output = []
-
-    for i in range(midpoint - 1, edgeBound, -1):
-        line = []
-        for j in range(width):
-            avg = 0
-            for k in range(-1*edgeBound + 1, edgeBound):
-                avg += image[int(i + k)][j]
-            line += [avg/(edgeBound*2 - 1)]
-
-        line = [x if x >= 80 else 0 for x in line]
-
-        peaks = find_peaks(line, prominence = 10)[0]
-        if len(output) == 0:
-            compare = save
-        else:
-            compare = output[-1][1]
-
+    # ----- match each user peak to nearest midline peak -----
+    matched_peaks = []
+    for user_col, _ in userPeaks:
         minDist = np.inf
         true = None
-        for peak in reversed(peaks):
-            if abs(peak - compare) < minDist:
-                minDist = abs(peak - compare)
-                true = peak
+        for p in mid_peaks:
+            d = abs(p - user_col)
+            if d < minDist:
+                minDist = d
+                true = p
+        matched_peaks.append(true)
 
-        output += [(i, true)]
+    all_waves = []
 
-    output.reverse()
+    ctr = 0
 
-    output += [wavePeak]
+    # ===== process each wave independently =====
+    for seed_col in matched_peaks:
+        output = []
 
-    temp = []
+        # ----- upward -----
+        for i in range(midpoint - 1, edgeBound, -1):
+            line = []
+            for j in range(width):
+                avg = 0
+                for k in range(-edgeBound + 1, edgeBound):
+                    avg += image[i + k][j]
+                line.append(avg / (edgeBound * 2 - 1))
 
-    for i in range(midpoint + 1, height - edgeBound):
-        line = []
-        for j in range(width):
-            avg = 0
-            for k in range(-1*edgeBound + 1, edgeBound):
-                avg += image[int(i + k)][j]
-            line += [avg/(edgeBound*2 - 1)]
+            line = [x if x >= 100 else 0 for x in line]
+            peaks = find_peaks(line, prominence=10)[0]
 
-        line = [x if x >= 80 else 0 for x in line]
+            compare = seed_col if len(output) == 0 else output[-1][1]
 
-        peaks = find_peaks(line, prominence = 10)[0]
-        if len(temp) == 0:
-            compare = save
-        else:
-            compare = temp[-1][1]
+            minDist = np.inf
+            true = None
 
-        minDist = np.inf
-        true = None
-        for peak in reversed(peaks):
-            if abs(peak - compare) < minDist:
-                minDist = abs(peak - compare)
-                true = peak
+            # --- previous state ---
+            if len(output) >= 2:
+                prev_row, prev_col = output[-1]
+                prev_prev_row, prev_prev_col = output[-2]
+                v_col = prev_col - prev_prev_col
+                pred_col = prev_col + inertia[ctr > 0] * v_col
+            else:
+                prev_row = i - 1
+                prev_col = compare
+                pred_col = compare
 
-        temp += [(i, true)]
+            for p in peaks:
+                # base distance to predicted position
+                d = np.hypot(p - pred_col, i - prev_row)
 
-    output += temp
+                # soft exclusion from other waves
+                for other_wave in all_waves:
+                    if len(other_wave) > 0:
+                        # find closest row index in other wave
+                        idx = min(len(other_wave) - 1,
+                                max(0, i - other_wave[0][0]))
+                        other_col = other_wave[idx][1]
 
-    rows = np.array([p[0] for p in output])
-    cols = np.array([p[1] for p in output])
+                        sep = abs(p - other_col)
+                        direction = np.sign(pred_col - other_col)
 
-    # First smooth (loose)
-    window = min(11, len(cols) // 2 * 2 + 1)
-    cols = savgol_filter(cols, window_length=window, polyorder=2).astype(int)
+                        # only repel if crossing would occur
+                        if direction * (p - other_col) < 0:
+                            if sep < minStep:
+                                d += penalty * (1 - sep / minStep)
 
-    # Directional enforcement
-    mid_idx = np.argmin(np.abs(rows - midpoint))
+                if d < minDist:
+                    minDist = d
+                    true = p
 
-    for i in range(mid_idx - 1, -1, -1):
-        cols[i] = max(cols[i], cols[i + 1])
+            output.append((i, true))
 
-    for i in range(mid_idx + 1, len(cols)):
-        cols[i] = max(cols[i], cols[i - 1])
+        output.reverse()
+        output.append((midpoint, seed_col))
 
-    # Second smooth (tight)
-    window = min(7, len(cols) // 2 * 2 + 1)
-    cols = savgol_filter(cols, window_length=window, polyorder=2).astype(int)
+        # ----- downward -----
+        temp = []
+        for i in range(midpoint + 1, height - edgeBound):
+            line = []
+            for j in range(width):
+                avg = 0
+                for k in range(-edgeBound + 1, edgeBound):
+                    avg += image[i + k][j]
+                line.append(avg / (edgeBound * 2 - 1))
 
-    for i in range(mid_idx - 1, -1, -1):
-        cols[i] = max(cols[i], cols[i + 1])
+            line = [x if x >= 100 else 0 for x in line]
+            peaks = find_peaks(line, prominence=10)[0]
 
-    for i in range(mid_idx + 1, len(cols)):
-        cols[i] = max(cols[i], cols[i - 1])
+            compare = seed_col if len(temp) == 0 else temp[-1][1]
 
-    output = list(zip(rows, cols))
+            minDist = np.inf
+            true = None
 
-    return [output]
+            # --- previous state ---
+            if len(temp) >= 2:
+                prev_row, prev_col = temp[-1]
+                prev_prev_row, prev_prev_col = temp[-2]
+                v_col = prev_col - prev_prev_col
+                pred_col = prev_col + inertia[ctr > 0]* v_col
+            else:
+                prev_row = i - 1
+                prev_col = compare
+                pred_col = compare
+
+            for p in peaks:
+                # base distance to predicted position
+                d = np.hypot(p - pred_col, i - prev_row)
+
+                # soft exclusion from other waves
+                for other_wave in all_waves:
+                    if len(other_wave) > 0:
+                        # find closest row index in other wave
+                        idx = min(len(other_wave) - 1,
+                                max(0, i - other_wave[0][0]))
+                        other_col = other_wave[idx][1]
+
+                        sep = abs(p - other_col)
+                        direction = np.sign(pred_col - other_col)
+
+                        # only repel if crossing would occur
+                        if direction * (p - other_col) < 0:
+                            if sep < minStep:
+                                d += penalty * (1 - sep / minStep)
+
+                if d < minDist:
+                    minDist = d
+                    true = p
+
+            temp.append((i, true))
+
+        output.extend(temp)
+
+        # ----- smoothing + directional enforcement (unchanged) -----
+        rows = np.array([p[0] for p in output])
+        cols = np.array([p[1] for p in output])
+
+        window = min(11, len(cols) // 2 * 2 + 1)
+        cols = savgol_filter(cols, window, 2).astype(float)
+
+        mid_idx = np.argmin(np.abs(rows - midpoint))
+
+        for i in range(mid_idx - 1, -1, -1):
+            cols[i] = max(cols[i], cols[i + 1])
+
+        for i in range(mid_idx + 1, len(cols)):
+            cols[i] = max(cols[i], cols[i - 1])
+
+        window = min(7, len(cols) // 2 * 2 + 1)
+        cols = savgol_filter(cols, window, 2).astype(float)
+
+        for i in range(mid_idx - 1, -1, -1):
+            cols[i] = max(cols[i], cols[i + 1])
+
+        for i in range(mid_idx + 1, len(cols)):
+            cols[i] = max(cols[i], cols[i - 1])
+
+        all_waves.append(list(zip(rows, cols)))
+        ctr += 1
+
+    if modality == "doublet" and len(all_waves) >= 2:
+        w1 = all_waves[0]
+        w2 = all_waves[1]
+
+        # ensure same length / row alignment
+        L = min(len(w1), len(w2))
+
+        avg_wave = []
+        for i in range(L):
+            r1, c1 = w1[i]
+            r2, c2 = w2[i]
+
+            # rows should match, but trust w1
+            avg_col = 0.5 * (c1 + c2)
+            avg_wave.append((r1, avg_col))
+
+        all_waves.append(avg_wave)
+
+    return all_waves
 
 
 def new_analyze_and_append_waves(
