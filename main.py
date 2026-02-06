@@ -2032,9 +2032,9 @@ class Wavelength_Calibration_Window:
 
         image = np.transpose(np.asarray(image))
 
-        filtered = cv2.medianBlur(image, ksize=5)
-        normalized = cv2.normalize(filtered, None, 0, 255, cv2.NORM_MINMAX)
-        filtered = cv2.medianBlur(normalized, ksize=3)
+        #filtered = cv2.medianBlur(image, ksize=5)
+        #normalized = cv2.normalize(filtered, None, 0, 255, cv2.NORM_MINMAX)
+        filtered = cv2.medianBlur(image, ksize=3)
         normalized = cv2.normalize(filtered, None, 0, 255, cv2.NORM_MINMAX)
 
         y_values = np.arange(normalized.shape[0])

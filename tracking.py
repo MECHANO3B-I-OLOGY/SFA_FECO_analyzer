@@ -266,76 +266,102 @@ def newer_analyze_and_append_waves(
     image,
     userPeaks,
     edgeBound=2,
-    inertia=0.3,
-    minSep=6,
+    inertia=0.5,
     prominence=10,
+    minSep=6,
     modality="singlet"
 ):
+    """
+    userPeaks: [(col, row)] length 1 or 2
+    returns: list of waves, each wave = [(row, col), ...]
+    """
+
     height, width = image.shape
+    n = len(userPeaks)
+    assert n in (1, 2)
 
     # --- denoise ---
-    for _ in range(2):
+    for _ in range(3):
         image = median_filter(image, size=3)
 
     # --- midpoint ---
-    midpoint = int(sum(p[1] for p in userPeaks) / len(userPeaks))
+    midpoint = int(sum(p[1] for p in userPeaks) / n)
 
     # --- midline for seeding ---
-    midline = []
+    midline = np.zeros(width)
     for x in range(width):
-        s = 0
         for k in range(-edgeBound + 1, edgeBound):
-            s += image[midpoint + k, x]
-        midline.append(s / (2 * edgeBound - 1))
-
-    midline = np.array(midline)
+            midline[x] += image[midpoint + k, x]
+    midline /= (2 * edgeBound - 1)
     midline[midline < 100] = 0
 
     mid_peaks = find_peaks(midline, prominence=prominence)[0]
 
-    # --- match seeds ---
+    # --- seed matching ---
     seeds = []
     for col, _ in userPeaks:
         seeds.append(min(mid_peaks, key=lambda p: abs(p - col)))
+    seeds = sorted(seeds)
 
-    seeds = sorted(seeds)   # enforce left→right identity
-
-    # state: list of (row, col)
-    waves_up = [
-        [(midpoint, seeds[0])],
-        [(midpoint, seeds[1])]
-    ]
-
-    waves_down = [
-        [(midpoint, seeds[0])],
-        [(midpoint, seeds[1])]
-    ]
-
-    # ---------- helper ----------
+    # ---------- prediction ----------
     def predict(track):
         if len(track) < 2:
             return track[-1][1]
         (_, c1), (_, c0) = track[-1], track[-2]
         return c1 + inertia * (c1 - c0)
 
-    # ---------- main loop ----------
-    for i in range(midpoint - 1, edgeBound, -1):
-        waves_up = _step_joint(image, i, waves_up, predict, edgeBound, minSep, prominence)
+    # ---------- initialize ----------
+    waves_up   = [[(midpoint, s)] for s in seeds]
+    waves_down = [[(midpoint, s)] for s in seeds]
 
-    for i in range(midpoint + 1, height - edgeBound):
-        waves_down = _step_joint(image, i, waves_down, predict, edgeBound, minSep, prominence)
+    # ============================================================
+    # TRACK UPWARD
+    # ============================================================
+    for r in range(midpoint - 1, edgeBound, -1):
+        waves_up = _step(image, r, waves_up, predict,
+                         edgeBound, prominence, minSep)
 
+    # ============================================================
+    # TRACK DOWNWARD (fresh state)
+    # ============================================================
+    for r in range(midpoint + 1, height - edgeBound):
+        waves_down = _step(image, r, waves_down, predict,
+                           edgeBound, prominence, minSep)
+
+    # ============================================================
+    # MERGE + POSTPROCESS
+    # ============================================================
     waves = []
+    for w_up, w_dn in zip(waves_up, waves_down):
+        wave = w_up[::-1] + w_dn[1:]
+        wave = postprocess_wave(wave, midpoint)
+        waves.append(wave)
 
-    for w_up, w_down in zip(waves_up, waves_down):
-        w = w_up[::-1] + w_down[1:]
-        w = postprocess_wave(w, midpoint)
-        waves.append(w)
+    # ============================================================
+    # DOUBLET MODE: append average wave
+    # ============================================================
+    if modality == "doublet" and len(waves) == 2:
+        w1, w2 = waves
+
+        # defensive alignment
+        L = min(len(w1), len(w2))
+
+        avg_wave = []
+        for i in range(L):
+            r1, c1 = w1[i]
+            r2, c2 = w2[i]
+
+            # rows should match; trust w1
+            avg_col = 0.5 * (c1 + c2)
+            avg_wave.append((r1, avg_col))
+
+        waves.append(avg_wave)
 
     return waves
 
-def _step_joint(image, row, waves, predict, edgeBound, minSep, prominence):
+def _step(image, row, waves, predict, edgeBound, prominence, minSep):
     width = image.shape[1]
+    n = len(waves)
 
     # --- build row profile ---
     line = np.zeros(width)
@@ -346,31 +372,39 @@ def _step_joint(image, row, waves, predict, edgeBound, minSep, prominence):
     line[line < 100] = 0
 
     peaks = find_peaks(line, prominence=prominence)[0]
-    if len(peaks) < 2:
+    if len(peaks) == 0:
         return waves
 
-    # predictions
+    # ============================================================
+    # SINGLE WAVE (trivial assignment)
+    # ============================================================
+    if n == 1:
+        pred = predict(waves[0])
+        best = min(peaks, key=lambda p: abs(p - pred))
+        waves[0].append((row, best))
+        return waves
+
+    # ============================================================
+    # TWO WAVES (joint assignment)
+    # ============================================================
     p0 = predict(waves[0])
     p1 = predict(waves[1])
 
     best = None
     best_cost = np.inf
 
-    # try all ordered peak pairs
     for a in peaks:
         for b in peaks:
             if a >= b:
                 continue
 
-            # distance to prediction
             c0 = abs(a - p0)
             c1 = abs(b - p1)
 
-            # separation penalty
             sep = b - a
             sep_penalty = 0
             if sep < minSep:
-                sep_penalty = 500 * (1 - sep / minSep)
+                sep_penalty = 1000 * (1 - sep / minSep)
 
             cost = c0 + c1 + sep_penalty
 
@@ -378,13 +412,12 @@ def _step_joint(image, row, waves, predict, edgeBound, minSep, prominence):
                 best_cost = cost
                 best = (a, b)
 
-    if best is None or best_cost > 100:
-        return waves
-
-    waves[0].append((row, best[0]))
-    waves[1].append((row, best[1]))
+    if best is not None:
+        waves[0].append((row, best[0]))
+        waves[1].append((row, best[1]))
 
     return waves
+
 
 def postprocess_wave(wave, midpoint):
     rows = np.array([r for r, _ in wave])
