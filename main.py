@@ -3704,11 +3704,11 @@ class TimeVsDistanceWindow:
         self.x_line = None
 
         if self.mode == "in":
-            self.wave_lines = wave_lines[0][:split_frame_num]
+            self.wave_lines = wave_lines[-1][:split_frame_num]
         elif self.mode == "out":
-            self.wave_lines = wave_lines[0][split_frame_num+1:]
+            self.wave_lines = wave_lines[-1][split_frame_num+1:]
         else:
-            self.wave_lines = wave_lines[0]
+            self.wave_lines = wave_lines[-1]
 
         self.y_vals = np.array([p[0]/fps for p in self.wave_lines])
         x_vals = np.array([p[1] for p in self.wave_lines])
