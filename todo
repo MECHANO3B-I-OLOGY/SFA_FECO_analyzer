@@ -5,10 +5,18 @@ future plans:
 - unified file selection strategy, in and out (and finish error catching)
 - scale window to screen (the right way?)
 - Pointy is odd
-- Ssave CSV final data
+- Save CSV final data
+- save multiple csv to tiff files
+
+- MANUAL: convention is left->right low wavelengths->high wavelengths
+- MANUAL: always assume program state before button press
+- MANUAL: images mut be 8-bit
 
 finished:
 
+- change frame number to absolute frame number
+- Wavelength calibration save on close
+- Dispersion Calibration mica-mica to intensity profile (same as mag image)
 - windows complied version files java cxd conversion
 - fringe diameter -> flat contact diameter
 - Select linear difference of distance / time

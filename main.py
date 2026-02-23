@@ -101,6 +101,7 @@ class SFA_FECO_UI:
         self.radius = self.calibration_values["radius"]
         self.diameter = self.calibration_values["diameter"]
         self.split_frame_num = self.calibration_values["turnaround_frame"]
+        self.split_frame_offset = self.calibration_values["frame_offset"]
 
         self.javaExists = self.check_java()
 
@@ -1238,7 +1239,7 @@ class SFA_FECO_UI:
     def visualize_distance_over_time(self):
         with open(resource("setups.json"), "r") as f:
             temp = json.load(f)
-        TimeVsDistanceWindow(self.visualize_mode.get(), self.wave_lines, int(self.split_var.get()), int(self.camera_fps_var.get()), [self.lambdaOdd, self.lambdaEven], self.calibration_parameters, int(self.fringe_entry.get()), temp[str(self.setupEntryVar.get())][2])
+        TimeVsDistanceWindow(self.visualize_mode.get(), self.wave_lines, int(self.split_var.get()) - int(self.split_frame_offset), int(self.camera_fps_var.get()), [self.lambdaOdd, self.lambdaEven], self.calibration_parameters, int(self.fringe_entry.get()), temp[str(self.setupEntryVar.get())][2])
 
     #class ForceVsDistanceWindow:
         #def __init__(self, mode, wave_lines, split_frame_num, springConstant):
@@ -1297,6 +1298,9 @@ class SFA_FECO_UI:
     def setDiameter(self, diameter):
         self.diameter_display.delete(0, "end")
         self.diameter_display.insert(0, str(diameter)[:6])
+
+    def setFrameOffset(self, offset):
+        self.split_frame_offset = offset
 
     def set_status(self, text):
         """Update status bar text."""
@@ -1409,6 +1413,7 @@ class SFA_FECO_UI:
                 "diameter_video_file": "",
                 "diameter": np.NaN,
                 "turnaround_frame": 0,
+                "frame_offset": 0,
                 "setup": "Mica Mica Symmetric",
                 "fps": 2,
                 "spring_constant": 0
@@ -1430,6 +1435,7 @@ class SFA_FECO_UI:
         self.radius = self.calibration_values["radius"]
         self.diameter = self.calibration_values["radius"]
         self.split_frame_num = self.calibration_values["turnaround_frame"]
+        self.split_frame_offset = self.calibration_values["frame_offset"]
 
         if self.wavelength_calibration_video_file_path != "":
             if len(self.wavelength_calibration_video_file_path) > self.MAX_FILE_DISP_LENGTH:
@@ -1534,6 +1540,7 @@ class SFA_FECO_UI:
                 "diameter_video_file": self.diameter_input_file_path,
                 "diameter": float(self.diameter_display.get()),
                 "turnaround_frame": int(self.split_var.get()),
+                "frame_offset": int(self.split_frame_offset),
                 "setup": str(self.setupEntryVar.get()),
                 "fps": int(self.camera_fps_var.get()),
                 "spring_constant":  int(self.k_var.get())
@@ -1891,6 +1898,7 @@ class Wavelength_Calibration_Window:
         self.fig.canvas.mpl_connect("motion_notify_event", self.drag_crop)
         self.fig.canvas.mpl_connect("button_release_event", self.end_crop)
         self.fig.canvas.mpl_connect("key_press_event", self.handle_key_press)
+        self.fig.canvas.mpl_connect('close_event', self.close_figure)
 
         self.ax.set_xlabel("Pixels")
         self.ax.set_ylabel("Pixels")
@@ -1903,8 +1911,8 @@ class Wavelength_Calibration_Window:
         if event.key == "enter":
             if self.stage == 1:
                 self.confirm_crop()
-            elif self.stage == 2:
-                self.calculate_transformation()
+            #elif self.stage == 2:
+                #self.calculate_transformation()
         elif event.key == "escape":
             if self.stage == 1:
                 self.cancel_crop()
@@ -1991,7 +1999,7 @@ class Wavelength_Calibration_Window:
         """Confirms the crop selection and proceeds to wave analysis."""
         if self.crop_start_y is not None and self.crop_end_y is not None:
             # CHANGE WORDING (CONFIRM IDENTIFIED LINES)
-            self.update_instructions(f"Select {self.num_waves} lines for calibration. Red lines are selected and green are not. Press enter when finished, or escape to restart.")
+            self.update_instructions(f"Select {self.num_waves} lines for calibration. Red lines are selected and green are not. Close when finished, or press escape to restart.")
             y1, y2 = sorted((int(self.crop_start_y), int(self.crop_end_y)))
             self.image.seek(self.current_frame_index)
             cropped_frame = self.image.crop((0, y1, self.image.width, y2))
@@ -2140,16 +2148,17 @@ class Wavelength_Calibration_Window:
         else:
             return
 
-
         app.setDispersionEntries(self.dispersion1,self.dispersion2,self.dispersion3,self.dispersionAvg,self.dispersionStd)
         
         calibration_equation = {"slope": self.dispersionAvg, "intercept": CalibrationValues.HG_GREEN.value, "offset": x_values[0]}
         #print(calibration_equation)
         self.callback(calibration_equation)
-        self.close_figure()
+        #self.close_figure()
 
-    def close_figure(self):
+    def close_figure(self, event):
         """Closes the Matplotlib figure and cleans up resources."""
+        if self.stage == 2:
+            self.calculate_transformation()
         plt.close(self.fig)  # Close the specific figure 
 
 class Mica_Thickness_Calibration_Window:
@@ -2378,7 +2387,12 @@ class Mica_Thickness_Calibration_Window:
         """Confirms the crop selection and proceeds to wave analysis."""
         if self.crop_start_y is not None and self.crop_end_y is not None:
             self.update_instructions("Select lines for calibration.")
-            y1, y2 = sorted((int(self.crop_start_y), int(self.crop_end_y)))
+            y1_display, y2_display = sorted((self.crop_start_y, self.crop_end_y))
+
+            # Convert display coords back to original image coords
+            y1 = int(y1_display / self.scale_factor)
+            y2 = int(y2_display / self.scale_factor)
+
             self.image.seek(self.current_frame_index)
             cropped_frame = self.image.crop((0, y1, self.image.width, y2))
             self.cropped_frame = cropped_frame
@@ -2903,6 +2917,8 @@ class Motion_Analysis_Window:
             offsets = (self.x_offset_start, self.y_offset)
             self.offset_callback(offsets)
         self.cropped_image = self.timelapse_image[y_start:y_end, x_start:x_end]
+
+        app.setFrameOffset(y_start)
         
         # Get the base name and extension of the original file
         base_name, ext = os.path.splitext(self.file_path)

@@ -77,8 +77,10 @@ def generate_motion_profile(file_path, y_start, y_end, filename):
         # Crop the frame to the Region of Interest (RoI)
         cropped_frame = frame[y_start:y_end, :]
 
+        # HERE: AVERAGE NOT SUM
+
         # Sum the brightness values vertically (across the y-axis)
-        vertical_sum = np.sum(cropped_frame, axis=0)
+        vertical_sum = np.average(cropped_frame, axis=0)
 
         # Normalize the summed values to the range [0, 255]
         norm_sum = np.interp(vertical_sum, (vertical_sum.min(), vertical_sum.max()), (0, 255))
