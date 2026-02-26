@@ -8,12 +8,13 @@ future plans:
 - Save CSV final data
 - save multiple csv to tiff files
 
+finished:
+
+- frame selection tool radius of curvature
+- line of best fit front of of peaks analysis stage "Point of Closest approach"
 - MANUAL: convention is left->right low wavelengths->high wavelengths
 - MANUAL: always assume program state before button press
 - MANUAL: images mut be 8-bit
-
-finished:
-
 - change frame number to absolute frame number
 - Wavelength calibration save on close
 - Dispersion Calibration mica-mica to intensity profile (same as mag image)

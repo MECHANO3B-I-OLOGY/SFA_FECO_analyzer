@@ -47,71 +47,94 @@ def scale_frame(frame, scale_factor=0.9):
 
     return scaled_frame
 
-def generate_motion_profile(file_path, y_start, y_end, filename):
-    """
-    Processes the TIFF video by performing vertical summing and normalization,
-    then builds the final "timelapse" image. Can display progress after each frame.
+import numpy as np
+import matplotlib.pyplot as plt
+from PIL import Image
 
-    Args:
-        file_path (str): Path to the input TIFF file.
-        y_start (int): Start y-coordinate of the RoI.
-        y_end (int): End y-coordinate of the RoI.
-        filename (str): Output filename for the final processed image.
+
+import numpy as np
+import matplotlib.pyplot as plt
+from PIL import Image
+
+
+def generate_motion_profile(input_file_path, output_file_name, slope, intercept, padding=3):
     """
+    Vectorized motion profile generation.
+    Samples along y = slope*x + intercept with vertical padding.
+    """
+
     visualize = False
-    i = 1
-    # Open the TIFF file
-    tiff = Image.open(file_path)
-    num_frames = tiff.n_frames  # Number of frames in the TIFF file
 
-    # Initialize an empty array to store the final "timelapse" image
+    tiff = Image.open(input_file_path)
+    num_frames = tiff.n_frames
+
     timelapse_image = []
 
-    plt.ion()  # Turn on interactive plotting
+    plt.ion()
 
     for frame_index in range(num_frames):
-        # Get the current frame
         tiff.seek(frame_index)
-        frame = np.array(tiff)  # Convert the frame to a numpy array
+        frame = np.array(tiff)
 
-        # Crop the frame to the Region of Interest (RoI)
-        cropped_frame = frame[y_start:y_end, :]
+        height, width = frame.shape
 
-        # HERE: AVERAGE NOT SUM
+        # --- Vectorized coordinate generation ---
 
-        # Sum the brightness values vertically (across the y-axis)
-        vertical_sum = np.average(cropped_frame, axis=0)
+        x_vals = np.arange(width)
 
-        # Normalize the summed values to the range [0, 255]
-        norm_sum = np.interp(vertical_sum, (vertical_sum.min(), vertical_sum.max()), (0, 255))
+        # Compute y-center for every x simultaneously
+        y_center = slope * x_vals + intercept
+        y_center = np.rint(y_center).astype(int)
 
-        # Filter out all pixels below intensity 150
-        norm_sum[norm_sum < 150] = 0
+        # Create vertical offsets for padding
+        offsets = np.arange(-padding, padding + 1)
 
-        # Add the normalized line to the timelapse image
-        timelapse_image.append(norm_sum)
+        # Broadcast to form full sampling grid
+        # Shape: (num_offsets, width)
+        y_samples = y_center[None, :] + offsets[:, None]
 
-        # Convert the timelapse array to a numpy array (for visualization)
-        timelapse_array = np.array(timelapse_image)
+        # Clip to valid image bounds
+        y_samples = np.clip(y_samples, 0, height - 1)
 
-        if visualize and i % 5 == 0:
-            # Visualization: display progress after each frame
+        # Advanced indexing to grab all samples at once
+        # Result shape: (num_offsets, width)
+        sampled_values = frame[y_samples, x_vals]
+
+        # Average across vertical direction
+        sampled_profile = sampled_values.mean(axis=0)
+
+        # Normalize to [0, 255]
+        if sampled_profile.max() > sampled_profile.min():
+            norm_profile = np.interp(
+                sampled_profile,
+                (sampled_profile.min(), sampled_profile.max()),
+                (0, 255)
+            )
+        else:
+            norm_profile = np.zeros_like(sampled_profile)
+
+        # Threshold
+        norm_profile[norm_profile < 150] = 0
+
+        timelapse_image.append(norm_profile)
+
+        # Optional visualization
+        if visualize and frame_index % 5 == 0:
+            timelapse_array = np.array(timelapse_image)
             plt.figure(figsize=(10, 5))
             plt.imshow(timelapse_array, cmap='gray', aspect='auto')
             plt.title(f"Timelapse Progress - Frame {frame_index + 1}/{num_frames}")
             plt.colorbar()
             plt.show()
-
-            # Wait for a key press before continuing to the next frame
             plt.waitforbuttonpress()
             plt.close()
-        
-        i += 1
 
-    # Once all frames are processed, save the final timelapse image
+    # Final output
+    timelapse_array = np.array(timelapse_image)
     final_image = Image.fromarray(timelapse_array.astype(np.uint8))
-    final_image.save(filename)
-    print(f"Timelapse saved to {filename}")
+    final_image.save(output_file_name)
+
+    print(f"Timelapse saved to {output_file_name}")
 
 def fix_endpoints(xs_clean, xs_smooth, k_frac=0.06, min_k=3):
     """

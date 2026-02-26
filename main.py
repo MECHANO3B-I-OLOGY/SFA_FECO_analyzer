@@ -74,8 +74,6 @@ class SFA_FECO_UI:
         self.data_file_path = None
         self.analyze_output_file_path = None
         self.motion_output_file_path = None
-
-        self.roi_offset = 0
         self.analysis_x_offset = None
         self.analysis_y_offset = None
         self.wave_lines = None
@@ -455,7 +453,7 @@ class SFA_FECO_UI:
         self.diameter_frame = ttk.Frame(self.radius_subframe)
         self.diameter_frame.grid(row=16, column=0, sticky='w', padx=10, pady=(5, 5))
 
-        self.calibration_diameter_label = ttk.Label(self.diameter_frame, text=r"Fridge Diameter (μm):", style='Regular.TLabel')
+        self.calibration_diameter_label = ttk.Label(self.diameter_frame, text=r"Fringe Diameter (μm):", style='Regular.TLabel')
         self.calibration_diameter_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
 
         self.diameter_display = ttk.Entry(self.diameter_frame, width=15, textvariable=str(self.diameter), validate='key')
@@ -488,12 +486,44 @@ class SFA_FECO_UI:
         self.raw_file_label = ttk.Label(self.raw_video_subframe, text="No file selected", style='Regular.TLabel')
         self.raw_file_label.grid(row=2, column=0, sticky='ew', padx=10)
 
-        # Crop/Preprocess button
-        self.crop_button = ttk.Button(self.raw_video_subframe, text="Crop", command=self.open_crop_preprocess_window, style='Regular.TButton')
-        self.crop_button.grid(row=3, column=0, sticky='ew', padx=10, pady=5)
+        # Frame for radius label and entry side by side
+        self.padding_frame = ttk.Frame(self.raw_video_subframe)
+        self.padding_frame.grid(row=3, column=0, sticky='w', padx=10, pady=(5, 5))
 
-        calibrate_separator1 = ttk.Separator(self.raw_video_subframe, orient="horizontal")
-        calibrate_separator1.grid(row=4, column=0, sticky='ew', pady=10)
+        # Padding input label
+        self.padding_label = ttk.Label(
+            self.padding_frame,
+            text="Padding (pixels):",
+            style='Regular.TLabel'
+        )
+        self.padding_label.grid(row=0, column=0, sticky='w', padx=(0,5))
+
+        # Padding variable (assume default handled elsewhere)
+        self.padding_var = tk.StringVar()
+
+        # Padding entry box
+        self.padding_entry = ttk.Entry(
+            self.padding_frame,
+            textvariable=self.padding_var,
+            width=10,
+            style='Regular.TEntry'
+        )
+        self.padding_entry.grid(row=0, column=1, sticky='w')
+
+        # Crop/Preprocess button
+        self.crop_button = ttk.Button(
+            self.raw_video_subframe,
+            text="Crop",
+            command=self.open_crop_preprocess_window,
+            style='Regular.TButton'
+        )
+        self.crop_button.grid(row=4, column=0, sticky='ew', padx=10, pady=5)
+
+        calibrate_separator1 = ttk.Separator(
+            self.raw_video_subframe,
+            orient="horizontal"
+        )
+        calibrate_separator1.grid(row=5, column=0, sticky='ew', pady=10)
 
         # Subframe for Generate Motion Profile
         self.motion_profile_subframe = ttk.Frame(self.raw_video_subframe)
@@ -1023,7 +1053,7 @@ class SFA_FECO_UI:
         Handle the ROI data returned from the Frame_Prep_Window.
         :param roi_data: Tuple containing (y_start, y_end, offset, frame).
         """
-        self.y_start, self.y_end, self.roi_offset, cropped_frame = roi_data 
+        self.motionProfileSlope, self.motionProfileIntercept = roi_data 
 
     def generate_motion_profile(self):
         """
@@ -1044,9 +1074,9 @@ class SFA_FECO_UI:
                 self.motion_output_file_path = filename  # Update the output file path
 
                 # Validate that crop information exists
-                if hasattr(self, 'y_start') and hasattr(self, 'y_end'):
+                if hasattr(self, 'motionProfileSlope') and hasattr(self, 'motionProfileIntercept'):
                     # Call the fine approximation function with the Y crop info
-                    tracking.generate_motion_profile(self.raw_video_file_path, self.y_start, self.y_end, filename)
+                    tracking.generate_motion_profile(self.raw_video_file_path, filename, self.motionProfileSlope, self.motionProfileIntercept, padding=int(self.padding_var.get()))
 
                     # Display the saved file path
                     display_text = f"Data saved: {filename}"
@@ -1412,6 +1442,7 @@ class SFA_FECO_UI:
                 "radius": np.NaN, 
                 "diameter_video_file": "",
                 "diameter": np.NaN,
+                "motion_profile_padding": 3,
                 "turnaround_frame": 0,
                 "frame_offset": 0,
                 "setup": "Mica Mica Symmetric",
@@ -1494,6 +1525,8 @@ class SFA_FECO_UI:
         self.radius_display.delete(0, "end")
         self.radius_display.insert(0, str(self.radius)[:5])
 
+        self.padding_var.set(str(self.calibration_values["motion_profile_padding"]))
+
         self.split_var.set(str(self.split_frame_num))
 
         self.setupEntryVar.set(str(self.calibration_values["setup"])) 
@@ -1539,6 +1572,7 @@ class SFA_FECO_UI:
                 "radius": float(self.radius_display.get()), 
                 "diameter_video_file": self.diameter_input_file_path,
                 "diameter": float(self.diameter_display.get()),
+                "motion_profile_padding": int(self.padding_var.get()),
                 "turnaround_frame": int(self.split_var.get()),
                 "frame_offset": int(self.split_frame_offset),
                 "setup": str(self.setupEntryVar.get()),
@@ -1613,215 +1647,146 @@ class SFA_FECO_UI:
             file = file[:-4] + ".tiff"
         return file
     
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.widgets import Slider
+from PIL import Image, ImageSequence
+
+
 class Frame_Prep_Window:
-    """
-        A GUI-based tool for preparing and processing frames from a TIFF file.
-
-        This class provides functionality to:
-        - Load and display frames from a multi-frame TIFF file.
-        - Dynamically crop a region of interest (ROI) using mouse interaction.
-        - Scale frames for display and processing.
-        - Navigate through frames using a slider.
-
-        Attributes:
-            raw_video_file_path (str): Path to the input TIFF file.
-            roi_callback (function): Callback function to handle the selected ROI.
-            cropped_frame (PIL.Image or None): The cropped frame after ROI selection.
-            frames (list): List of frames extracted from the TIFF file.
-            current_frame_index (int): Index of the currently displayed frame.
-            crop_start_y (int): Starting y-coordinate of the crop area.
-            self.crop_rectangle = rectangle for crop display
-            self.motion_event_id: motion event handler
-
-        Methods:
-            on_key_press(self, event): routing function for button functionality
-            update_frame(value): Updates the displayed frame based on the slider value.
-            display_frame(): Resets and displays the current frame on the canvas.
-            start_crop(event): Handles the start of ROI selection.
-            drag_crop(event): Dynamically draws a rectangle for the ROI during dragging.
-            end_crop(event): Finalizes the ROI selection.
-            cancel_crop(event): Resets the ROI selection.
-            confirm_crop(event): Confirms the ROI selection and processes the cropped frame.
-    """
     SCALE_FACTOR = 0.75
 
     def __init__(self, file_path, roi_callback=None):
         self.raw_video_file_path = file_path
         self.roi_callback = roi_callback
-        self.cropped_frame = None
+
         self.frames = []
         self.current_frame_index = 0
-        self.crop_start_y = None
-        self.crop_end_y = None
-        self.crop_rectangle = None
-        self.motion_event_id = None
 
-        # Load the TIFF file using PIL
+        # Store selected points
+        self.selected_points = []
+        self.best_fit_line = None
+        self.best_fit_params = None  # (slope, intercept)
+
+        # Load TIFF
         try:
             self.tiff_image = Image.open(self.raw_video_file_path)
             self.frames = [
-                np.array(tracking.scale_frame(frame.copy(), Frame_Prep_Window.SCALE_FACTOR))
+                np.array(frame.copy())
                 for frame in ImageSequence.Iterator(self.tiff_image)
             ]
         except Exception as e:
-            msg = "Load failed. Check console for details."
-            error_popup(msg)
             print(f"Failed to load TIFF file: {e}")
             return
 
-        # Create Matplotlib figure and axes
+        # Create figure
         self.fig, self.ax = plt.subplots(figsize=(8, 6))
-        plt.subplots_adjust(bottom=0.2, top=0.85)  # Leave space for the slider and instructions
+        plt.subplots_adjust(bottom=0.2, top=0.85)
 
-        # Add instruction text to the figure
         self.instruction_text = self.fig.text(
-            0.5, 0.95,  # x, y in figure coordinates
-            "Step 1: Select the region to crop (y-axis only). Drag to select, Enter to confirm.",
-            ha='center', va='center', fontsize=10, wrap=True
+            0.5, 0.95,
+            "Click Points of Closest Approach.\nClose window when finished.",
+            ha='center', va='center', fontsize=10
         )
-        self.instruction_text.set_wrap(True)
 
-        # Create slider for frame selection using Matplotlib's Slider widget
-        slider_ax = plt.axes([0.2, 0.05, 0.6, 0.03])  # position of the slider in figure coordinates
+        # Slider
+        slider_ax = plt.axes([0.2, 0.05, 0.6, 0.03])
         self.slider = Slider(
-            slider_ax, 'Frame', 0, len(self.frames) - 1, valinit=0, valstep=1
+            slider_ax, 'Frame', 0, len(self.frames) - 1,
+            valinit=0, valstep=1
         )
         self.slider.on_changed(self.update_frame)
 
-        # Display the initial frame
         self.update_frame(0)
 
-        # Bind Matplotlib events for cropping
-        self.fig.canvas.mpl_connect("button_press_event", self.start_crop)
-        self.fig.canvas.mpl_connect("button_release_event", self.end_crop)
-        self.fig.canvas.mpl_connect('key_press_event', self.on_key_press)
+        # Event bindings
+        self.fig.canvas.mpl_connect("button_press_event", self.on_click)
+        self.fig.canvas.mpl_connect("close_event", self.on_close)
 
         self.ax.set_xlabel("Pixels")
         self.ax.set_ylabel("Pixels")
 
-        # Show the plot
         plt.show()
 
-    def on_key_press(self, event):
-        """Handle key press events."""
-        if event.key == 'escape':
-            self.cancel_crop()
-            self.display_frame()  # Redraw the frame without the rectangle
-        elif event.key == 'enter':
-            self.confirm_crop()
+    # ----------------------------------
+    # Frame Handling
+    # ----------------------------------
 
     def update_frame(self, value):
-        """Update the displayed frame based on slider value."""
         self.current_frame_index = int(value)
         self.display_frame()
 
     def display_frame(self):
-        """Display the current frame in Matplotlib."""
-        frame = self.frames[self.current_frame_index]
         self.ax.clear()
+        frame = self.frames[self.current_frame_index]
         self.ax.imshow(frame, cmap="gray")
-        self.ax.set_title("Select region to crop (y-axis only).")
+        self.ax.set_title("Select Points of Closest Approach")
+        self.ax.set_xlabel("Pixels")
+        self.ax.set_ylabel("Pixels")
+
+        # Redraw existing points
+        if self.selected_points:
+            xs, ys = zip(*self.selected_points)
+            self.ax.plot(xs, ys, 'ro')
+
+        # Redraw best-fit line
+        if self.best_fit_params:
+            self.draw_best_fit_line()
+
         self.fig.canvas.draw()
 
-    def start_crop(self, event):
-        """Begin cropping by recording the starting y-coordinate."""
-        if event.inaxes == self.ax:
-            self.cancel_crop()
-            self.crop_start_y = event.ydata
-            # Remove any existing rectangle
-            if self.crop_rectangle:
-                self.crop_rectangle.remove()
-                self.crop_rectangle = None
+    # ----------------------------------
+    # Point Selection
+    # ----------------------------------
 
-            # Connect the motion event handler
-            if not self.motion_event_id:
-                self.motion_event_id = self.fig.canvas.mpl_connect("motion_notify_event", self.drag_crop)
+    def on_click(self, event):
+        if event.inaxes != self.ax:
+            return
 
-    def drag_crop(self, event):
-        """Draw a dynamic rectangle as the user drags."""
-        if event.inaxes == self.ax and self.crop_start_y is not None:
-            current_y = event.ydata
+        x, y = event.xdata, event.ydata
+        self.selected_points.append((x, y))
 
-            # Remove the existing rectangle if present
-            if self.crop_rectangle:
-                self.crop_rectangle.remove()
+        self.update_best_fit()
+        self.display_frame()
 
-            y_start = self.crop_start_y
-            y_end = current_y
-            height = y_end - y_start
+    # ----------------------------------
+    # Best Fit Calculation
+    # ----------------------------------
 
-            # Draw a new rectangle
-            self.crop_rectangle = self.ax.add_patch(
-                plt.Rectangle(
-                    (0, y_start),
-                    self.frames[self.current_frame_index].shape[1],  # Full width of the frame
-                    height,
-                    edgecolor="red",
-                    facecolor="none",
-                    linestyle="--",
-                    linewidth=2,
-                )
-            )
-            self.fig.canvas.draw()
+    def update_best_fit(self):
+        if len(self.selected_points) < 2:
+            return
 
-    def end_crop(self, event):
-        """Finalize the crop area by recording the ending y-coordinate."""
-        if event.inaxes == self.ax and self.crop_start_y is not None:
-            self.crop_end_y = event.ydata 
+        xs = np.array([p[0] for p in self.selected_points])
+        ys = np.array([p[1] for p in self.selected_points])
 
-            # Disconnect the motion event handler to stop updating the rectangle
-            if self.motion_event_id:
-                self.fig.canvas.mpl_disconnect(self.motion_event_id)
-                self.motion_event_id = None
+        slope, intercept = np.polyfit(xs, ys, 1)
+        self.best_fit_params = (slope, intercept)
 
-            # Redraw the figure to ensure the rectangle stays
-            self.fig.canvas.draw()
+    def draw_best_fit_line(self):
+        slope, intercept = self.best_fit_params
 
-    def cancel_crop(self):
-        """Cancel the cropping selection."""
-        self.crop_start_y = None
-        self.crop_end_y = None
-        if self.crop_rectangle:
-            self.crop_rectangle.remove()
-            self.crop_rectangle = None
-            self.fig.canvas.draw() 
+        frame = self.frames[self.current_frame_index]
+        x_vals = np.array([0, frame.shape[1]])
+        y_vals = slope * x_vals + intercept
 
-    def confirm_crop(self):
-        """Confirm the crop selection and finalize the cropped image."""
-        if self.crop_start_y is not None and self.crop_end_y is not None:
-            # Convert crop coordinates to the original image scale
-            y_start, y_end = sorted((int(self.crop_start_y), int(self.crop_end_y)))
-            current_frame = self.frames[self.current_frame_index]
-            self.cropped_frame = current_frame[y_start:y_end, :]
+        self.ax.plot(
+            x_vals,
+            y_vals,
+            linestyle='--',
+            linewidth=2,
+            color='green'
+        )
 
-            # Display the cropped frame
-            self.ax.clear()
-            self.ax.imshow(self.cropped_frame, cmap="gray")
-            self.ax.set_title("Cropping complete. You may close the window.")
-            self.ax.set_xlabel("Pixels")
-            self.ax.set_ylabel("Pixels")
-            self.fig.canvas.draw()
+    # ----------------------------------
+    # On Close → Callback
+    # ----------------------------------
 
-            # Hide the slider after cropping
-            self.slider.ax.set_visible(False)
-            self.fig.canvas.draw()
+    def on_close(self, event):
+        if self.best_fit_params and self.roi_callback:
+            slope, intercept = self.best_fit_params
 
-            # Call the ROI callback if provided
-            if self.roi_callback:
-                self.roi_callback((y_start, y_end, y_start, self.cropped_frame))
-            else:
-                print("No callback provided. ROI selection will not be returned.")
-
-            # Unbind cropping events
-            if self.motion_event_id:
-                self.fig.canvas.mpl_disconnect(self.motion_event_id)
-                self.motion_event_id = None
-
-            # Optionally, you can close the figure here if desired
-            # plt.close(self.fig)
-        else:
-            msg = "No crop area selected."
-            error_popup(msg)
+            self.roi_callback((slope, intercept))
 
 class Wavelength_Calibration_Window:
     """
@@ -3201,14 +3166,7 @@ class Motion_Analysis_Window:
 
 class RadiusMeasurementWindow:
     def __init__(self, image_path, magnification_factor, calibration_parameters, lambdas, n, equation, callback):
-        """
-        Opens a window for the user to select three points on a TIFF image to calculate the radius of curvature.
 
-        Args:
-            image_path (str): Path to the TIFF file.
-            magnification_factor (float): The magnification factor 'f'.
-            callback (function): Function to return the computed radius value.
-        """
         self.image_path = image_path
         self.f = magnification_factor
         self.callback = callback
@@ -3216,131 +3174,152 @@ class RadiusMeasurementWindow:
         self.lambdas = lambdas
         self.n = n
         self.equation = equation
-        self.points = []  # Store selected points
+        self.points = []
 
-        # Load the image
-        self.image = Image.open(image_path)
-        self.image = np.array(self.image)
+        # Load image as PIL first (for multi-frame support)
+        self.pil_image = Image.open(image_path)
 
-        # Initialize the figure and axes
+        # Set up figure
         self.fig, self.ax = plt.subplots(figsize=(7,6))
-        self.ax.imshow(self.image, cmap='gray')
+        plt.subplots_adjust(bottom=0.2)  # Leave space for slider
 
+        # Instruction area
         self.instructions_ax = self.fig.add_axes([0.05, 0.88, 0.9, 0.1])
         self.instructions_ax.axis("off")
 
         self.instruction_text = self.instructions_ax.text(
             0.5,
             0.5,
-            f"Select 3 points (D1, Xtop, Xbottom) - Left Click to Add, Right Click to Undo, Enter to Confirm",
+            "Select 3 points (D1, Xtop, Xbottom) - Left Click to Add, Right Click to Undo, Enter to Confirm",
             fontsize=10,
             ha="center",
             va="center",
             wrap=True,
         )
-        self.instruction_text.set_wrap(True)
 
         self.ax.set_xlabel("Pixels")
         self.ax.set_ylabel("Pixels")
-        self.secax = self.ax.secondary_xaxis('top', functions=(self.pixToWave, self.waveToPix))
+
+        # Initialize frame index
+        self.current_frame_index = 0
+
+        # Load and display first frame
+        self.update_frame(0)
+
+        # Add slider if multi-frame TIFF
+        if hasattr(self.pil_image, "n_frames") and self.pil_image.n_frames > 1:
+            slider_ax = plt.axes([0.2, 0.05, 0.6, 0.03])
+            self.slider = Slider(
+                slider_ax,
+                "Frame",
+                0,
+                self.pil_image.n_frames - 1,
+                valinit=0,
+                valstep=1
+            )
+            self.slider.on_changed(self.update_frame)
+        else:
+            self.slider = None
+
+        # Secondary wavelength axis
+        self.secax = self.ax.secondary_xaxis(
+            'top',
+            functions=(self.pixToWave, self.waveToPix)
+        )
         self.secax.set_xlabel(r"Wavelength, $\it{\lambda}$ (nm)")
 
-
-        # Enable interactive zoom and pan
+        # Event connections
         self.fig.canvas.mpl_connect("button_press_event", self.on_click)
         self.fig.canvas.mpl_connect("key_press_event", self.on_key_press)
 
-        # Add a cursor for better accuracy
+        # Cursor
         self.cursor = Cursor(self.ax, useblit=True, color='red', linewidth=1)
 
         plt.show()
 
-    def update_secondary_axis(self, event):
-        """Safely sync the top wavelength axis limits with the main axis."""
-        try:
-            # quick sanity checks
-            if not hasattr(self, "secax") or self.secax is None:
-                return
-            if not hasattr(self, "ax") or self.ax is None:
-                return
-            # ensure figure still exists
-            if not plt.fignum_exists(getattr(self, "fig").number):
-                return
+    # ------------------ NEW METHOD ------------------
 
-            # If there's no canvas/manager/toolbar, bail out
-            canvas = getattr(self, "fig", None).canvas
-            manager = getattr(canvas, "manager", None)
-            toolbar = getattr(manager, "toolbar", None)
-            # set_xlim is cheap; do it only if everything looks OK
-            if toolbar is None or manager is None or canvas is None:
-                # still safe to set limits (no toolbar update) — but check ax exists
-                self.secax.set_xlim(self.ax.get_xlim())
-                return
+    def update_frame(self, value):
+        """Update displayed frame when slider changes."""
+        self.current_frame_index = int(value)
+        self.pil_image.seek(self.current_frame_index)
 
-            # normal case: set limits
-            self.secax.set_xlim(self.ax.get_xlim())
+        self.image = np.array(self.pil_image)
 
-        except _tkinter.TclError:
-            # occurs when Tk widgets were destroyed mid-update; ignore
-            return
-        except Exception:
-            # swallow any other race-condition exceptions silently
-            return
+        # Clear selected points when switching frames
+        self.points.clear()
+
+        self.ax.clear()
+        self.ax.imshow(self.image, cmap='gray')
+        self.ax.set_xlabel("Pixels")
+        self.ax.set_ylabel("Pixels")
+
+        # Recreate secondary axis
+        self.refresh_secondary_axis()
+
+        self.fig.canvas.draw_idle()
+
+    # ------------------------------------------------
 
     def pixToWave(self, x):
-        return self.calibration_parameters["slope"]*(x  - self.calibration_parameters["offset"]) + self.calibration_parameters["intercept"]
+        return self.calibration_parameters["slope"] * (
+            x - self.calibration_parameters["offset"]
+        ) + self.calibration_parameters["intercept"]
 
     def waveToPix(self, lam):
-        return (lam - self.calibration_parameters["intercept"]) / self.calibration_parameters["slope"] + self.calibration_parameters["offset"] 
+        return (
+            (lam - self.calibration_parameters["intercept"])
+            / self.calibration_parameters["slope"]
+            + self.calibration_parameters["offset"]
+        )
 
     def refresh_secondary_axis(self):
-        """Ensure the top wavelength axis exists and is visible after crop/redraw."""
         if not hasattr(self, "fig") or not plt.fignum_exists(self.fig.number):
             return
 
-        # Remove old secax if it exists to avoid conflicts
         if getattr(self, "secax", None) is not None:
             try:
                 self.secax.remove()
             except Exception:
                 pass
 
-        # Create a new secondary x-axis on top
-        self.secax = self.ax.secondary_xaxis('top', functions=(self.pixToWave, self.waveToPix))
+        self.secax = self.ax.secondary_xaxis(
+            'top',
+            functions=(self.pixToWave, self.waveToPix)
+        )
         self.secax.set_xlabel(r"Wavelength, $\it{\lambda}$ (nm)")
 
     def on_click(self, event):
-        """Handles user clicks to select and delete points."""
         if event.xdata is None or event.ydata is None:
-            return  # Ignore clicks outside the image
+            return
 
-        if event.button == 1:  # Left-click to add a point
+        if event.button == 1:
             if len(self.points) < 3:
                 self.points.append((event.xdata, event.ydata))
-                self.ax.plot(event.xdata, event.ydata, 'ro')  # Mark the point
+                self.ax.plot(event.xdata, event.ydata, 'ro')
                 self.fig.canvas.draw()
-        elif event.button == 3:  # Right-click to remove the last placed point
+        elif event.button == 3:
             if self.points:
                 self.points.pop()
                 self.redraw_points()
 
     def redraw_points(self):
-        """Redraws points after deletion."""
         self.ax.clear()
         self.ax.imshow(self.image, cmap='gray')
-        self.update_title()
         for x, y in self.points:
             self.ax.plot(x, y, 'ro')
+        self.refresh_secondary_axis()
         self.fig.canvas.draw()
 
     def on_key_press(self, event):
-        """Handles key press events."""
-        if event.key == 'escape':  # Reset selection
+        if event.key == 'escape':
             self.points.clear()
             self.redraw_points()
             print("Selection reset.")
-        elif event.key == 'enter' and len(self.points) == 3:  # Confirm and process
+        elif event.key == 'enter' and len(self.points) == 3:
             self.process_points()
+
+    # ---- process_points remains completely unchanged ----
 
     def process_points(self):
         """Determines D1, Xtop, and Xbottom based on point locations and calculates the radius."""
