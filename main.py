@@ -672,7 +672,7 @@ class SFA_FECO_UI:
         self.visualize_subframe.grid(row=0, column=6, sticky='new', padx=10, pady=25)
 
         # region Step 3: Visualize
-        step4_label = ttk.Label(self.visualize_subframe, text="STEP 5: Visualize", style='Step.TLabel', font=20)
+        step4_label = ttk.Label(self.visualize_subframe, text="STEP 5: Visualize and Export", style='Step.TLabel', font=20)
         step4_label.pack(anchor='w', pady=(0, 5))
 
         # --- Camera FPS row ---
@@ -770,6 +770,18 @@ class SFA_FECO_UI:
             style='Regular.TButton'
         )
         self.visualize_force_button.pack(fill='x', pady=5)
+
+        # --- Buffer line ---
+        ttk.Separator(self.visualize_subframe, orient='horizontal').pack(fill='x', pady=5)
+
+        # --- Single visualize button ---
+        self.visualize_button = ttk.Button(
+            self.visualize_subframe,
+            text="Save data to CSV",
+            command=self.save_force_distance_csv,
+            style='Regular.TButton'
+        )
+        self.visualize_button.pack(fill='x', pady=5)
         
         # endregion
 
@@ -1270,7 +1282,7 @@ class SFA_FECO_UI:
     def visualize_distance_over_time(self):
         with open(resource("setups.json"), "r") as f:
             temp = json.load(f)
-        TimeVsDistanceWindow(self.visualize_mode.get(), self.wave_lines, int(self.split_var.get()) - int(self.split_frame_offset), int(self.camera_fps_var.get()), [self.lambdaOdd, self.lambdaEven], self.calibration_parameters, int(self.fringe_entry.get()), temp[str(self.setupEntryVar.get())][2])
+        TimeVsDistanceWindow(self.visualize_mode.get(), self.wave_lines, int(self.split_var.get()) - int(self.split_frame_offset), int(self.camera_fps_var.get()), [self.lambdaOdd, self.lambdaEven], self.calibration_parameters, int(self.fringe_entry.get()), temp[str(self.setupEntryVar.get())][2], int(self.split_frame_offset))
 
     #class ForceVsDistanceWindow:
         #def __init__(self, mode, wave_lines, split_frame_num, springConstant):
@@ -1599,6 +1611,72 @@ class SFA_FECO_UI:
                     json.dump(temp, f)
             else:
                 exceptions.warning_popup("No file selected, aborting")
+
+    def save_force_distance_csv(self):
+        """
+        Creates ./Output/forceDistanceData.csv with headers:
+
+        Frame, time, wavelength, distance, force/distance
+        """
+
+        # Ensure output directory exists
+        os.makedirs("./Output", exist_ok=True)
+
+        output_path = "./Output/forceDistanceData.csv"
+
+        fps = int(self.camera_fps_var.get())
+        frameOffset = int(self.split_frame_offset)
+
+        springConstant = float(self.k_var.get())
+        radius = float(self.radius_display.get()) / 100  # convert cm → m (as done elsewhere)
+
+        # Full wavelength list (last element as used in TimeVsDistanceWindow)
+        wave_data = self.wave_lines[-1]
+
+        # Split index exactly how TimeVsDistanceWindow does it
+        split_index = int(self.split_var.get()) - frameOffset
+
+        rows = []
+
+        def process_section(wave_subset, pairs):
+            for i in range(len(pairs)):
+                frame = wave_subset[i][0] + frameOffset
+                wavelength = wave_subset[i][1]
+
+                time = (frame) / fps
+
+                distance = pairs[i][0]
+                displacement = pairs[i][1]
+
+                # Same formula used in ForceVsDistanceWindow
+                force_over_distance = displacement * springConstant * 1e-7 / radius
+
+                rows.append([
+                    frame,
+                    time,
+                    wavelength,
+                    distance,
+                    force_over_distance
+                ])
+
+        # --- IN DATA ---
+        if hasattr(self, "dispDistPairsIn"):
+            in_wave = wave_data[:split_index]
+            process_section(in_wave, self.dispDistPairsIn)
+
+        # --- OUT DATA ---
+        if hasattr(self, "dispDistPairsOut"):
+            out_wave = wave_data[split_index+1:]
+            process_section(out_wave, self.dispDistPairsOut)
+
+        # Write CSV
+        with open(output_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["Frame", "time", "wavelength", "distance", "force/radius"])
+            writer.writerows(rows)
+
+        print(f"Saved force-distance data to {output_path}")
+        self.set_status(f"Saved force-distance data to {output_path}")
 
     def check_java(self):
         # Quick check if "java" is in PATH
@@ -3752,7 +3830,7 @@ class ImageSelectorWindow(tk.Toplevel):
 
 class TimeVsDistanceWindow:
 
-    def __init__(self, mode, wave_lines, split_frame_num, fps, lambdas, parameters, n, equation):
+    def __init__(self, mode, wave_lines, split_frame_num, fps, lambdas, parameters, n, equation, frameOffset):
         self.mode = mode
         self.split_frame_num = split_frame_num
         self.slope = None
@@ -3766,7 +3844,7 @@ class TimeVsDistanceWindow:
         else:
             self.wave_lines = wave_lines[-1]
 
-        self.y_vals = np.array([p[0]/fps for p in self.wave_lines])
+        self.y_vals = np.array([(p[0]+frameOffset)/fps for p in self.wave_lines])
         x_vals = np.array([p[1] for p in self.wave_lines])
 
         self.dist = dist.distance(lambdas[0], lambdas[1], n=n)
