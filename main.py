@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -1076,7 +1077,7 @@ class SFA_FECO_UI:
                 # Validate that crop information exists
                 if hasattr(self, 'motionProfileSlope') and hasattr(self, 'motionProfileIntercept'):
                     # Call the fine approximation function with the Y crop info
-                    tracking.generate_motion_profile(self.raw_video_file_path, filename, self.motionProfileSlope, self.motionProfileIntercept, padding=int(self.padding_var.get()))
+                    tracking.generate_motion_profile(self.raw_video_file_path, filename, self.motionProfileSlope, self.motionProfileIntercept, padding=int(self.padding_var.get()), set_status=app.set_status)
 
                     # Display the saved file path
                     display_text = f"Data saved: {filename}"
@@ -1638,31 +1639,68 @@ class SFA_FECO_UI:
                     pass
 
     def cxdToTiff(self, file):
-        if file.lower().endswith(".cxd"):
-            base = file[:-4]              # remove .cxd
-            output = f"{base}.tiff"
-            
-            # If file exists, add -1, -2, -3, ...
-            counter = 1
-            while os.path.exists(output):
-                output = f"{base}-{counter}.tiff"
-                counter += 1
+        if not file.lower().endswith(".cxd"):
+            return file
 
-            if platform == "win32":
-                command = [resource('bfconverter\\bfconvert.bat'), file, output]
-            else:
-                command = [resource('bfconverter/bfconvert'), file, output]
+        base = file[:-4]
+        output = f"{base}.tiff"
 
-            subprocess.run(command)
-            file = output
+        # Ensure unique filename
+        counter = 1
+        while os.path.exists(output):
+            output = f"{base}-{counter}.tiff"
+            counter += 1
 
-        return file
-    
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.widgets import Slider
-from PIL import Image, ImageSequence
+        filename_only = os.path.basename(file)
 
+        # Initial status
+        self.set_status(f"Converting {filename_only} to tiff")
+
+        if platform == "win32":
+            command = [resource('bfconverter\\bfconvert.bat'), file, output]
+        else:
+            command = [resource('bfconverter/bfconvert'), file, output]
+
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+
+        percent_pattern = re.compile(r"Converted \d+/\d+ planes \((\d+)%\)")
+        time_pattern = re.compile(r"([\d.]+)s elapsed")
+
+        elapsed_time = None
+
+        for line in process.stdout:
+            line = line.strip()
+
+            # Look for percent progress
+            percent_match = percent_pattern.search(line)
+            if percent_match:
+                percent = percent_match.group(1)
+                self.set_status(
+                    f"Converting {filename_only} to tiff: {percent}%"
+                )
+
+            # Look for elapsed time
+            time_match = time_pattern.search(line)
+            if time_match:
+                elapsed_time = time_match.group(1)
+
+        process.wait()
+
+        # Final status update
+        if elapsed_time:
+            self.set_status(
+                f"Completed cxd to tiff conversion in {elapsed_time} seconds"
+            )
+        else:
+            self.set_status("Completed cxd to tiff conversion")
+
+        return output
 
 class Frame_Prep_Window:
     SCALE_FACTOR = 0.75
@@ -1682,10 +1720,22 @@ class Frame_Prep_Window:
         # Load TIFF
         try:
             self.tiff_image = Image.open(self.raw_video_file_path)
-            self.frames = [
-                np.array(frame.copy())
-                for frame in ImageSequence.Iterator(self.tiff_image)
-            ]
+
+            frames_iter = list(ImageSequence.Iterator(self.tiff_image))
+            total_frames = len(frames_iter)
+
+            self.frames = []
+            next_update = 5
+
+            for i, frame in enumerate(frames_iter, start=1):
+                self.frames.append(np.array(frame.copy()))
+
+                percent = int((i / total_frames) * 100)
+                if percent >= next_update:
+                    app.set_status(f"Loading image: {next_update}%")
+                    next_update += 5
+
+            app.set_status("Loading image: 100%")
         except Exception as e:
             print(f"Failed to load TIFF file: {e}")
             return

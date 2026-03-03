@@ -57,13 +57,23 @@ import matplotlib.pyplot as plt
 from PIL import Image
 
 
-def generate_motion_profile(input_file_path, output_file_name, slope, intercept, padding=3):
+def generate_motion_profile(
+    input_file_path,
+    output_file_name,
+    slope,
+    intercept,
+    padding=3,
+    set_status=None
+):
     """
     Vectorized motion profile generation.
     Samples along y = slope*x + intercept with vertical padding.
     """
 
     visualize = False
+
+    if set_status:
+        set_status("Generating Motion Profile: 0%")
 
     tiff = Image.open(input_file_path)
     num_frames = tiff.n_frames
@@ -72,38 +82,27 @@ def generate_motion_profile(input_file_path, output_file_name, slope, intercept,
 
     plt.ion()
 
+    next_update = 5  # next 5% threshold
+
     for frame_index in range(num_frames):
         tiff.seek(frame_index)
         frame = np.array(tiff)
 
         height, width = frame.shape
 
-        # --- Vectorized coordinate generation ---
-
         x_vals = np.arange(width)
 
-        # Compute y-center for every x simultaneously
         y_center = slope * x_vals + intercept
         y_center = np.rint(y_center).astype(int)
 
-        # Create vertical offsets for padding
         offsets = np.arange(-padding, padding + 1)
 
-        # Broadcast to form full sampling grid
-        # Shape: (num_offsets, width)
         y_samples = y_center[None, :] + offsets[:, None]
-
-        # Clip to valid image bounds
         y_samples = np.clip(y_samples, 0, height - 1)
 
-        # Advanced indexing to grab all samples at once
-        # Result shape: (num_offsets, width)
         sampled_values = frame[y_samples, x_vals]
-
-        # Average across vertical direction
         sampled_profile = sampled_values.mean(axis=0)
 
-        # Normalize to [0, 255]
         if sampled_profile.max() > sampled_profile.min():
             norm_profile = np.interp(
                 sampled_profile,
@@ -113,10 +112,17 @@ def generate_motion_profile(input_file_path, output_file_name, slope, intercept,
         else:
             norm_profile = np.zeros_like(sampled_profile)
 
-        # Threshold
         norm_profile[norm_profile < 150] = 0
 
         timelapse_image.append(norm_profile)
+
+        # ---- Progress Reporting ----
+        if set_status:
+            percent = int(((frame_index + 1) / num_frames) * 100)
+
+            if percent >= next_update:
+                set_status(f"Generating Motion Profile: {next_update}%")
+                next_update += 5
 
         # Optional visualization
         if visualize and frame_index % 5 == 0:
@@ -133,6 +139,9 @@ def generate_motion_profile(input_file_path, output_file_name, slope, intercept,
     timelapse_array = np.array(timelapse_image)
     final_image = Image.fromarray(timelapse_array.astype(np.uint8))
     final_image.save(output_file_name)
+
+    if set_status:
+        set_status("Generating Motion Profile: 100%")
 
     print(f"Timelapse saved to {output_file_name}")
 
