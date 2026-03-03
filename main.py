@@ -1638,13 +1638,24 @@ class SFA_FECO_UI:
                     pass
 
     def cxdToTiff(self, file):
-        if(file.lower().endswith(".cxd")):
+        if file.lower().endswith(".cxd"):
+            base = file[:-4]              # remove .cxd
+            output = f"{base}.tiff"
+            
+            # If file exists, add -1, -2, -3, ...
+            counter = 1
+            while os.path.exists(output):
+                output = f"{base}-{counter}.tiff"
+                counter += 1
+
             if platform == "win32":
-                command = [resource('bfconverter\\bfconvert.bat'), file, f"{file[:-4]}.tiff"]
+                command = [resource('bfconverter\\bfconvert.bat'), file, output]
             else:
-                command = [resource('bfconverter/bfconvert'), file, f"{file[:-4]}.tiff"]
+                command = [resource('bfconverter/bfconvert'), file, output]
+
             subprocess.run(command)
-            file = file[:-4] + ".tiff"
+            file = output
+
         return file
     
 import numpy as np
