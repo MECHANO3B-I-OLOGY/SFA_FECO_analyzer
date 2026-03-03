@@ -5,11 +5,11 @@ future plans:
 - unified file selection strategy, in and out (and finish error catching)
 - scale window to screen (the right way?)
 - Pointy is odd
-- Save CSV final data
 - save multiple csv to tiff files
 
 finished:
 
+- Save CSV final data
 - frame selection tool radius of curvature
 - line of best fit front of of peaks analysis stage "Point of Closest approach"
 - MANUAL: convention is left->right low wavelengths->high wavelengths
