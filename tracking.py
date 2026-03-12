@@ -63,6 +63,7 @@ def generate_motion_profile(
     slope,
     intercept,
     padding=3,
+    noiseFloor=150,
     set_status=None
 ):
     """
@@ -112,7 +113,7 @@ def generate_motion_profile(
         else:
             norm_profile = np.zeros_like(sampled_profile)
 
-        norm_profile[norm_profile < 150] = 0
+        norm_profile[norm_profile < noiseFloor] = 0
 
         timelapse_image.append(norm_profile)
 
@@ -303,6 +304,7 @@ def newer_analyze_and_append_waves(
     inertia=0.5,
     prominence=10,
     minSep=6,
+    noiseFloor=100,
     modality="singlet"
 ):
     """
@@ -327,7 +329,7 @@ def newer_analyze_and_append_waves(
         for k in range(-edgeBound + 1, edgeBound):
             midline[x] += image[midpoint + k, x]
     midline /= (2 * edgeBound - 1)
-    midline[midline < 100] = 0
+    midline[midline < noiseFloor] = 0
 
     mid_peaks = find_peaks(midline, prominence=prominence)[0]
 
@@ -353,14 +355,14 @@ def newer_analyze_and_append_waves(
     # ============================================================
     for r in range(midpoint - 1, edgeBound, -1):
         waves_up = _step(image, r, waves_up, predict,
-                         edgeBound, prominence, minSep)
+                         edgeBound, prominence, minSep, noiseFloor)
 
     # ============================================================
     # TRACK DOWNWARD (fresh state)
     # ============================================================
     for r in range(midpoint + 1, height - edgeBound):
         waves_down = _step(image, r, waves_down, predict,
-                           edgeBound, prominence, minSep)
+                           edgeBound, prominence, minSep, noiseFloor)
 
     # ============================================================
     # MERGE + POSTPROCESS
@@ -393,7 +395,7 @@ def newer_analyze_and_append_waves(
 
     return waves
 
-def _step(image, row, waves, predict, edgeBound, prominence, minSep):
+def _step(image, row, waves, predict, edgeBound, prominence, minSep, noiseFloor):
     width = image.shape[1]
     n = len(waves)
 
@@ -403,7 +405,7 @@ def _step(image, row, waves, predict, edgeBound, prominence, minSep):
         for k in range(-edgeBound + 1, edgeBound):
             line[x] += image[row + k, x]
     line /= (2 * edgeBound - 1)
-    line[line < 100] = 0
+    line[line < noiseFloor] = 0
 
     peaks = find_peaks(line, prominence=prominence)[0]
     if len(peaks) == 0:

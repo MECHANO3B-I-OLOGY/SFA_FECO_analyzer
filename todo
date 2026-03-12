@@ -6,9 +6,31 @@ future plans:
 - scale window to screen (the right way?)
 - Pointy is odd
 - save multiple csv to tiff files
+- add pixel to CSV, split CSV in/out
 
 finished:
 
+- advanced settings
+  - Wavelength Calibration
+    - prominence = 75 // How much the wavelength lines appear over the noise, line 2161
+    - distance = 10 // How far apart the peaks are, line 2162
+  - Sheet Thickness 
+    - wave_threshold = 40 // How waves stick out against the background, line 2541, [0,255]
+    - min_points_per_wave = 10 // How tall the waves are at minimum, line 2542
+    - mine_wave_gap = 10 // Min distance between waves, line 2543
+  -Magnification Calculation
+    - max_gaussians = 15 // Maximum peaks in the image, line 2811
+    - prominence = 15 // How much peaks stick out against background, line 2811
+  -Prep
+    - padding = 2 // How many pixels above and below to average, line 1092
+    - noiseFloor = 150 //Maximum value considered to be noisy, line 1092, [0,255]
+  - Analysis
+    - inertia = 0.5 // How much the speed of the wave effects the next point, line 3158 [0,1]
+    - prominence = 10 // How much each wave needs to stand out against noise, line 3158
+    - minSep = 6 // How far each wave need be apart from one another, line 3158 
+    - noiseFloor = 100 // Maximum value considered to be noisy, line 3158, [0,255]
+- mica mica overlay on RoC and analysis window
+- customization of plots
 - Save CSV final data
 - frame selection tool radius of curvature
 - line of best fit front of of peaks analysis stage "Point of Closest approach"

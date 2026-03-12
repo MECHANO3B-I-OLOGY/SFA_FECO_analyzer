@@ -180,6 +180,14 @@ class SFA_FECO_UI:
         )
         self.load_previous_checkbox.grid(row=1, column=0, columnspan=2, sticky='w', pady=(2, 2))
 
+        # Button to open the Advanced Settings dialog
+        self.advanced_settings_button = ttk.Button(
+            self.calibration_buttons_frame,
+            text="Advanced Settings",
+            command=self.open_advanced_settings
+        )
+        self.advanced_settings_button.grid(row=2, column=0, columnspan=2, sticky='w', pady=(4, 2))
+
         # Add a horizontal separator between rows
         calibrate_separator1 = ttk.Separator(self.calibration_subframe, orient="horizontal")
         calibrate_separator1.grid(row=2, column=0, sticky='ew', pady=10)
@@ -487,30 +495,6 @@ class SFA_FECO_UI:
         self.raw_file_label = ttk.Label(self.raw_video_subframe, text="No file selected", style='Regular.TLabel')
         self.raw_file_label.grid(row=2, column=0, sticky='ew', padx=10)
 
-        # Frame for radius label and entry side by side
-        self.padding_frame = ttk.Frame(self.raw_video_subframe)
-        self.padding_frame.grid(row=3, column=0, sticky='w', padx=10, pady=(5, 5))
-
-        # Padding input label
-        self.padding_label = ttk.Label(
-            self.padding_frame,
-            text="Padding (pixels):",
-            style='Regular.TLabel'
-        )
-        self.padding_label.grid(row=0, column=0, sticky='w', padx=(0,5))
-
-        # Padding variable (assume default handled elsewhere)
-        self.padding_var = tk.StringVar()
-
-        # Padding entry box
-        self.padding_entry = ttk.Entry(
-            self.padding_frame,
-            textvariable=self.padding_var,
-            width=10,
-            style='Regular.TEntry'
-        )
-        self.padding_entry.grid(row=0, column=1, sticky='w')
-
         # Crop/Preprocess button
         self.crop_button = ttk.Button(
             self.raw_video_subframe,
@@ -809,6 +793,238 @@ class SFA_FECO_UI:
 
         self.updateScreenValues()
 
+    # ------------------------------------------------------------------
+    # Advanced Settings dialog
+    # ------------------------------------------------------------------
+
+    def open_advanced_settings(self):
+        """Open a modal dialog that lets the user view and edit all advanced
+        empirical parameters.  Values are persisted in internal.json under the
+        'advanced_settings' key so they survive restarts."""
+
+        adv = self.internal_flags.get("advanced_settings", {})
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Advanced Settings")
+        dialog.resizable(False, False)
+        dialog.grab_set()  # make modal
+
+        # ── helper to build a labelled section ──────────────────────────────
+        def make_section(parent, title, fields, row_start):
+            """
+            fields is a list of dicts:
+              { "key": str, "label": str, "default": float/int,
+                "tooltip": str, "bounds": (lo, hi) | None }
+            Returns a dict mapping key -> tk.StringVar.
+            """
+            # Section header
+            hdr = ttk.Label(parent, text=title, font=("TkDefaultFont", 10, "bold"))
+            hdr.grid(row=row_start, column=0, columnspan=3, sticky='w',
+                     padx=8, pady=(12, 2))
+
+            sep = ttk.Separator(parent, orient="horizontal")
+            sep.grid(row=row_start + 1, column=0, columnspan=3, sticky='ew', padx=8)
+
+            vars_map = {}
+            for i, field in enumerate(fields):
+                r = row_start + 2 + i
+
+                # Label
+                lbl_text = field["label"]
+                if field.get("bounds"):
+                    lo, hi = field["bounds"]
+                    lbl_text += f"  [{lo}, {hi}]"
+                ttk.Label(parent, text=lbl_text, style='Regular.TLabel').grid(
+                    row=r, column=0, sticky='w', padx=(16, 4), pady=2)
+
+                # Entry pre-populated with current value
+                var = tk.StringVar(value=str(field["default"]))
+                vars_map[field["key"]] = var
+                entry = ttk.Entry(parent, textvariable=var, width=10)
+                entry.grid(row=r, column=1, sticky='w', pady=2)
+
+                # Tooltip / description
+                ttk.Label(parent, text=field["tooltip"],
+                          style='Regular.TLabel',
+                          foreground='gray').grid(
+                    row=r, column=2, sticky='w', padx=(8, 16), pady=2)
+
+            return vars_map, row_start + 2 + len(fields)
+
+        # ── pull current values (with fallback to defaults) ─────────────────
+        wc  = adv.get("wavelength_calibration",    {})
+        st  = adv.get("sheet_thickness",            {})
+        mg  = adv.get("magnification_calculation",  {})
+        pr  = adv.get("prep",                        {})
+        an  = adv.get("analysis",                    {})
+
+        # ── build the scrollable container ──────────────────────────────────
+        outer = ttk.Frame(dialog)
+        outer.pack(fill='both', expand=True)
+
+        inner_canvas = tk.Canvas(outer, width=620)
+        sb = ttk.Scrollbar(outer, orient='vertical', command=inner_canvas.yview)
+        inner_canvas.configure(yscrollcommand=sb.set)
+
+        sb.pack(side='right', fill='y')
+        inner_canvas.pack(side='left', fill='both', expand=True)
+
+        content = ttk.Frame(inner_canvas)
+        win_id = inner_canvas.create_window((0, 0), window=content, anchor='nw')
+
+        def _on_frame_configure(event):
+            inner_canvas.configure(scrollregion=inner_canvas.bbox("all"))
+        content.bind("<Configure>", _on_frame_configure)
+
+        def _on_canvas_configure(event):
+            inner_canvas.itemconfig(win_id, width=event.width)
+        inner_canvas.bind("<Configure>", _on_canvas_configure)
+
+        # ── sections ────────────────────────────────────────────────────────
+        cur_row = 0
+
+        wc_vars, cur_row = make_section(content, "Wavelength Calibration", [
+            {"key": "prominence", "label": "Prominence",
+             "default": wc.get("prominence", 75),
+             "tooltip": "How much the wavelength lines appear over the noise",
+             "bounds": None},
+            {"key": "distance", "label": "Distance",
+             "default": wc.get("distance", 10),
+             "tooltip": "How far apart the peaks are",
+             "bounds": None},
+        ], cur_row)
+
+        st_vars, cur_row = make_section(content, "Sheet Thickness", [
+            {"key": "wave_threshold", "label": "Wave Threshold",
+             "default": st.get("wave_threshold", 40),
+             "tooltip": "How waves stick out against the background",
+             "bounds": (0, 255)},
+            {"key": "min_points_per_wave", "label": "Min Points Per Wave",
+             "default": st.get("min_points_per_wave", 10),
+             "tooltip": "How tall the waves are at minimum",
+             "bounds": None},
+            {"key": "min_wave_gap", "label": "Min Wave Gap",
+             "default": st.get("min_wave_gap", 10),
+             "tooltip": "Min distance between waves",
+             "bounds": None},
+        ], cur_row)
+
+        mg_vars, cur_row = make_section(content, "Magnification Calculation", [
+            {"key": "max_gaussians", "label": "Max Gaussians",
+             "default": mg.get("max_gaussians", 15),
+             "tooltip": "Maximum peaks in the image",
+             "bounds": None},
+            {"key": "prominence", "label": "Prominence",
+             "default": mg.get("prominence", 15),
+             "tooltip": "How much peaks stick out against background",
+             "bounds": None},
+        ], cur_row)
+
+        pr_vars, cur_row = make_section(content, "Prep", [
+            {"key": "padding", "label": "Padding",
+             "default": pr.get("padding", 2),
+             "tooltip": "How many pixels above and below to average",
+             "bounds": None},
+            {"key": "noiseFloor", "label": "Noise Floor",
+             "default": pr.get("noiseFloor", 150),
+             "tooltip": "Maximum value considered to be noisy",
+             "bounds": (0, 255)},
+        ], cur_row)
+
+        an_vars, cur_row = make_section(content, "Analysis", [
+            {"key": "inertia", "label": "Inertia",
+             "default": an.get("inertia", 0.5),
+             "tooltip": "How much the speed of the wave effects the next point",
+             "bounds": (0, 1)},
+            {"key": "prominence", "label": "Prominence",
+             "default": an.get("prominence", 10),
+             "tooltip": "How much each wave needs to stand out against noise",
+             "bounds": None},
+            {"key": "minSep", "label": "Min Separation",
+             "default": an.get("minSep", 6),
+             "tooltip": "How far each wave need be apart from one another",
+             "bounds": None},
+            {"key": "noiseFloor", "label": "Noise Floor",
+             "default": an.get("noiseFloor", 100),
+             "tooltip": "Maximum value considered to be noisy",
+             "bounds": (0, 255)},
+        ], cur_row)
+
+        # ── Save / Cancel buttons ────────────────────────────────────────────
+        btn_frame = ttk.Frame(dialog)
+        btn_frame.pack(fill='x', pady=8, padx=8)
+
+        def save_advanced():
+            """Validate entries, persist to internal_flags, and write internal.json."""
+            def parse_num(var, name, bounds=None, as_float=False):
+                raw = var.get().strip()
+                try:
+                    val = float(raw) if as_float else int(float(raw))
+                except ValueError:
+                    raise ValueError(f"'{name}' must be a number (got '{raw}').")
+                if bounds:
+                    lo, hi = bounds
+                    if not (lo <= val <= hi):
+                        raise ValueError(f"'{name}' must be between {lo} and {hi} (got {val}).")
+                return val
+
+            try:
+                new_adv = {
+                    "wavelength_calibration": {
+                        "prominence": parse_num(wc_vars["prominence"], "WC Prominence"),
+                        "distance":   parse_num(wc_vars["distance"],   "WC Distance"),
+                    },
+                    "sheet_thickness": {
+                        "wave_threshold":      parse_num(st_vars["wave_threshold"],      "Wave Threshold",      (0, 255)),
+                        "min_points_per_wave": parse_num(st_vars["min_points_per_wave"], "Min Points Per Wave"),
+                        "min_wave_gap":        parse_num(st_vars["min_wave_gap"],        "Min Wave Gap"),
+                    },
+                    "magnification_calculation": {
+                        "max_gaussians": parse_num(mg_vars["max_gaussians"], "Max Gaussians"),
+                        "prominence":    parse_num(mg_vars["prominence"],    "Mag Prominence"),
+                    },
+                    "prep": {
+                        "padding":    parse_num(pr_vars["padding"],    "Padding"),
+                        "noiseFloor": parse_num(pr_vars["noiseFloor"], "Prep Noise Floor", (0, 255)),
+                    },
+                    "analysis": {
+                        "inertia":    parse_num(an_vars["inertia"],    "Inertia",            (0, 1), as_float=True),
+                        "prominence": parse_num(an_vars["prominence"], "Analysis Prominence"),
+                        "minSep":     parse_num(an_vars["minSep"],     "Min Separation"),
+                        "noiseFloor": parse_num(an_vars["noiseFloor"], "Analysis Noise Floor", (0, 255)),
+                    },
+                }
+            except ValueError as exc:
+                from exceptions import error_popup
+                error_popup(str(exc))
+                return
+
+            # Persist in memory and to disk immediately so values are available
+            # on the next algorithm run without needing to restart the application
+            self.internal_flags["advanced_settings"] = new_adv
+            cache_dir = os.path.join(os.getcwd(), "cache")
+            flag_path = os.path.join(cache_dir, "internal.json")
+            os.makedirs(cache_dir, exist_ok=True)
+            with open(flag_path, "w") as f:
+                json.dump(self.internal_flags, f, indent=4)
+
+            dialog.destroy()
+
+        ttk.Button(btn_frame, text="Save", command=save_advanced).pack(side='right', padx=(4, 0))
+        ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side='right')
+
+        # Center dialog on main window
+        dialog.update_idletasks()
+        mw = self.root.winfo_x() + self.root.winfo_width() // 2
+        mh = self.root.winfo_y() + self.root.winfo_height() // 2
+        dw = dialog.winfo_width()
+        dh = dialog.winfo_height()
+        dialog.geometry(f"+{mw - dw // 2}+{mh - dh // 2}")
+
+    # ------------------------------------------------------------------
+    # Application exit
+    # ------------------------------------------------------------------
+
     def exit_application(self):
         """Cleanly exit the application."""
 
@@ -1088,8 +1304,13 @@ class SFA_FECO_UI:
 
                 # Validate that crop information exists
                 if hasattr(self, 'motionProfileSlope') and hasattr(self, 'motionProfileIntercept'):
+                    # Read prep parameters from advanced settings (user-configurable)
+                    pr_settings  = self.internal_flags.get("advanced_settings", {}).get("prep", {})
+                    pr_padding     = pr_settings.get("padding",    2)    # How many pixels above and below to average
+                    pr_noise_floor = pr_settings.get("noiseFloor", 150)  # Maximum value considered to be noisy [0,255]
+
                     # Call the fine approximation function with the Y crop info
-                    tracking.generate_motion_profile(self.raw_video_file_path, filename, self.motionProfileSlope, self.motionProfileIntercept, padding=int(self.padding_var.get()), set_status=app.set_status)
+                    tracking.generate_motion_profile(self.raw_video_file_path, filename, self.motionProfileSlope, self.motionProfileIntercept, padding=pr_padding, noiseFloor=pr_noise_floor, set_status=app.set_status)
 
                     # Display the saved file path
                     display_text = f"Data saved: {filename}"
@@ -1390,6 +1611,24 @@ class SFA_FECO_UI:
                     if not is_geometry_on_screen(temp["geometry"]):
                         temp.update({"geometry": f"{window_width}x{window_height}+300+100"})
 
+                    # Migration: inject advanced_settings defaults for any missing keys
+                    # so older internal.json files gain the new controls automatically
+                    defaults = {
+                        "wavelength_calibration": {"prominence": 75, "distance": 10},
+                        "sheet_thickness": {"wave_threshold": 40, "min_points_per_wave": 10, "min_wave_gap": 10},
+                        "magnification_calculation": {"max_gaussians": 15, "prominence": 15},
+                        "prep": {"padding": 2, "noiseFloor": 150},
+                        "analysis": {"inertia": 0.5, "prominence": 10, "minSep": 6, "noiseFloor": 100},
+                    }
+                    if "advanced_settings" not in temp:
+                        temp["advanced_settings"] = {}
+                    for section, vals in defaults.items():
+                        if section not in temp["advanced_settings"]:
+                            temp["advanced_settings"][section] = vals
+                        else:
+                            for k, v in vals.items():
+                                temp["advanced_settings"][section].setdefault(k, v)
+
                     return temp
                     
             except Exception:
@@ -1400,6 +1639,32 @@ class SFA_FECO_UI:
                 "skip_java_warning": False,
                 "geometry": f"{window_width}x{window_height}+300+100",
                 "auto_load_calibration": True,
+                # Advanced settings — empirical parameters exposed to the user
+                "advanced_settings": {
+                    "wavelength_calibration": {
+                        "prominence": 75,   # How much the wavelength lines appear over the noise
+                        "distance": 10,     # How far apart the peaks are
+                    },
+                    "sheet_thickness": {
+                        "wave_threshold": 40,       # How waves stick out against the background [0,255]
+                        "min_points_per_wave": 10,  # How tall the waves are at minimum
+                        "min_wave_gap": 10,         # Min distance between waves
+                    },
+                    "magnification_calculation": {
+                        "max_gaussians": 15,  # Maximum peaks in the image
+                        "prominence": 15,     # How much peaks stick out against background
+                    },
+                    "prep": {
+                        "padding": 2,         # How many pixels above and below to average
+                        "noiseFloor": 150,    # Maximum value considered to be noisy [0,255]
+                    },
+                    "analysis": {
+                        "inertia": 0.5,       # How much the speed of the wave effects the next point [0,1]
+                        "prominence": 10,     # How much each wave needs to stand out against noise
+                        "minSep": 6,          # How far each wave need be apart from one another
+                        "noiseFloor": 100,    # Maximum value considered to be noisy [0,255]
+                    },
+                },
             }
 
             return defaultFlags
@@ -1538,8 +1803,6 @@ class SFA_FECO_UI:
         self.radius_display.delete(0, "end")
         self.radius_display.insert(0, str(self.radius)[:5])
 
-        self.padding_var.set(str(self.calibration_values["motion_profile_padding"]))
-
         self.split_var.set(str(self.split_frame_num))
 
         self.setupEntryVar.set(str(self.calibration_values["setup"])) 
@@ -1585,7 +1848,7 @@ class SFA_FECO_UI:
                 "radius": float(self.radius_display.get()), 
                 "diameter_video_file": self.diameter_input_file_path,
                 "diameter": float(self.diameter_display.get()),
-                "motion_profile_padding": int(self.padding_var.get()),
+                "motion_profile_padding": self.internal_flags.get("advanced_settings", {}).get("prep", {}).get("padding", 2),
                 "turnaround_frame": int(self.split_var.get()),
                 "frame_offset": int(self.split_frame_offset),
                 "setup": str(self.setupEntryVar.get()),
@@ -2156,10 +2419,15 @@ class Wavelength_Calibration_Window:
         norm_255 = norm_255.flatten()
         self.selected_data = list(zip(y_values, norm_255))
 
+        # Read prominence/distance from advanced settings (user-configurable)
+        wc_settings = app.internal_flags.get("advanced_settings", {}).get("wavelength_calibration", {})
+        wc_prominence = wc_settings.get("prominence", 75)  # How much the wavelength lines appear over the noise
+        wc_distance   = wc_settings.get("distance",   10)  # How far apart the peaks are
+
         self.peaks, _ = find_peaks(
             norm_255,
-            prominence=75,        # adjust based on your data scale
-            distance=10,         # ensures peaks don't cluster
+            prominence=wc_prominence,   # adjust based on your data scale
+            distance=wc_distance,        # ensures peaks don't cluster
         )
 
         self.display_waves()
@@ -2535,12 +2803,18 @@ class Mica_Thickness_Calibration_Window:
         normalized_image = cv2.normalize(image_array, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
         normalized_image = normalized_image.astype(np.uint8)
         
+        # Read sheet thickness parameters from advanced settings (user-configurable)
+        st_settings = app.internal_flags.get("advanced_settings", {}).get("sheet_thickness", {})
+        st_wave_threshold      = st_settings.get("wave_threshold",      40)   # How waves stick out against the background [0,255]
+        st_min_points_per_wave = st_settings.get("min_points_per_wave", 10)   # How tall the waves are at minimum
+        st_min_wave_gap        = st_settings.get("min_wave_gap",        10)   # Min distance between waves
+
         # Run wave detection on the normalized image
         self.waves = tracking.new_analyze_and_append_waves(
             normalized_image,
-            wave_threshold=40,
-            min_points_per_wave=10,
-            min_wave_gap=10,
+            wave_threshold=st_wave_threshold,
+            min_points_per_wave=st_min_points_per_wave,
+            min_wave_gap=st_min_wave_gap,
             modality=app.mode_var.get(),
             smooth = False
         )
@@ -2807,8 +3081,13 @@ class Magnification_Calculation_Window:
         avg_brightness = np.mean(self.image_array[:, x_min:x_max], axis=1)
         self.selected_data = list(zip(y_values, avg_brightness))
 
+        # Read magnification calculation parameters from advanced settings (user-configurable)
+        mg_settings    = app.internal_flags.get("advanced_settings", {}).get("magnification_calculation", {})
+        mg_max_gaussians = mg_settings.get("max_gaussians", 15)  # Maximum peaks in the image
+        mg_prominence    = mg_settings.get("prominence",    15)  # How much peaks stick out against background
+
         # Find peaks using your existing tracking function
-        peaks = tracking.arbitrary_gaussian_fits(self.selected_data, plot=True, max_gaussians = 15, prominence=15)["means"]
+        peaks = tracking.arbitrary_gaussian_fits(self.selected_data, plot=True, max_gaussians=mg_max_gaussians, prominence=mg_prominence)["means"]
 
         self.calcF(peaks)
 
@@ -3153,9 +3432,16 @@ class Motion_Analysis_Window:
 
     def run_analysis(self):
         """Run the analysis on the cropped image."""
+        # Read analysis parameters from advanced settings (user-configurable)
+        an_settings   = app.internal_flags.get("advanced_settings", {}).get("analysis", {})
+        an_inertia    = an_settings.get("inertia",    0.5)   # How much the speed of the wave effects the next point [0,1]
+        an_prominence = an_settings.get("prominence", 10)    # How much each wave needs to stand out against noise
+        an_min_sep    = an_settings.get("minSep",     6)     # How far each wave need be apart from one another
+        an_noise_floor = an_settings.get("noiseFloor", 100)  # Maximum value considered to be noisy [0,255]
+
         # Perform analysis on the cropped image
         #self.wave_lines = tracking.gaussianWaveDetection(self.cropped_image, self.peak_points)
-        self.wave_lines = tracking.newer_analyze_and_append_waves(self.cropped_image, self.peak_points, modality=app.mode_var.get())
+        self.wave_lines = tracking.newer_analyze_and_append_waves(self.cropped_image, self.peak_points, inertia=an_inertia, prominence=an_prominence, minSep=an_min_sep, noiseFloor=an_noise_floor, modality=app.mode_var.get())
         #self.wave_lines = tracking.new_analyze_and_append_waves(self.cropped_image,modality=app.mode_var.get())
 
         # Visualize the results and enable data deletion

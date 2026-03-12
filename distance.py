@@ -34,7 +34,7 @@ class distance:
         afterTan = math.atan2(num, denom)
         ret = (afterTan * self.lambdaD)/(2*math.pi * self.mu)
 
-        return ret
+        return abs(ret)
 
     def asymMicaAu(self):
         def rightHandSide():
