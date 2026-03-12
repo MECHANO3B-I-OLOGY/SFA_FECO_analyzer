@@ -7,9 +7,11 @@ future plans:
 - Pointy is odd
 - save multiple csv to tiff files
 - add pixel to CSV, split CSV in/out
+- customization of plots
 
 finished:
 
+- mica mica overlay on RoC and analysis window
 - advanced settings
   - Wavelength Calibration
     - prominence = 75 // How much the wavelength lines appear over the noise, line 2161
@@ -29,8 +31,6 @@ finished:
     - prominence = 10 // How much each wave needs to stand out against noise, line 3158
     - minSep = 6 // How far each wave need be apart from one another, line 3158 
     - noiseFloor = 100 // Maximum value considered to be noisy, line 3158, [0,255]
-- mica mica overlay on RoC and analysis window
-- customization of plots
 - Save CSV final data
 - frame selection tool radius of curvature
 - line of best fit front of of peaks analysis stage "Point of Closest approach"

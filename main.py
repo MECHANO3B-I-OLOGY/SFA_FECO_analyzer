@@ -809,6 +809,34 @@ class SFA_FECO_UI:
         dialog.resizable(False, False)
         dialog.grab_set()  # make modal
 
+        # ── helper to build a labelled checkbox section ─────────────────────
+        def make_checkbox_section(parent, title, fields, row_start):
+            """
+            fields is a list of dicts:
+              { "key": str, "label": str, "default": bool, "tooltip": str }
+            Returns a dict mapping key -> tk.BooleanVar.
+            """
+            hdr = ttk.Label(parent, text=title, font=("TkDefaultFont", 10, "bold"))
+            hdr.grid(row=row_start, column=0, columnspan=3, sticky='w',
+                     padx=8, pady=(12, 2))
+
+            sep = ttk.Separator(parent, orient="horizontal")
+            sep.grid(row=row_start + 1, column=0, columnspan=3, sticky='ew', padx=8)
+
+            vars_map = {}
+            for i, field in enumerate(fields):
+                r = row_start + 2 + i
+                var = tk.BooleanVar(value=field["default"])
+                vars_map[field["key"]] = var
+                cb = ttk.Checkbutton(parent, text=field["label"], variable=var)
+                cb.grid(row=r, column=0, columnspan=2, sticky='w', padx=(16, 4), pady=2)
+                ttk.Label(parent, text=field["tooltip"],
+                          style='Regular.TLabel',
+                          foreground='gray').grid(
+                    row=r, column=2, sticky='w', padx=(8, 16), pady=2)
+
+            return vars_map, row_start + 2 + len(fields)
+
         # ── helper to build a labelled section ──────────────────────────────
         def make_section(parent, title, fields, row_start):
             """
@@ -852,6 +880,7 @@ class SFA_FECO_UI:
             return vars_map, row_start + 2 + len(fields)
 
         # ── pull current values (with fallback to defaults) ─────────────────
+        gn  = adv.get("general",                        {})
         wc  = adv.get("wavelength_calibration",    {})
         st  = adv.get("sheet_thickness",            {})
         mg  = adv.get("magnification_calculation",  {})
@@ -882,6 +911,12 @@ class SFA_FECO_UI:
 
         # ── sections ────────────────────────────────────────────────────────
         cur_row = 0
+
+        gn_vars, cur_row = make_checkbox_section(content, "General", [
+            {"key": "show_reference_fringes", "label": "Show Reference Fringes",
+             "default": gn.get("show_reference_fringes", True),
+             "tooltip": "Displays reference fringes over plots"},
+        ], cur_row)
 
         wc_vars, cur_row = make_section(content, "Wavelength Calibration", [
             {"key": "prominence", "label": "Prominence",
@@ -970,6 +1005,9 @@ class SFA_FECO_UI:
 
             try:
                 new_adv = {
+                    "general": {
+                        "show_reference_fringes": gn_vars["show_reference_fringes"].get(),
+                    },
                     "wavelength_calibration": {
                         "prominence": parse_num(wc_vars["prominence"], "WC Prominence"),
                         "distance":   parse_num(wc_vars["distance"],   "WC Distance"),
@@ -1614,6 +1652,7 @@ class SFA_FECO_UI:
                     # Migration: inject advanced_settings defaults for any missing keys
                     # so older internal.json files gain the new controls automatically
                     defaults = {
+                        "general": {"show_reference_fringes": True},
                         "wavelength_calibration": {"prominence": 75, "distance": 10},
                         "sheet_thickness": {"wave_threshold": 40, "min_points_per_wave": 10, "min_wave_gap": 10},
                         "magnification_calculation": {"max_gaussians": 15, "prominence": 15},
@@ -1641,6 +1680,9 @@ class SFA_FECO_UI:
                 "auto_load_calibration": True,
                 # Advanced settings — empirical parameters exposed to the user
                 "advanced_settings": {
+                    "general": {
+                        "show_reference_fringes": True,  # Displays reference fringes over plots
+                    },
                     "wavelength_calibration": {
                         "prominence": 75,   # How much the wavelength lines appear over the noise
                         "distance": 10,     # How far apart the peaks are
@@ -3192,6 +3234,16 @@ class Motion_Analysis_Window:
 
         self.ax.xaxis.set_major_formatter(ticker.FuncFormatter(self.offsetX))
 
+        # Draw reference fringe lines if enabled (x_offset_start is 0 here, so waveToPix gives raw pixel coords)
+        show_fringes = app.internal_flags.get("advanced_settings", {}).get("general", {}).get("show_reference_fringes", True)
+        if show_fringes and self.calibration_parameters:
+            lambdas = [app.lambdaOdd, app.lambdaEven]
+            odd_pix = self.waveToPix(lambdas[0])
+            even_pix = self.waveToPix(lambdas[1])
+            self.ax.axvline(odd_pix, color='cyan', linestyle='--', linewidth=1.2, label=f'Odd fringe ({lambdas[0]:.2f} nm)')
+            self.ax.axvline(even_pix, color='magenta', linestyle='--', linewidth=1.2, label=f'Even fringe ({lambdas[1]:.2f} nm)')
+            self.ax.legend(loc='lower right', fontsize=8)
+
         self.rect_selector = RectangleSelector(
             self.ax, self.on_select_crop, useblit=True, interactive=True
         )
@@ -3343,12 +3395,31 @@ class Motion_Analysis_Window:
         self.rect_selector.set_active(False)
         self.rect_selector.set_active(True)  # Reactivate to allow a new crop
 
-    # === NEW ===
     def show_peak_selection_window(self):
         """Show cropped image and let user click peaks."""
         self.fig, self.ax = plt.subplots(figsize=(10,4))
         self.ax.imshow(self.cropped_image, cmap='gray')
         self.ax.set_title("Click peaks to mark them. Press Enter to continue.")
+
+        # Match pixel axis display to the other windows (show original pixel coords)
+        self.ax.xaxis.set_major_formatter(ticker.FuncFormatter(self.offsetX))
+        self.ax.set_xlabel("Pixels")
+        self.ax.set_ylabel("Pixels")
+
+        # Add wavelength secondary axis on top (same functions as crop/deletion windows)
+        self.refresh_secondary_axis()
+
+        # Draw reference fringe lines if enabled.
+        # waveToPix already returns coords in the cropped image space (0-based),
+        # because it internally subtracts x_offset_start — so use it directly.
+        show_fringes = app.internal_flags.get("advanced_settings", {}).get("general", {}).get("show_reference_fringes", True)
+        if show_fringes and self.calibration_parameters:
+            lambdas = [app.lambdaOdd, app.lambdaEven]
+            odd_pix = self.waveToPix(lambdas[0])
+            even_pix = self.waveToPix(lambdas[1])
+            self.ax.axvline(odd_pix, color='cyan', linestyle='--', linewidth=1.2, label=f'Odd fringe ({lambdas[0]:.2f} nm)')
+            self.ax.axvline(even_pix, color='magenta', linestyle='--', linewidth=1.2, label=f'Even fringe ({lambdas[1]:.2f} nm)')
+            self.ax.legend(loc='lower right', fontsize=8)
 
         # Connect click + key
         self.fig.canvas.mpl_connect("button_press_event", self.on_peak_click)
@@ -3512,8 +3583,8 @@ class Motion_Analysis_Window:
         self.ax.set_title("Highlight data to delete it. Enter to accept, Esc to cancel, close window to save.")
         self.ax.set_xlabel("Pixels")
         self.ax.set_ylabel("Frame Number")
-        self.ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
 
+        self.ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         # Redraw the updated plot
         plt.draw()
 
@@ -3679,6 +3750,15 @@ class RadiusMeasurementWindow:
         self.ax.set_xlabel("Pixels")
         self.ax.set_ylabel("Pixels")
 
+        # Draw reference fringe lines if enabled
+        show_fringes = app.internal_flags.get("advanced_settings", {}).get("general", {}).get("show_reference_fringes", True)
+        if show_fringes and self.calibration_parameters:
+            odd_pix = self.waveToPix(self.lambdas[0])
+            even_pix = self.waveToPix(self.lambdas[1])
+            self.ax.axvline(odd_pix, color='cyan', linestyle='--', linewidth=1.2, label=f'Odd fringe ({self.lambdas[0]:.2f} nm)')
+            self.ax.axvline(even_pix, color='magenta', linestyle='--', linewidth=1.2, label=f'Even fringe ({self.lambdas[1]:.2f} nm)')
+            self.ax.legend(loc='lower right', fontsize=8)
+
         # Recreate secondary axis
         self.refresh_secondary_axis()
 
@@ -3733,6 +3813,16 @@ class RadiusMeasurementWindow:
         self.ax.imshow(self.image, cmap='gray')
         for x, y in self.points:
             self.ax.plot(x, y, 'ro')
+
+        # Draw reference fringe lines if enabled
+        show_fringes = app.internal_flags.get("advanced_settings", {}).get("general", {}).get("show_reference_fringes", True)
+        if show_fringes and self.calibration_parameters:
+            odd_pix = self.waveToPix(self.lambdas[0])
+            even_pix = self.waveToPix(self.lambdas[1])
+            self.ax.axvline(odd_pix, color='cyan', linestyle='--', linewidth=1.2, label=f'Odd fringe ({self.lambdas[0]:.2f} nm)')
+            self.ax.axvline(even_pix, color='magenta', linestyle='--', linewidth=1.2, label=f'Even fringe ({self.lambdas[1]:.2f} nm)')
+            self.ax.legend(loc='lower right', fontsize=8)
+
         self.refresh_secondary_axis()
         self.fig.canvas.draw()
 
