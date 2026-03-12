@@ -1058,6 +1058,7 @@ class SFA_FECO_UI:
         dw = dialog.winfo_width()
         dh = dialog.winfo_height()
         dialog.geometry(f"+{mw - dw // 2}+{mh - dh // 2}")
+        dialog.minsize(dw, dh)
 
     # ------------------------------------------------------------------
     # Application exit
