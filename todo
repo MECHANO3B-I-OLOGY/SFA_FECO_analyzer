@@ -8,6 +8,8 @@ future plans:
 - save multiple csv to tiff files
 - add pixel to CSV, split CSV in/out
 - customization of plots
+- Refractive Index of the Medium
+- Fix tangent rollover
 
 finished:
 
