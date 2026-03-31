@@ -167,7 +167,7 @@ def main():
 
     # --- Computation ------------------------------------------------------
     print(f"\nComputing μ over {len(common_times)} shared time points "
-          f"(t = {t_min} – {t_max})...\n")
+          f"(t = {t_min} - {t_max})...\n")
 
     mu_values = compute_mu(
         lam_D_n  = odd_shared,
@@ -185,7 +185,7 @@ def main():
 
     valid = result_df["refractive_index"].notna().sum()
     print(f"  Valid results : {valid} / {len(result_df)}")
-    print(f"  μ range       : {np.nanmin(mu_values):.6f} – {np.nanmax(mu_values):.6f}")
+    print(f"  μ range       : {np.nanmin(mu_values):.6f} - {np.nanmax(mu_values):.6f}")
     print(f"  μ mean        : {np.nanmean(mu_values):.6f}")
 
     # --- Save output ------------------------------------------------------

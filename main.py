@@ -1947,7 +1947,13 @@ class SFA_FECO_UI:
         def process_section(wave_subset, pairs):
             for i in range(len(pairs)):
                 frame = wave_subset[i][0] + frameOffset
-                wavelength = wave_subset[i][1]
+                pixels = wave_subset[i][1]
+
+                # Convert pixel position to wavelength using the same formula as pixToWave
+                wavelength = (
+                    self.calibration_parameters["slope"] * (pixels - self.calibration_parameters["offset"])
+                    + self.calibration_parameters["intercept"]
+                )
 
                 time = (frame) / fps
 
@@ -1960,6 +1966,7 @@ class SFA_FECO_UI:
                 rows.append([
                     frame,
                     time,
+                    pixels,
                     wavelength,
                     distance,
                     force_over_distance
@@ -1978,7 +1985,7 @@ class SFA_FECO_UI:
         # Write CSV
         with open(output_path, "w", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow(["Frame", "time", "wavelength", "distance", "force/radius"])
+            writer.writerow(["Frame", "time", "pixels", "wavelength", "distance", "force/radius"])
             writer.writerows(rows)
 
         print(f"Saved force-distance data to {output_path}")
