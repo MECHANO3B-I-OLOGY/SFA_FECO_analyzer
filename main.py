@@ -3457,7 +3457,7 @@ class Motion_Analysis_Window:
         # === NEW ===
     def after_peak_selection(self):
         """Called once user finishes selecting peaks."""
-        print("User selected peaks:", self.peak_points)
+        #print("User selected peaks:", self.peak_points)
 
         # TODO later: use these peaks to improve wavefinding
         # For now run your original wavefinding:
@@ -4234,7 +4234,9 @@ class TimeVsDistanceWindow:
         self.dist = dist.distance(lambdas[0], lambdas[1], n=n)
 
         x_vals = parameters["slope"]*(x_vals-parameters["offset"]) + parameters["intercept"]
-        self.x_vals = np.array(self.dist.arrayDistance(x_vals, equation))
+
+        self.x_vals = np.array(self.dist.arrayDistance(x_vals, equation, run_direction=self.mode))
+
 
         # Create figure and scatter plot
         self.fig, self.ax = plt.subplots(figsize=(10, 6))

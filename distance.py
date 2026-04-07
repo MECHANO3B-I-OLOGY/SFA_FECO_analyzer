@@ -1,4 +1,5 @@
 import math
+import numpy as np
 
 class distance:
 
@@ -29,7 +30,6 @@ class distance:
 
             return upperTerm, lowerTerm + (-1)**(self.n+1)*pm
 
-
         num, denom = rightHandSide()
         afterTan = math.atan2(num, denom)
         ret = (afterTan * self.lambdaD)/(2*math.pi * self.mu)
@@ -53,32 +53,82 @@ class distance:
 
         return ret
 
-    def arrayDistance(self, lambdaDArray, func):
+    def arrayDistance(self, lambdaDArray, func, run_direction="out"):
+        """
+        Calculate distance for an array of lambdaD values, with phase unwrapping
+        to handle fringe order crossings.
+
+        Phase unwrapping detects jumps > π in the raw atan2 output across consecutive
+        frames and adds/subtracts 2π to keep the angle sequence continuous. This
+        prevents the distance from jumping or folding back when a fringe crosses a
+        fringe order boundary.
+
+        run_direction : "in" or "out" (default "out")
+            "out" — unwrap left-to-right (forward), anchoring at the start of the run.
+                    Use for the out (separation) run where the fringe moves away.
+            "in"  — unwrap right-to-left (backward), anchoring at the end of the run
+                    (the closest-approach point). This ensures the approach is treated
+                    as continuously decreasing even when it crosses a fringe order.
+
+        The unwrapped angle sequence is then converted to distances using the same
+        formula as the per-point functions, but with the cumulative phase offset applied.
+        """
         if not hasattr(self, func):
             raise ValueError(f"Unknown function '{func}'")
 
-        func = getattr(self, func)
-        results = []
+        is_realD = (func == "realDCalc")
+        is_asymMicaAu = (func == "asymMicaAu")
+
+        # --- Collect raw atan2 angles and per-point scale factors ---
+        raw_angles = []
+        scale_factors = []   #holds thing to be multiplied by angle
+
         for val in lambdaDArray:
             self.lambdaD = val
-            results.append(func())
+
+            if is_realD:
+                muBar = self.calcMuBar(self.calcMuMica(val))
+                upperInner = 1 - (self.lambdaOdd / val)
+                lowerInner = 1 - (self.lambdaOdd / self.lambdaEven)
+                innerTerm = (upperInner / lowerInner) * math.pi
+                num = 2 * muBar * math.sin(innerTerm)
+                denom = (1 + muBar**2) * math.cos(innerTerm) + (-1)**(self.n + 1) * (muBar**2 - 1)
+                scale = val / (2 * math.pi * self.mu)
+
+            elif is_asymMicaAu: 
+                muMica = self.calcMuMica(val)
+                r = (muMica - self.mu) / (muMica + self.mu)
+                num = (1 - r**2) * math.sin(2 * math.pi * self.lambdaOdd / val)
+                denom = -2 * r + (1 + r**2) * math.cos(2 * math.pi * self.lambdaOdd / val)
+                scale = val / (4 * math.pi * self.mu)
+
+            raw_angles.append(math.atan2(num, denom))
+            scale_factors.append(scale)
+
+        # --- Unwrap the angle sequence ---
+        if run_direction == "in":
+            unwrapped = np.unwrap(raw_angles[::-1])[::-1] #in run reversed
+        else:
+            unwrapped = np.unwrap(raw_angles)
+
+        # --- Convert unwrapped angles back to distances ---
+        results = []
+        for angle, scale in zip(unwrapped, scale_factors):
+            d = angle * scale
+            results.append(d)
+
         return results
 
 if __name__ == "__main__":
-    #dist = distance(560.1765, 572.9366, 560.720, muMica=1.5971, mu = 1.34,n=43)
-    
     lambda_odd = float(input("Enter Lambda odd (nm): "))
     lambda_even = float(input("Enter Lambda even (nm): "))
 
-    # Prompt for optional inputs with defaults
     mu_input = input("Enter mu (default 1.34): ").strip()
     n_input = input("Enter n (default 3): ").strip()
 
-    # Use defaults if no input is given
     mu = float(mu_input) if mu_input else 1.34
     n = float(n_input) if n_input else 3
 
-    # Create distance object using entered values
     dist = distance(lambda_odd, lambda_even, mu=mu, n=n)
 
     result = dist.arrayDistance([
@@ -107,11 +157,7 @@ if __name__ == "__main__":
     558.253, 558.251, 558.247, 558.243, 558.244, 558.245, 558.239, 558.246, 558.242,
     558.236, 558.239, 558.236, 558.237, 558.239, 558.229, 558.234, 558.226, 558.237,
     558.225, 558.226, 558.232, 558.229, 558.221, 558.226
-]
-, "asymMicaAu")
+], "asymMicaAu")
 
-    # Print results
     for i in result:
         print(f"The distance is {i} nm")
-
-

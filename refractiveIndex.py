@@ -171,7 +171,7 @@ def main():
 
     mu_values = compute_mu(
         lam_D_n  = odd_shared,
-        lam_D_n1 = even_shared,
+        lam_D_n1 = even_shared, # HERE: + 10 for testing
         lam0_n2  = lam0_n2,
         lam0_n1  = lam0_n1,
         lam0_n   = lam0_n,

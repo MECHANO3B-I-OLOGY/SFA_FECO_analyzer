@@ -18,5 +18,8 @@ venv
 Output/*
 
 questions
+even.csv
+odd.csv
+example.txt
 
 !setups.json
