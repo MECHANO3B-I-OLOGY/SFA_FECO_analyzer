@@ -188,6 +188,27 @@ class SFA_FECO_UI:
         )
         self.advanced_settings_button.grid(row=2, column=0, columnspan=2, sticky='w', pady=(4, 2))
 
+        # Setup selector frame (moved from Step 2 column) — child of calibration_subframe at row=1
+        setupSelectorFrame = ttk.Frame(self.calibration_subframe)
+        setupSelectorFrame.grid(row=1, column=0, sticky='w', padx=10, pady=(5, 5))
+
+        self.setupLabel = ttk.Label(setupSelectorFrame, text="Setup: ", style='Regular.TLabel')
+        self.setupLabel.pack(side='left', padx=(0, 5))
+
+        self.setupEntryVar = tk.StringVar(value=str(self.calibration_values["setup"])) 
+        self.setupEntry = ttk.Entry(setupSelectorFrame, textvariable=self.setupEntryVar, width=25, style='Regular.TEntry')
+        self.setupEntry.pack(side='left', padx=(0, 5))
+        self.setupEntry.config(state="readonly")
+
+        self.setupButton = ttk.Button(
+            setupSelectorFrame,
+            text="Select Setup",
+            command=self.selectSetupWindow,
+            style='Regular.TButton',
+            width=15
+        )
+        self.setupButton.pack(side='left', pady=5)
+
         # Add a horizontal separator between rows
         calibrate_separator1 = ttk.Separator(self.calibration_subframe, orient="horizontal")
         calibrate_separator1.grid(row=2, column=0, sticky='ew', pady=10)
@@ -293,7 +314,7 @@ class SFA_FECO_UI:
         calibrate_separator1.grid(row=9+1, column=0, sticky='ew', pady=10)
 
         # Select Thickness File button
-        self.select_thickness_file_button = ttk.Button(self.calibration_subframe, text="Select Mica Mica Contact (No Hg) Video", command=self.select_thickness_file, style='Regular.TButton')
+        self.select_thickness_file_button = ttk.Button(self.calibration_subframe, text="Select Reference Contact (no Hg) video", command=self.select_thickness_file, style='Regular.TButton')
         self.select_thickness_file_button.grid(row=10+1, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the selected thickness file's name
@@ -344,26 +365,8 @@ class SFA_FECO_UI:
         prep_label = ttk.Label(self.radius_subframe, text="STEP 2: Radius of Curvature Calibration", style='Step.TLabel', font=20)
         prep_label.grid(row=0, column=0, sticky='ew', padx=10)
 
-        setupSelectorFrame = ttk.Frame(self.radius_subframe)
-        setupSelectorFrame.grid(row=1, column=0, sticky='ew', padx=10, pady=(5, 10))
+        self.radius_subframe.columnconfigure(0, weight=1)
 
-        self.setupLabel = ttk.Label(setupSelectorFrame, text="Setup: ", style='Regular.TLabel')
-        self.setupLabel.pack(side='left', padx=(0, 5))
-
-        self.setupEntryVar = tk.StringVar(value=str(self.calibration_values["setup"])) 
-        self.setupEntry = ttk.Entry(setupSelectorFrame, textvariable=self.setupEntryVar, width=25, style='Regular.TEntry')
-        self.setupEntry.pack(side='left', padx=(0, 5))
-        self.setupEntry.config(state="readonly")
-
-        self.setupButton = ttk.Button(
-            setupSelectorFrame,
-            text="Select Setup",
-            command=self.selectSetupWindow,
-            style='Regular.TButton',
-            width=15
-        )
-        self.setupButton.pack(fill='x', pady=5)
-        
         # --- Magnification Calibration Section ---
         self.select_magnification_image_button = ttk.Button(
             self.radius_subframe,
@@ -371,7 +374,7 @@ class SFA_FECO_UI:
             command=self.select_magnification_file,  # define this method later
             style='Regular.TButton'
         )
-        self.select_magnification_image_button.grid(row=2, column=0, sticky='ew', padx=10, pady=5)
+        self.select_magnification_image_button.grid(row=1, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display selected magnification image file
         self.magnification_image_label = ttk.Label(
@@ -379,11 +382,11 @@ class SFA_FECO_UI:
             text="No file selected",
             style='Regular.TLabel'
         )
-        self.magnification_image_label.grid(row=3, column=0, sticky='new', padx=10)
+        self.magnification_image_label.grid(row=2, column=0, sticky='new', padx=10)
 
         # Frame for f value label and entry side by side
         self.scale_frame = ttk.Frame(self.radius_subframe)
-        self.scale_frame.grid(row=4, column=0, sticky='w', padx=10, pady=(5, 5))
+        self.scale_frame.grid(row=3, column=0, sticky='w', padx=10, pady=(5, 5))
 
         self.scale_label = ttk.Label(self.scale_frame, text=r"scale (μm/tick):", style='Regular.TLabel')
         self.scale_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
@@ -400,11 +403,11 @@ class SFA_FECO_UI:
             command=self.calculate_magnification_factor,  # define this method later
             style='Regular.TButton'
         )
-        self.calculate_magnification_button.grid(row=5, column=0, sticky='ew', padx=10, pady=5)
+        self.calculate_magnification_button.grid(row=4, column=0, sticky='ew', padx=10, pady=5)
 
         # Frame for f value label and entry side by side
         self.f_frame = ttk.Frame(self.radius_subframe)
-        self.f_frame.grid(row=6, column=0, sticky='w', padx=10, pady=(5, 5))
+        self.f_frame.grid(row=5, column=0, sticky='w', padx=10, pady=(5, 5))
 
         self.calibration_f_label = ttk.Label(self.f_frame, text=r"f value (px/μm):", style='Regular.TLabel')
         self.calibration_f_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
@@ -416,20 +419,20 @@ class SFA_FECO_UI:
 
         # Select radius File button
         self.select_radius_file_button = ttk.Button(self.radius_subframe, text="Select Radius of Curvature Calibration Video", command=self.select_radius_file, style='Regular.TButton')
-        self.select_radius_file_button.grid(row=7, column=0, sticky='ew', padx=10, pady=5)
+        self.select_radius_file_button.grid(row=6, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the selected radius file's name
         self.radius_file_label = ttk.Label(self.radius_subframe, text="No file selected", style='Regular.TLabel')
-        self.radius_file_label.grid(row=8, column=0, sticky='new', padx=10)
+        self.radius_file_label.grid(row=7, column=0, sticky='new', padx=10)
 
 
         # Calibrate radius button
         self.execute_radius_calibration = ttk.Button(self.radius_subframe, text="Find Radius", command=self.run_radius_calibration, style='Regular.TButton')
-        self.execute_radius_calibration.grid(row=9, column=0, sticky='ew', padx=10, pady=5)
+        self.execute_radius_calibration.grid(row=8, column=0, sticky='ew', padx=10, pady=5)
 
         # Frame for radius label and entry side by side
         self.radius_frame = ttk.Frame(self.radius_subframe)
-        self.radius_frame.grid(row=10, column=0, sticky='w', padx=10, pady=(5, 5))
+        self.radius_frame.grid(row=9, column=0, sticky='w', padx=10, pady=(5, 5))
 
         self.calibration_radius_label = ttk.Label(self.radius_frame, text=r"Radius of Curvature (cm):", style='Regular.TLabel')
         self.calibration_radius_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
@@ -441,26 +444,26 @@ class SFA_FECO_UI:
 
         # Add a horizontal separator between rows
         calibrate_separator1 = ttk.Separator(self.radius_subframe, orient="horizontal")
-        calibrate_separator1.grid(row=11, column=0, sticky='ew', pady=10)
+        calibrate_separator1.grid(row=10, column=0, sticky='ew', pady=10)
 
         prep_label = ttk.Label(self.radius_subframe, text="Optional: Flat Contact Calculation", style='Step.TLabel', font=20)
-        prep_label.grid(row=12, column=0, sticky='ew', padx=10)
+        prep_label.grid(row=11, column=0, sticky='ew', padx=10)
 
         # Select radius File button
         self.select_diameter_file_button = ttk.Button(self.radius_subframe, text="Select Flat Contact Diameter Calculation Video", command=self.select_diameter_file, style='Regular.TButton')
-        self.select_diameter_file_button.grid(row=13, column=0, sticky='ew', padx=10, pady=5)
+        self.select_diameter_file_button.grid(row=12, column=0, sticky='ew', padx=10, pady=5)
 
         # Label to display the selected radius file's name
         self.diameter_file_label = ttk.Label(self.radius_subframe, text="No file selected", style='Regular.TLabel')
-        self.diameter_file_label.grid(row=14, column=0, sticky='new', padx=10)
+        self.diameter_file_label.grid(row=13, column=0, sticky='new', padx=10)
 
         # Calibrate radius button
         self.execute_diameter_calibration = ttk.Button(self.radius_subframe, text="Find Diameter", command=self.run_diameter_calibration, style='Regular.TButton')
-        self.execute_diameter_calibration.grid(row=15, column=0, sticky='ew', padx=10, pady=5)
+        self.execute_diameter_calibration.grid(row=14, column=0, sticky='ew', padx=10, pady=5)
 
         # Frame for radius label and entry side by side
         self.diameter_frame = ttk.Frame(self.radius_subframe)
-        self.diameter_frame.grid(row=16, column=0, sticky='w', padx=10, pady=(5, 5))
+        self.diameter_frame.grid(row=15, column=0, sticky='w', padx=10, pady=(5, 5))
 
         self.calibration_diameter_label = ttk.Label(self.diameter_frame, text=r"Fringe Diameter (μm):", style='Regular.TLabel')
         self.calibration_diameter_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
@@ -482,7 +485,7 @@ class SFA_FECO_UI:
         self.raw_video_subframe = ttk.Frame(self.main_frame)
         self.raw_video_subframe.grid(row=0, column=4, sticky='new', pady=(25,0))
 
-        prep_label = ttk.Label(self.raw_video_subframe, text="STEP 3: Prep", style='Step.TLabel', font=20)
+        prep_label = ttk.Label(self.raw_video_subframe, text="STEP 3: Motion Profile Generation", style='Step.TLabel', font=20)
         prep_label.grid(row=0, column=0, sticky='ew', padx=10)
 
         self.raw_video_subframe.columnconfigure(0, weight=1)
@@ -561,7 +564,7 @@ class SFA_FECO_UI:
         calibrate_separator1.grid(row=6, column=0, sticky='ew', pady=10)
 
         # region Step 2: Analyze
-        step3_label = ttk.Label(self.raw_video_subframe, text="STEP 4: Analyze", style='Step.TLabel', font=20)
+        step3_label = ttk.Label(self.raw_video_subframe, text="STEP 4: Motion Profile Analysis", style='Step.TLabel', font=20)
         step3_label.grid(row=7, column=0, sticky='ew', padx=10)
 
         # region Subframe for Data File Selection
@@ -656,7 +659,7 @@ class SFA_FECO_UI:
         self.visualize_subframe.grid(row=0, column=6, sticky='new', padx=10, pady=25)
 
         # region Step 3: Visualize
-        step4_label = ttk.Label(self.visualize_subframe, text="STEP 5: Visualize and Export", style='Step.TLabel', font=20)
+        step4_label = ttk.Label(self.visualize_subframe, text="STEP 5: Visualize and Export Force/Distance Curves", style='Step.TLabel', font=20)
         step4_label.pack(anchor='w', pady=(0, 5))
 
         # --- Camera FPS row ---
@@ -2155,6 +2158,8 @@ class Frame_Prep_Window:
         self.fig.canvas.mpl_connect("button_press_event", self.on_click)
         self.fig.canvas.mpl_connect("close_event", self.on_close)
 
+        self.fig.canvas.manager.set_window_title("Skew Correction")
+
         self.ax.set_xlabel("Pixels")
         self.ax.set_ylabel("Pixels")
 
@@ -2316,6 +2321,8 @@ class Wavelength_Calibration_Window:
         self.fig.canvas.mpl_connect("button_release_event", self.end_crop)
         self.fig.canvas.mpl_connect("key_press_event", self.handle_key_press)
         self.fig.canvas.mpl_connect('close_event', self.close_figure)
+
+        self.fig.canvas.manager.set_window_title("Wavelength Calibration")
 
         self.ax.set_xlabel("Pixels")
         self.ax.set_ylabel("Pixels")
@@ -2683,6 +2690,8 @@ class Mica_Thickness_Calibration_Window:
 
         self.fig.canvas.mpl_connect('draw_event', self.update_secondary_axis)
 
+        self.fig.canvas.manager.set_window_title("Thickness Calibration")
+
         # Show the plot
         plt.show()
 
@@ -2743,11 +2752,10 @@ class Mica_Thickness_Calibration_Window:
         self.fig.canvas.draw_idle()
 
     def scale_image(self, image):
-        """Scales the image by the specified factor."""
+        """Returns the image in original resolution so pixel coordinates are preserved."""
         if image.mode not in ("RGB", "L"):
             image = image.convert("RGB")
-        width, height = image.size
-        return image.resize((int(width * self.scale_factor), int(height * self.scale_factor)), Image.LANCZOS)
+        return image  # No scaling: keep native pixel coordinates
 
     def display_image(self, image):
         """Displays the current frame in the Matplotlib axes."""
@@ -2809,11 +2817,10 @@ class Mica_Thickness_Calibration_Window:
         """Confirms the crop selection and proceeds to wave analysis."""
         if self.crop_start_y is not None and self.crop_end_y is not None:
             self.update_instructions("Select lines for calibration.")
-            y1_display, y2_display = sorted((self.crop_start_y, self.crop_end_y))
 
-            # Convert display coords back to original image coords
-            y1 = int(y1_display / self.scale_factor)
-            y2 = int(y2_display / self.scale_factor)
+            # Coordinates are now in original image pixels (no scaling applied)
+            y1 = int(min(self.crop_start_y, self.crop_end_y))
+            y2 = int(max(self.crop_start_y, self.crop_end_y))
 
             self.image.seek(self.current_frame_index)
             cropped_frame = self.image.crop((0, y1, self.image.width, y2))
@@ -2972,13 +2979,13 @@ class Mica_Thickness_Calibration_Window:
 
         app.setLambdas(lambdas)
 
-        #print(lambdas)
+        # print(lambdas)
 
         thickness = self.calculate_thickness()
         if thickness:
             self.callback(thickness)
 
-        n = int(np.round(((lambdas[1]/(lambdas[1]-lambdas[0]))-1)/1.024)) 
+        n = int(np.round(((lambdas[1]/(lambdas[1]-lambdas[0]))-1)/1.024))
 
         app.setN(n)
 
@@ -3064,6 +3071,8 @@ class Magnification_Calculation_Window:
 
         # Connect keypress events
         self.fig.canvas.mpl_connect("key_press_event", self.on_key_press)
+
+        self.fig.canvas.manager.set_window_title("Magnification Factor Calculation")
 
         plt.show()
 
@@ -3250,7 +3259,7 @@ class Motion_Analysis_Window:
             even_pix = self.waveToPix(lambdas[1])
             self.ax.axvline(odd_pix, color='cyan', linestyle='--', linewidth=1.2, label=f'Odd fringe ({lambdas[0]:.2f} nm)')
             self.ax.axvline(even_pix, color='magenta', linestyle='--', linewidth=1.2, label=f'Even fringe ({lambdas[1]:.2f} nm)')
-            self.ax.legend(loc='lower right', fontsize=8)
+            self.ax.legend(loc='lower right', fontsize=11)
 
         self.rect_selector = RectangleSelector(
             self.ax, self.on_select_crop, useblit=True, interactive=True
@@ -3258,6 +3267,8 @@ class Motion_Analysis_Window:
         self.fig.canvas.mpl_connect('key_press_event', self.handle_key_press)
 
         #self._draw_cid = self.fig.canvas.mpl_connect('draw_event', self.update_secondary_axis)
+
+        self.fig.canvas.manager.set_window_title("Motion Profile Analysis")
 
         plt.show(block=True)
 
@@ -3427,7 +3438,7 @@ class Motion_Analysis_Window:
             even_pix = self.waveToPix(lambdas[1])
             self.ax.axvline(odd_pix, color='cyan', linestyle='--', linewidth=1.2, label=f'Odd fringe ({lambdas[0]:.2f} nm)')
             self.ax.axvline(even_pix, color='magenta', linestyle='--', linewidth=1.2, label=f'Even fringe ({lambdas[1]:.2f} nm)')
-            self.ax.legend(loc='lower right', fontsize=8)
+            self.ax.legend(loc='lower right', fontsize=11)
 
         # Connect click + key
         self.fig.canvas.mpl_connect("button_press_event", self.on_peak_click)
@@ -3694,7 +3705,7 @@ class RadiusMeasurementWindow:
         self.instruction_text = self.instructions_ax.text(
             0.5,
             0.5,
-            "Select 3 points (D1, Xtop, Xbottom) - Left Click to Add, Right Click to Undo, Enter to Confirm",
+            "Select 3 points (D1, Xtop, Xbottom) - Left Click to Add, Right Click to Undo, Enter to Confirm\n\n",
             fontsize=10,
             ha="center",
             va="center",
@@ -3739,6 +3750,8 @@ class RadiusMeasurementWindow:
         # Cursor
         self.cursor = Cursor(self.ax, useblit=True, color='red', linewidth=1)
 
+        self.fig.canvas.manager.set_window_title("Radius of Curvature Calculation")
+
         plt.show()
 
     # ------------------ NEW METHOD ------------------
@@ -3765,7 +3778,7 @@ class RadiusMeasurementWindow:
             even_pix = self.waveToPix(self.lambdas[1])
             self.ax.axvline(odd_pix, color='cyan', linestyle='--', linewidth=1.2, label=f'Odd fringe ({self.lambdas[0]:.2f} nm)')
             self.ax.axvline(even_pix, color='magenta', linestyle='--', linewidth=1.2, label=f'Even fringe ({self.lambdas[1]:.2f} nm)')
-            self.ax.legend(loc='lower right', fontsize=8)
+            self.ax.legend(loc='lower right', fontsize=11)
 
         # Recreate secondary axis
         self.refresh_secondary_axis()
@@ -3829,7 +3842,7 @@ class RadiusMeasurementWindow:
             even_pix = self.waveToPix(self.lambdas[1])
             self.ax.axvline(odd_pix, color='cyan', linestyle='--', linewidth=1.2, label=f'Odd fringe ({self.lambdas[0]:.2f} nm)')
             self.ax.axvline(even_pix, color='magenta', linestyle='--', linewidth=1.2, label=f'Even fringe ({self.lambdas[1]:.2f} nm)')
-            self.ax.legend(loc='lower right', fontsize=8)
+            self.ax.legend(loc='lower right', fontsize=11)
 
         self.refresh_secondary_axis()
         self.fig.canvas.draw()
@@ -3877,7 +3890,6 @@ class RadiusMeasurementWindow:
         self.dist = dist.distance(self.lambdas[0], self.lambdas[1], n=self.n)
 
         x_d1, x_bottom = np.array(self.dist.arrayDistance([x_d1, x_bottom], self.equation))
-
         # Compute radius using the formula
         D_diff = abs(x_d1 - x_bottom)  # Only the difference matters
 
@@ -3942,6 +3954,8 @@ class Fringe_Diameter_Window:
         self.fig.canvas.mpl_connect("motion_notify_event", self.drag_crop)
         self.fig.canvas.mpl_connect("button_release_event", self.end_crop)
         self.fig.canvas.mpl_connect("key_press_event", self.handle_key_press)
+
+        self.fig.canvas.manager.set_window_title("Fringe Diameter Calculation")
 
         self.ax.set_xlabel("Pixels")
         self.ax.set_ylabel("Pixels")
@@ -4250,7 +4264,7 @@ class TimeVsDistanceWindow:
 
         self.ax.set_xlabel(r"Time, $\mathit{t}$ (s)")
         self.ax.set_ylabel(r"Distance, $\mathit{D}$ (nm)")
-        self.ax.set_title(f"Time vs Distance Scatter Plot {mode}")
+        self.ax.set_title(f"Time vs distance scatter plot {mode}")
         self.ax.grid(True)
 
         self.instruction_text = self.fig.text(
@@ -4265,6 +4279,8 @@ class TimeVsDistanceWindow:
 
         # Reference to current regression line (so we can remove it)
         self.current_line = None
+
+        self.fig.canvas.manager.set_window_title("Distance Over Time")
 
         plt.show()
 
@@ -4360,10 +4376,11 @@ class ForceVsDistanceWindow:
 
         plt.xlabel(r"Distance, $\mathit{D}$ (nm)")
         plt.ylabel(r"Force/Radius, $\mathit{F/R}$ (mN/m)")
-        plt.title("Force vs Distance Scatter Plot")
+        plt.title("Force vs distance scatter plot")
         plt.grid(True)
         plt.yscale(y_scale)
         plt.legend()
+        self.fig.canvas.manager.set_window_title("Force vs Distance")
         plt.show()
 
 if __name__ == "__main__":

@@ -9,10 +9,28 @@ future plans:
 - add pixel to CSV, split CSV in/out
 - customization of plots
 - Refractive Index of the Medium
-- Fix tangent rollover
+
+- Beta/gamma lines shown mica mica contact
+  - toggle 
+- fractional pixels smoothening 
+- Save data at any point
 
 finished:
 
+- title plot windwows
+- axies labels for motion profile frames, pixels, time
+  -darker green
+- not title case graphs
+- Visual and Export F/D Curves
+- thickness calculation
+  - select reference ocntact no Hg
+  - move setup selection to start
+- Prep -> Motion Profile  Gmneration
+- Analysis -> MOtion Profile Analysi
+- colors for reference lines
+  - increase legend size
+  - more spacing for axis labels
+- Fix tangent rollover
 - mica mica overlay on RoC and analysis window
 - advanced settings
   - Wavelength Calibration

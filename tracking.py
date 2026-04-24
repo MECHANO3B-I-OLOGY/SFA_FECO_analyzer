@@ -395,6 +395,31 @@ def newer_analyze_and_append_waves(
 
     return waves
 
+def _subpixel_peak(line, idx):
+    """
+    Parabolic (quadratic) interpolation around a peak index to get a
+    sub-pixel float column position.
+
+    Given three samples y[-1], y[0], y[+1] around the peak, the vertex
+    of the fitted parabola is at offset:
+        delta = 0.5 * (y[-1] - y[+1]) / (y[-1] - 2*y[0] + y[+1])
+
+    Falls back to the integer index if interpolation is degenerate.
+    """
+    if idx <= 0 or idx >= len(line) - 1:
+        return float(idx)
+    ym1 = float(line[idx - 1])
+    y0  = float(line[idx])
+    yp1 = float(line[idx + 1])
+    denom = ym1 - 2.0 * y0 + yp1
+    if denom == 0.0:
+        return float(idx)
+    delta = 0.5 * (ym1 - yp1) / denom
+    # Clamp to half-pixel to avoid wild extrapolation
+    delta = np.clip(delta, -0.5, 0.5)
+    return float(idx) + delta
+
+
 def _step(image, row, waves, predict, edgeBound, prominence, minSep, noiseFloor):
     width = image.shape[1]
     n = len(waves)
@@ -411,13 +436,16 @@ def _step(image, row, waves, predict, edgeBound, prominence, minSep, noiseFloor)
     if len(peaks) == 0:
         return waves
 
+    # Sub-pixel refine all detected peaks up front
+    peaks_f = np.array([_subpixel_peak(line, p) for p in peaks])
+
     # ============================================================
     # SINGLE WAVE (trivial assignment)
     # ============================================================
     if n == 1:
         pred = predict(waves[0])
-        best = min(peaks, key=lambda p: abs(p - pred))
-        waves[0].append((row, best))
+        best_idx = np.argmin(np.abs(peaks_f - pred))
+        waves[0].append((row, peaks_f[best_idx]))
         return waves
 
     # ============================================================
@@ -429,8 +457,8 @@ def _step(image, row, waves, predict, edgeBound, prominence, minSep, noiseFloor)
     best = None
     best_cost = np.inf
 
-    for a in peaks:
-        for b in peaks:
+    for i, a in enumerate(peaks_f):
+        for j, b in enumerate(peaks_f):
             if a >= b:
                 continue
 
@@ -481,12 +509,13 @@ def postprocess_wave(wave, midpoint):
     # --- re-smooth to remove clamping kinks ---
     win = min(7, len(cols) // 2 * 2 + 1)
     cols = savgol_filter(cols, win, 2)
+    
 
     # =====================================================
     # Optional curvature limiter (assumption #2)
     # =====================================================
     '''
-    max_delta = 4.0  # pixels per row
+    max_delta = 8.0  # pixels per row
 
     for i in range(1, len(cols)):
         d = cols[i] - cols[i - 1]
@@ -1258,4 +1287,4 @@ def arbitrary_gaussian_fits(
         "n_gauss": n_gauss,
         "x_dense": x_dense,
         "y_fit": y_fit,
-    } 
+    }
