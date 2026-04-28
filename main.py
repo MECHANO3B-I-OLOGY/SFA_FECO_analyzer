@@ -933,17 +933,13 @@ class SFA_FECO_UI:
         ], cur_row)
 
         st_vars, cur_row = make_section(content, "Sheet Thickness", [
-            {"key": "wave_threshold", "label": "Wave Threshold",
-             "default": st.get("wave_threshold", 40),
-             "tooltip": "How waves stick out against the background",
-             "bounds": (0, 255)},
-            {"key": "min_points_per_wave", "label": "Min Points Per Wave",
-             "default": st.get("min_points_per_wave", 10),
-             "tooltip": "How tall the waves are at minimum",
+            {"key": "max_gaussians", "label": "Max Gaussians",
+             "default": st.get("max_gaussians", 15),
+             "tooltip": "Maximum number of fringe lines to detect",
              "bounds": None},
-            {"key": "min_wave_gap", "label": "Min Wave Gap",
-             "default": st.get("min_wave_gap", 10),
-             "tooltip": "Min distance between waves",
+            {"key": "prominence", "label": "Prominence",
+             "default": st.get("prominence", 15),
+             "tooltip": "How much fringe peaks stand out against background",
              "bounds": None},
         ], cur_row)
 
@@ -1016,9 +1012,8 @@ class SFA_FECO_UI:
                         "distance":   parse_num(wc_vars["distance"],   "WC Distance"),
                     },
                     "sheet_thickness": {
-                        "wave_threshold":      parse_num(st_vars["wave_threshold"],      "Wave Threshold",      (0, 255)),
-                        "min_points_per_wave": parse_num(st_vars["min_points_per_wave"], "Min Points Per Wave"),
-                        "min_wave_gap":        parse_num(st_vars["min_wave_gap"],        "Min Wave Gap"),
+                        "max_gaussians": parse_num(st_vars["max_gaussians"], "ST Max Gaussians"),
+                        "prominence":    parse_num(st_vars["prominence"],    "ST Prominence"),
                     },
                     "magnification_calculation": {
                         "max_gaussians": parse_num(mg_vars["max_gaussians"], "Max Gaussians"),
@@ -1658,7 +1653,7 @@ class SFA_FECO_UI:
                     defaults = {
                         "general": {"show_reference_fringes": True},
                         "wavelength_calibration": {"prominence": 75, "distance": 10},
-                        "sheet_thickness": {"wave_threshold": 40, "min_points_per_wave": 10, "min_wave_gap": 10},
+                        "sheet_thickness": {"max_gaussians": 15, "prominence": 15},
                         "magnification_calculation": {"max_gaussians": 15, "prominence": 15},
                         "prep": {"padding": 2, "noiseFloor": 150},
                         "analysis": {"inertia": 0.5, "prominence": 10, "minSep": 6, "noiseFloor": 100},
@@ -1692,9 +1687,8 @@ class SFA_FECO_UI:
                         "distance": 10,     # How far apart the peaks are
                     },
                     "sheet_thickness": {
-                        "wave_threshold": 40,       # How waves stick out against the background [0,255]
-                        "min_points_per_wave": 10,  # How tall the waves are at minimum
-                        "min_wave_gap": 10,         # Min distance between waves
+                        "max_gaussians": 15,  # Maximum number of fringe lines to detect
+                        "prominence": 15,     # How much fringe peaks stand out against background
                     },
                     "magnification_calculation": {
                         "max_gaussians": 15,  # Maximum peaks in the image
@@ -2483,8 +2477,8 @@ class Wavelength_Calibration_Window:
 
         self.peaks, _ = find_peaks(
             norm_255,
-            prominence=wc_prominence,   # adjust based on your data scale
-            distance=wc_distance,        # ensures peaks don't cluster
+            prominence=wc_prominence, 
+            distance=wc_distance,
         )
 
         self.display_waves()
@@ -2852,40 +2846,59 @@ class Mica_Thickness_Calibration_Window:
         self.update_frame(self.current_frame_index)
 
     def run_wave_detection(self, image):
-        """Detect and filter wave lines, then allow user to select two for calibration."""
-        # Convert the PIL image to a NumPy array
+        """Detect fringe lines using Gaussian fitting on the column-averaged brightness profile."""
+        # Convert the PIL image to a NumPy array and normalize
         image_array = np.array(image)
-        
-        # Normalize the image
+        if image_array.ndim == 3:
+            image_array = image_array.mean(axis=2)
         normalized_image = cv2.normalize(image_array, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
-        normalized_image = normalized_image.astype(np.uint8)
-        
-        # Read sheet thickness parameters from advanced settings (user-configurable)
-        st_settings = app.internal_flags.get("advanced_settings", {}).get("sheet_thickness", {})
-        st_wave_threshold      = st_settings.get("wave_threshold",      40)   # How waves stick out against the background [0,255]
-        st_min_points_per_wave = st_settings.get("min_points_per_wave", 10)   # How tall the waves are at minimum
-        st_min_wave_gap        = st_settings.get("min_wave_gap",        10)   # Min distance between waves
+        normalized_image = normalized_image.astype(np.float32)
 
-        # Run wave detection on the normalized image
-        self.waves = tracking.new_analyze_and_append_waves(
-            normalized_image,
-            wave_threshold=st_wave_threshold,
-            min_points_per_wave=st_min_points_per_wave,
-            min_wave_gap=st_min_wave_gap,
-            modality=app.mode_var.get(),
-            smooth = False
+        # Average brightness along each column (axis=0) to get a per-pixel-x profile
+        col_avg = np.mean(normalized_image, axis=0)
+        x_vals = np.arange(len(col_avg))
+        data = list(zip(x_vals, col_avg))
+
+        # Read sheet thickness Gaussian parameters from advanced settings
+        st_settings      = app.internal_flags.get("advanced_settings", {}).get("sheet_thickness", {})
+        st_max_gaussians = st_settings.get("max_gaussians", 15)   # Maximum number of fringe lines
+        st_prominence    = st_settings.get("prominence",    15)   # How much peaks stand out against background
+
+        # Fit Gaussians to locate fringe peaks (fringes are bright peaks, so invert_peaks=True)
+        result = tracking.arbitrary_gaussian_fits(
+            data,
+            plot=True,
+            max_gaussians=st_max_gaussians,
+            prominence=st_prominence,
+            invert_peaks=True
         )
-        
-        # Proceed with filtering and displaying waves
-        wave_averages = [np.mean([x for _, x in wave]) for wave in self.waves]
-        
-        # Filter out clustered wave averages
-        filtered_averages = []
-        for avg in sorted(wave_averages):
-            if not filtered_averages or abs(filtered_averages[-1] - avg) > 5:
-                filtered_averages.append(avg)
-        
-        self.filtered_averages = filtered_averages
+
+        # Gaussian means are the fringe X positions; filter out any that are too close together
+        raw_means = sorted(result["means"])
+        deduped = []
+        for avg in raw_means:
+            if not deduped or abs(deduped[-1] - avg) > 5:
+                deduped.append(avg)
+
+        # Peaks come in pairs — collapse each consecutive pair into its midpoint.
+        # If there is an odd number, drop whichever unpaired endpoint (first or last)
+        # is furthest from its nearest neighbor.
+        if len(deduped) % 2 != 0 and len(deduped) >= 3:
+            gap_first = abs(deduped[1] - deduped[0])   # distance from first to its nearest neighbour
+            gap_last  = abs(deduped[-1] - deduped[-2])  # distance from last to its nearest neighbour
+            if gap_first >= gap_last:
+                deduped = deduped[1:]   # drop the isolated first peak
+            else:
+                deduped = deduped[:-1]  # drop the isolated last peak
+
+        # Replace each consecutive pair (deduped[0],deduped[1]), (deduped[2],deduped[3]), ...
+        # with the midpoint of that pair.
+        paired_means = []
+        for i in range(0, len(deduped) - 1, 2):
+            midpoint = (deduped[i] + deduped[i + 1]) / 2.0
+            paired_means.append(midpoint)
+
+        self.filtered_averages = paired_means
         self.display_filtered_waves()
 
     def display_filtered_waves(self):
@@ -3249,6 +3262,9 @@ class Motion_Analysis_Window:
             "Press Escape to cancel selection."
         )
 
+        self.ax.set_xlabel("Pixels")
+        self.ax.set_ylabel("Frame Number")
+
         self.ax.xaxis.set_major_formatter(ticker.FuncFormatter(self.offsetX))
 
         # Draw reference fringe lines if enabled (x_offset_start is 0 here, so waveToPix gives raw pixel coords)
@@ -3422,8 +3438,8 @@ class Motion_Analysis_Window:
 
         # Match pixel axis display to the other windows (show original pixel coords)
         self.ax.xaxis.set_major_formatter(ticker.FuncFormatter(self.offsetX))
+        self.ax.set_ylabel("Frame Number")
         self.ax.set_xlabel("Pixels")
-        self.ax.set_ylabel("Pixels")
 
         # Add wavelength secondary axis on top (same functions as crop/deletion windows)
         self.refresh_secondary_axis()
