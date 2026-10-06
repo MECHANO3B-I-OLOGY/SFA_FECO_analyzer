@@ -14,9 +14,12 @@ future plans:
   - toggle 
 - fractional pixels smoothening 
 - Save data at any point
+- check box inout split output
+
 
 finished:
 
+- Integrat in ref index
 - title plot windwows
 - axies labels for motion profile frames, pixels, time
   -darker green

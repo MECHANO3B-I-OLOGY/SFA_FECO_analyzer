@@ -308,13 +308,16 @@ def newer_analyze_and_append_waves(
     modality="singlet"
 ):
     """
-    userPeaks: [(col, row)] length 1 or 2
+    userPeaks: [(col, row)] length 1, 2, or 4
+    In doublet mode with 4 peaks, waves[0]/[1] are the left pair and
+    waves[2]/[3] are the right pair.  Two averaged waves are appended:
+    avg of left pair and avg of right pair.
     returns: list of waves, each wave = [(row, col), ...]
     """
 
     height, width = image.shape
     n = len(userPeaks)
-    assert n in (1, 2)
+    assert n in (1, 2, 4)
 
     # --- denoise ---
     for _ in range(3):
@@ -374,24 +377,34 @@ def newer_analyze_and_append_waves(
         waves.append(wave)
 
     # ============================================================
-    # DOUBLET MODE: append average wave
+    # DOUBLET MODE: append average wave(s)
     # ============================================================
-    if modality == "doublet" and len(waves) == 2:
-        w1, w2 = waves
+    if modality == "doublet":
+        if len(waves) == 2:
+            # Original 2-peak behaviour: one averaged wave
+            w1, w2 = waves
+            L = min(len(w1), len(w2))
+            avg_wave = []
+            for i in range(L):
+                r1, c1 = w1[i]
+                r2, c2 = w2[i]
+                avg_wave.append((r1, 0.5 * (c1 + c2)))
+            waves.append(avg_wave)
 
-        # defensive alignment
-        L = min(len(w1), len(w2))
-
-        avg_wave = []
-        for i in range(L):
-            r1, c1 = w1[i]
-            r2, c2 = w2[i]
-
-            # rows should match; trust w1
-            avg_col = 0.5 * (c1 + c2)
-            avg_wave.append((r1, avg_col))
-
-        waves.append(avg_wave)
+        elif len(waves) == 4:
+            # 4-peak behaviour: seeds are already sorted by column, so
+            #   waves[0], waves[1]  -> left pair
+            #   waves[2], waves[3]  -> right pair
+            # Append one averaged wave per pair.
+            for wA, wB in ((waves[0], waves[1]), (waves[2], waves[3])):
+                L = min(len(wA), len(wB))
+                avg_wave = []
+                for i in range(L):
+                    rA, cA = wA[i]
+                    rB, cB = wB[i]
+                    # rows should match; trust the first wave of each pair
+                    avg_wave.append((rA, 0.5 * (cA + cB)))
+                waves.append(avg_wave)
 
     return waves
 
@@ -451,34 +464,70 @@ def _step(image, row, waves, predict, edgeBound, prominence, minSep, noiseFloor)
     # ============================================================
     # TWO WAVES (joint assignment)
     # ============================================================
-    p0 = predict(waves[0])
-    p1 = predict(waves[1])
+    if n == 2:
+        p0 = predict(waves[0])
+        p1 = predict(waves[1])
 
-    best = None
-    best_cost = np.inf
+        best = None
+        best_cost = np.inf
 
-    for i, a in enumerate(peaks_f):
-        for j, b in enumerate(peaks_f):
-            if a >= b:
-                continue
+        for i, a in enumerate(peaks_f):
+            for j, b in enumerate(peaks_f):
+                if a >= b:
+                    continue
 
-            c0 = abs(a - p0)
-            c1 = abs(b - p1)
+                c0 = abs(a - p0)
+                c1 = abs(b - p1)
 
-            sep = b - a
-            sep_penalty = 0
-            if sep < minSep:
-                sep_penalty = 1000 * (1 - sep / minSep)
+                sep = b - a
+                sep_penalty = 0
+                if sep < minSep:
+                    sep_penalty = 1000 * (1 - sep / minSep)
 
-            cost = c0 + c1 + sep_penalty
+                cost = c0 + c1 + sep_penalty
 
-            if cost < best_cost:
-                best_cost = cost
-                best = (a, b)
+                if cost < best_cost:
+                    best_cost = cost
+                    best = (a, b)
 
-    if best is not None:
-        waves[0].append((row, best[0]))
-        waves[1].append((row, best[1]))
+        if best is not None:
+            waves[0].append((row, best[0]))
+            waves[1].append((row, best[1]))
+
+        return waves
+
+    # ============================================================
+    # FOUR WAVES (joint assignment over all ordered 4-tuples)
+    # ============================================================
+    if n == 4:
+        preds = [predict(waves[k]) for k in range(4)]
+
+        best = None
+        best_cost = np.inf
+
+        # Enumerate every combination of 4 distinct peaks in strictly
+        # increasing column order (matches the sorted seed order).
+        m = len(peaks_f)
+        for i in range(m):
+            for j in range(i + 1, m):
+                for k in range(j + 1, m):
+                    for l in range(k + 1, m):
+                        cands = (peaks_f[i], peaks_f[j], peaks_f[k], peaks_f[l])
+                        cost = sum(abs(cands[q] - preds[q]) for q in range(4))
+                        # separation penalties between adjacent assigned peaks
+                        for q in range(3):
+                            sep = cands[q + 1] - cands[q]
+                            if sep < minSep:
+                                cost += 1000 * (1 - sep / minSep)
+                        if cost < best_cost:
+                            best_cost = cost
+                            best = cands
+
+        if best is not None:
+            for q in range(4):
+                waves[q].append((row, best[q]))
+
+        return waves
 
     return waves
 

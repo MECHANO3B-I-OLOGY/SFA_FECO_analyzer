@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
 import os
+import pandas as pd
 import re
 import shutil
 import subprocess
@@ -17,6 +18,7 @@ from enums import CalibrationValues
 from PIL import Image, ImageSequence, ImageTk
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.widgets import Cursor, RectangleSelector, Slider, SpanSelector
+from refractiveIndex import compute_mu
 from scipy.signal import find_peaks
 from screeninfo import get_monitors
 from sys import platform
@@ -80,6 +82,14 @@ class SFA_FECO_UI:
         self.wave_lines = None
         self.dispDistPairsIn = None
         self.dispDistPairsOut = None
+
+        # Refractive Index section state (not persisted)
+        self.ri_motion_file_path = None
+        self.ri_wave_lines = None
+        self.ri_n = None
+        self.ri_lam0_n = None
+        self.ri_lam0_n1 = None
+        self.ri_lam0_n2 = None
 
         self.internal_flags = self.loadInternalJSON()
 
@@ -152,6 +162,8 @@ class SFA_FECO_UI:
         self.main_frame.grid_columnconfigure(4, weight=1)
         self.main_frame.grid_columnconfigure(5, weight=0)
         self.main_frame.grid_columnconfigure(6, weight=1)
+        self.main_frame.grid_columnconfigure(7, weight=0)
+        self.main_frame.grid_columnconfigure(8, weight=1)
 
 
         # region Subframe for Calibration
@@ -321,13 +333,27 @@ class SFA_FECO_UI:
         self.thickness_file_label = ttk.Label(self.calibration_subframe, text="No file selected", style='Regular.TLabel')
         self.thickness_file_label.grid(row=11+1, column=0, sticky='new', padx=10)
 
+        # Singlet / Doublet selector for thickness calibration
+        self.thickness_mode_var = tk.StringVar(value="doublet")
+        self.thickness_mode_frame = ttk.Frame(self.calibration_subframe)
+        self.thickness_mode_frame.grid(row=12+1, column=0, sticky='w', padx=10, pady=(5, 0))
+
+        ttk.Radiobutton(
+            self.thickness_mode_frame, text="Singlet",
+            variable=self.thickness_mode_var, value="singlet"
+        ).grid(row=0, column=0, sticky='w')
+        ttk.Radiobutton(
+            self.thickness_mode_frame, text="Doublet",
+            variable=self.thickness_mode_var, value="doublet"
+        ).grid(row=0, column=1, sticky='w', padx=(10, 0))
+
         # Calibrate Thickness button
         self.execute_thickness_calibration = ttk.Button(self.calibration_subframe, text="Calculate Mica Thickness", command=self.run_thickness_calibration, style='Regular.TButton')
-        self.execute_thickness_calibration.grid(row=12+1, column=0, sticky='ew', padx=10, pady=5)
+        self.execute_thickness_calibration.grid(row=13+1, column=0, sticky='ew', padx=10, pady=5)
 
         # Frame to hold mica thickness label and entry side by side
         self.thickness_frame = ttk.Frame(self.calibration_subframe)
-        self.thickness_frame.grid(row=13+1, column=0, sticky='w', padx=10, pady=(5, 5))
+        self.thickness_frame.grid(row=14+1, column=0, sticky='w', padx=10, pady=(5, 5))
 
         self.calibration_thickness_label = ttk.Label(self.thickness_frame, text="Mica thickness (μm):", style='Regular.TLabel')
         self.calibration_thickness_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
@@ -339,7 +365,7 @@ class SFA_FECO_UI:
         self.thickness_display.insert(0, str(self.mica_thickness))
 
         self.fringe_frame = ttk.Frame(self.calibration_subframe)
-        self.fringe_frame.grid(row=15+1, column=0, sticky='ew', padx=10, pady=(5, 10))
+        self.fringe_frame.grid(row=16+1, column=0, sticky='ew', padx=10, pady=(5, 10))
 
         self.fringe_label = ttk.Label(self.fringe_frame, text="Fringe number (n):", style='Regular.TLabel')
         self.fringe_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
@@ -772,6 +798,131 @@ class SFA_FECO_UI:
         
         # endregion
 
+        # Add a vertical separator between columns
+        vertical_separator_ri = ttk.Separator(self.main_frame, orient="vertical")
+        vertical_separator_ri.grid(row=0, column=7, rowspan=7, sticky='ns', padx=10)
+
+        # region Optional: Refractive Index of Medium
+        self.ri_subframe = ttk.Frame(self.main_frame)
+        self.ri_subframe.grid(row=0, column=8, sticky='new', padx=10, pady=25)
+        self.ri_subframe.columnconfigure(0, weight=1)
+
+        ri_title_label = ttk.Label(self.ri_subframe, text="Optional: Refractive Index of Medium", style='Step.TLabel', font=20)
+        ri_title_label.grid(row=0, column=0, sticky='ew', padx=10)
+
+        ttk.Separator(self.ri_subframe, orient="horizontal").grid(row=1, column=0, sticky='ew', pady=8, padx=10)
+
+        # ── Sub-step A: Fringe order from 3 reference wavelengths ──────────
+        ri_step_a_label = ttk.Label(self.ri_subframe, text="Step 1: Select 3 Reference Fringes", style='Regular.TLabel')
+        ri_step_a_label.grid(row=2, column=0, sticky='w', padx=10)
+
+        self.ri_fringe_mode_var = tk.StringVar(value="doublet")
+        ri_fringe_mode_frame = ttk.Frame(self.ri_subframe)
+        ri_fringe_mode_frame.grid(row=3, column=0, sticky='w', padx=10, pady=(5, 0))
+        ttk.Radiobutton(ri_fringe_mode_frame, text="Singlet", variable=self.ri_fringe_mode_var, value="singlet").grid(row=0, column=0, sticky='w')
+        ttk.Radiobutton(ri_fringe_mode_frame, text="Doublet", variable=self.ri_fringe_mode_var, value="doublet").grid(row=0, column=1, sticky='w', padx=(10, 0))
+
+        self.ri_select_ref_button = ttk.Button(
+            self.ri_subframe,
+            text="Select Reference Contact Video",
+            command=self.ri_run_fringe_selection,
+            style='Regular.TButton'
+        )
+        self.ri_select_ref_button.grid(row=4, column=0, sticky='ew', padx=10, pady=5)
+
+        self.ri_ref_file_label = ttk.Label(self.ri_subframe, text="No file selected", style='Regular.TLabel')
+        self.ri_ref_file_label.grid(row=5, column=0, sticky='ew', padx=10)
+
+        # Display computed fringe order and three wavelengths
+        self.ri_fringe_result_frame = ttk.Frame(self.ri_subframe)
+        self.ri_fringe_result_frame.grid(row=6, column=0, sticky='ew', padx=10, pady=(5, 5))
+        self.ri_fringe_result_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(self.ri_fringe_result_frame, text="Fringe order n:", style='Regular.TLabel').grid(row=0, column=0, sticky='w', padx=(0, 5))
+        self.ri_n_display = ttk.Entry(self.ri_fringe_result_frame, width=8, state='readonly')
+        self.ri_n_display.grid(row=0, column=1, sticky='w')
+
+        ttk.Label(self.ri_fringe_result_frame, text="λ⁰_n (nm):", style='Regular.TLabel').grid(row=1, column=0, sticky='w', padx=(0, 5), pady=(3,0))
+        self.ri_lam_n_display = ttk.Entry(self.ri_fringe_result_frame, width=12, state='readonly')
+        self.ri_lam_n_display.grid(row=1, column=1, sticky='w', pady=(3,0))
+
+        ttk.Label(self.ri_fringe_result_frame, text="λ⁰_n-1 (nm):", style='Regular.TLabel').grid(row=2, column=0, sticky='w', padx=(0, 5), pady=(3,0))
+        self.ri_lam_n1_display = ttk.Entry(self.ri_fringe_result_frame, width=12, state='readonly')
+        self.ri_lam_n1_display.grid(row=2, column=1, sticky='w', pady=(3,0))
+
+        ttk.Label(self.ri_fringe_result_frame, text="λ⁰_n-2 (nm):", style='Regular.TLabel').grid(row=3, column=0, sticky='w', padx=(0, 5), pady=(3,0))
+        self.ri_lam_n2_display = ttk.Entry(self.ri_fringe_result_frame, width=12, state='readonly')
+        self.ri_lam_n2_display.grid(row=3, column=1, sticky='w', pady=(3,0))
+
+        ttk.Separator(self.ri_subframe, orient="horizontal").grid(row=7, column=0, sticky='ew', pady=8, padx=10)
+
+        # ── Sub-step B: Motion profile file ───────────────────────────────
+        ri_step_b_label = ttk.Label(self.ri_subframe, text="Step 2: Select Motion Profile File", style='Regular.TLabel')
+        ri_step_b_label.grid(row=8, column=0, sticky='w', padx=10)
+
+        self.ri_choose_motion_button = ttk.Button(
+            self.ri_subframe,
+            text="Choose Motion Profile File",
+            command=self.ri_select_motion_file,
+            style='Regular.TButton'
+        )
+        self.ri_choose_motion_button.grid(row=9, column=0, sticky='ew', padx=10, pady=5)
+
+        self.ri_motion_file_label = ttk.Label(self.ri_subframe, text="No file selected", style='Regular.TLabel')
+        self.ri_motion_file_label.grid(row=10, column=0, sticky='ew', padx=10)
+
+        ttk.Separator(self.ri_subframe, orient="horizontal").grid(row=11, column=0, sticky='ew', pady=8, padx=10)
+
+        # ── Sub-step C: Singlet / Doublet ──────────────────────────────────
+        ri_step_c_label = ttk.Label(self.ri_subframe, text="Step 3: Select Modality", style='Regular.TLabel')
+        ri_step_c_label.grid(row=12, column=0, sticky='w', padx=10)
+
+        self.ri_mode_var = tk.StringVar(value="singlet")
+        ri_mode_frame = ttk.Frame(self.ri_subframe)
+        ri_mode_frame.grid(row=13, column=0, sticky='w', padx=10, pady=5)
+
+        ttk.Radiobutton(ri_mode_frame, text="Singlet", variable=self.ri_mode_var, value="singlet").grid(row=0, column=0, sticky='w')
+        ttk.Radiobutton(ri_mode_frame, text="Doublet", variable=self.ri_mode_var, value="doublet").grid(row=0, column=1, sticky='w', padx=(10, 0))
+
+        ttk.Separator(self.ri_subframe, orient="horizontal").grid(row=14, column=0, sticky='ew', pady=8, padx=10)
+
+        # ── Sub-step D: Analyze ────────────────────────────────────────────
+        ri_step_d_label = ttk.Label(self.ri_subframe, text="Step 4: Analyze Motion Profile", style='Regular.TLabel')
+        ri_step_d_label.grid(row=15, column=0, sticky='w', padx=10)
+
+        # Output file name row
+        self.ri_analyze_output_frame = ttk.Frame(self.ri_subframe)
+        self.ri_analyze_output_frame.grid(row=16, column=0, sticky='ew', padx=10, pady=5)
+        self.ri_analyze_output_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(self.ri_analyze_output_frame, text="Output File Name:", style='Regular.TLabel').grid(row=0, column=0, sticky='w', padx=(0, 5))
+        self.ri_analyze_output_var = tk.StringVar(value="ri_analysis_output")
+        ttk.Entry(self.ri_analyze_output_frame, textvariable=self.ri_analyze_output_var, style='Regular.TEntry').grid(row=0, column=1, sticky='ew')
+
+        self.ri_analyze_button = ttk.Button(
+            self.ri_subframe,
+            text="Analyze",
+            command=self.ri_analyze,
+            style='Regular.TButton'
+        )
+        self.ri_analyze_button.grid(row=17, column=0, sticky='ew', padx=10, pady=(0, 5))
+
+        ttk.Separator(self.ri_subframe, orient="horizontal").grid(row=18, column=0, sticky='ew', pady=8, padx=10)
+
+        # ── Sub-step E: Calculate & Plot ──────────────────────────────────
+        ri_step_e_label = ttk.Label(self.ri_subframe, text="Step 5: Calculate Refractive Index", style='Regular.TLabel')
+        ri_step_e_label.grid(row=19, column=0, sticky='w', padx=10)
+
+        self.ri_calculate_button = ttk.Button(
+            self.ri_subframe,
+            text="Calculate and Plot Refractive Index",
+            command=self.ri_calculate_and_plot,
+            style='Regular.TButton'
+        )
+        self.ri_calculate_button.grid(row=20, column=0, sticky='ew', padx=10, pady=5)
+
+        # endregion
+
         self.status_var = tk.StringVar(value="")
 
         self.status_bar = ttk.Label(
@@ -784,12 +935,12 @@ class SFA_FECO_UI:
         self.status_bar.grid(row=1, column=0, sticky="ew")
 
 
-        # Ensure all 4 main regions (columns 0, 2, 4, 6) have equal horizontal weight
-        for col in [0, 2, 4]:
+        # Ensure all main regions (columns 0, 2, 4, 6, 8) have equal horizontal weight
+        for col in [0, 2, 4, 6, 8]:
             self.main_frame.grid_columnconfigure(col, weight=1, uniform="region")
 
         # Optionally, make separators take minimal space
-        for sep_col in [1, 3]:
+        for sep_col in [1, 3, 5, 7]:
             self.main_frame.grid_columnconfigure(sep_col, weight=0)
 
         self.javaPrompt()
@@ -1206,7 +1357,7 @@ class SFA_FECO_UI:
             msg = "Please select an input file"
             error_popup(msg)
             return
-        Mica_Thickness_Calibration_Window(self.calibration_parameters, self.thickness_input_file_path, self.callback_get_thickness_value)
+        Mica_Thickness_Calibration_Window(self.calibration_parameters, self.thickness_input_file_path, self.callback_get_thickness_value, mode=self.thickness_mode_var.get())
 
     def callback_get_thickness_value(self, thickness):
         """
@@ -1553,6 +1704,183 @@ class SFA_FECO_UI:
         else:
             ForceVsDistanceWindow("full", (self.dispDistPairsIn, self.dispDistPairsOut), int(self.k_var.get()), float(self.radius_display.get())/100, self.scale_mode.get())
 
+        # Stage 3 export: after force/radius calculation, include force/radius data.
+        self.save_force_distance_csv(stage="force", notify=False)
+
+
+    # ------------------------------------------------------------------
+    # Refractive Index section handlers
+    # ------------------------------------------------------------------
+
+    def ri_run_fringe_selection(self):
+        """Open a file dialog then launch the 3-fringe reference selection window."""
+        file_path = self.getFile()
+        if not file_path:
+            return
+        disp = ('...' + file_path[-self.MAX_FILE_DISP_LENGTH:]) if len(file_path) > self.MAX_FILE_DISP_LENGTH else file_path
+        self.ri_ref_file_label.config(text=disp)
+        RI_Fringe_Selection_Window(
+            self.calibration_parameters,
+            file_path,
+            self.ri_callback_fringe_selection,
+            mode=self.ri_fringe_mode_var.get()
+        )
+
+    def ri_callback_fringe_selection(self, n, lam_n, lam_n1, lam_n2):
+        """Receive the 3 reference wavelengths and computed fringe order."""
+        self.ri_n      = n
+        self.ri_lam0_n  = lam_n
+        self.ri_lam0_n1 = lam_n1
+        self.ri_lam0_n2 = lam_n2
+
+        def _set_ro_entry(widget, value):
+            widget.config(state='normal')
+            widget.delete(0, 'end')
+            widget.insert(0, str(value))
+            widget.config(state='readonly')
+
+        _set_ro_entry(self.ri_n_display,      str(n))
+        _set_ro_entry(self.ri_lam_n_display,  f"{lam_n:.4f}")
+        _set_ro_entry(self.ri_lam_n1_display, f"{lam_n1:.4f}")
+        _set_ro_entry(self.ri_lam_n2_display, f"{lam_n2:.4f}")
+
+    def ri_select_motion_file(self):
+        """Let the user pick a motion profile TIFF for the RI analysis."""
+        file_path = self.getFile()
+        if not file_path:
+            return
+        self.ri_motion_file_path = file_path
+        disp = ('...' + file_path[-self.MAX_FILE_DISP_LENGTH:]) if len(file_path) > self.MAX_FILE_DISP_LENGTH else file_path
+        self.ri_motion_file_label.config(text=disp)
+
+    def ri_analyze(self):
+        """Open the Motion_Analysis_Window for the RI motion profile."""
+        if not self.ri_motion_file_path:
+            error_popup("Please select a motion profile file.")
+            return
+        out_name = self.ri_analyze_output_var.get()
+        if not out_name:
+            error_popup("Please enter a valid output file name.")
+            return
+
+        output_folder = os.path.join(os.getcwd(), "Output")
+        os.makedirs(output_folder, exist_ok=True)
+        if not out_name.endswith(".csv"):
+            out_name = f"{out_name}.csv"
+        ri_output_path = os.path.join(output_folder, out_name)
+
+        Motion_Analysis_Window(
+            self.ri_motion_file_path,
+            self.calibration_parameters,
+            ri_output_path,
+            self.ri_mode_var.get(),
+            offset_callback=None,
+            wave_lines_callback=self.ri_callback_set_wave_lines
+        )
+
+    def ri_callback_set_wave_lines(self, wave_lines):
+        """Receive wave lines from the RI analysis window (does NOT touch main wave_lines)."""
+        self.ri_wave_lines = wave_lines
+
+    def ri_calculate_and_plot(self):
+        """Validate inputs and call the refractive index computation + plot."""
+
+        # --- validate prerequisites ---
+        if self.ri_wave_lines is None:
+            error_popup("Please complete Step 4 (Analyze) first.")
+            return
+        if self.ri_n is None or self.ri_lam0_n is None:
+            error_popup("Please complete Step 1 (fringe selection) first.")
+            return
+
+        mode = self.ri_mode_var.get()
+        if mode == "singlet":
+            if len(self.ri_wave_lines) < 2:
+                error_popup("Singlet mode requires at least 2 wave lines from the analysis.")
+                return
+            wave_n  = self.ri_wave_lines[0]
+            wave_n1 = self.ri_wave_lines[1]
+        else:  # doublet
+            if len(self.ri_wave_lines) < 6:
+                error_popup("Doublet mode requires at least 6 wave lines from the analysis\n(waves[4] and waves[5]).")
+                return
+            wave_n  = self.ri_wave_lines[4]
+            wave_n1 = self.ri_wave_lines[5]
+
+        # Build wavelength arrays aligned on common time indices
+
+        def wave_to_series(wave):
+            fps          = int(self.camera_fps_var.get())
+            frame_offset = int(self.split_frame_offset)
+            slope        = self.calibration_parameters["slope"]
+            intercept    = self.calibration_parameters["intercept"]
+            offset       = self.calibration_parameters["offset"]
+            times = []
+            wavelengths = []
+            for (frame, x_pix) in wave:
+                t   = (frame + frame_offset) / fps
+                lam = slope * (x_pix - offset) + intercept
+                times.append(t)
+                wavelengths.append(lam)
+            return pd.Series(wavelengths, index=times, name="wavelength")
+
+        s_n  = wave_to_series(wave_n)
+        s_n1 = wave_to_series(wave_n1)
+
+        common_times = s_n.index.intersection(s_n1.index)
+        if common_times.empty:
+            error_popup("The two wave lines share no common time points.")
+            return
+
+        lam_D_n  = s_n.loc[common_times].values
+        lam_D_n1 = s_n1.loc[common_times].values
+
+        n       = self.ri_n
+        lam0_n  = self.ri_lam0_n
+        lam0_n1 = self.ri_lam0_n1
+        lam0_n2 = self.ri_lam0_n2
+
+        mu_values = compute_mu(
+            lam_D_n  = lam_D_n,
+            lam_D_n1 = lam_D_n1,
+            lam0_n2  = lam0_n2,
+            lam0_n1  = lam0_n1,
+            lam0_n   = lam0_n,
+            n        = n,
+        )
+
+        # --- save CSV ---
+        output_folder = os.path.join(os.getcwd(), "Output")
+        os.makedirs(output_folder, exist_ok=True)
+        out_path = os.path.join(output_folder, "refractiveIndex.csv")
+
+        result_df = pd.DataFrame({
+            "time":             common_times,
+            "refractive_index": mu_values,
+        })
+        result_df.to_csv(out_path, index=False)
+        self.set_status(f"Refractive index results saved to {out_path}")
+
+        # --- plot ---
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.plot(result_df["time"], result_df["refractive_index"],
+                color="steelblue", linewidth=1.5, label=f"μ  (fringe {n})")
+        ax.scatter(result_df["time"], result_df["refractive_index"],
+                   s=18, color="steelblue", zorder=3)
+        ax.set_xlabel("Time (s)", fontsize=12)
+        ax.set_ylabel("Refractive index  μ", fontsize=12)
+        ax.set_title(
+            f"Refractive index of medium  —  fringe {n} (n) & {n - 1} (n-1)\n"
+            f"λ⁰_n-2 = {lam0_n2:.3f} nm,  λ⁰_n-1 = {lam0_n1:.3f} nm,  λ⁰_n = {lam0_n:.3f} nm",
+            fontsize=11,
+        )
+        ax.legend(fontsize=11)
+        ax.grid(True, linestyle="--", alpha=0.5)
+        fig.tight_layout()
+        fig.canvas.manager.set_window_title("Refractive Index of Medium")
+        plt.show()
+
+    # ------------------------------------------------------------------
 
     def getFile(self):
         if self.javaExists:
@@ -1586,12 +1914,18 @@ class SFA_FECO_UI:
 
     def setWaveLines(self, wave_lines):
         self.wave_lines = wave_lines
+        # Stage 1 export: after analysis, the program has frame/pixel/wavelength data.
+        self.save_force_distance_csv(stage="analysis", notify=False)
 
     def setDispDistPairs(self, pairs, mode):
         if mode == "in":
             self.dispDistPairsIn = pairs
         else:
             self.dispDistPairsOut = pairs
+
+        # Stage 2 export: after distance-vs-time processing, include distance data
+        # for whichever run(s) have been calculated so far.
+        self.save_force_distance_csv(stage="distance", notify=False)
 
     def setSetup(self, setup):
         self.setupEntryVar.set(setup)
@@ -1915,78 +2249,111 @@ class SFA_FECO_UI:
             else:
                 exceptions.warning_popup("No file selected, aborting")
 
-    def save_force_distance_csv(self):
+    def save_force_distance_csv(self, stage="force", notify=True):
         """
-        Creates ./Output/forceDistanceData.csv with headers:
+        Save the analysis data to ./Output/forceDistanceData.csv.
 
-        Frame, time, wavelength, distance, force/distance
+        The same function is used at three stages:
+          - stage="analysis": frame, time, pixels, wavelength
+          - stage="distance": frame, time, pixels, wavelength, distance
+          - stage="force":    frame, time, pixels, wavelength, distance, force/radius
         """
+        if self.wave_lines is None:
+            if notify:
+                error_popup("No analysis data available to save yet.")
+            return
 
-        # Ensure output directory exists
         os.makedirs("./Output", exist_ok=True)
-
         output_path = "./Output/forceDistanceData.csv"
 
-        fps = int(self.camera_fps_var.get())
-        frameOffset = int(self.split_frame_offset)
+        try:
+            fps = int(self.camera_fps_var.get())
+            frame_offset = int(self.split_frame_offset)
 
-        springConstant = float(self.k_var.get())
-        radius = float(self.radius_display.get()) / 100  # convert cm → m (as done elsewhere)
+            wave_data = self.wave_lines[-1]
+            if not wave_data:
+                if notify:
+                    error_popup("No wave line data available to save.")
+                return
 
-        # Full wavelength list (last element as used in TimeVsDistanceWindow)
-        wave_data = self.wave_lines[-1]
+            # Use the same split convention as TimeVsDistanceWindow.
+            split_index = int(self.split_var.get()) - frame_offset
 
-        # Split index exactly how TimeVsDistanceWindow does it
-        split_index = int(self.split_var.get()) - frameOffset
+            # Clamp split index so stage-1 export still works if the split value
+            # has not been set or is outside the available analysis range.
+            split_index = max(0, min(split_index, len(wave_data)))
 
-        rows = []
+            include_distance = stage in ("distance", "force")
+            include_force = stage == "force"
 
-        def process_section(wave_subset, pairs):
-            for i in range(len(pairs)):
-                frame = wave_subset[i][0] + frameOffset
-                pixels = wave_subset[i][1]
+            header = ["frame", "time", "pixels", "wavelength"]
+            if include_distance:
+                header.append("distance")
+            if include_force:
+                header.append("force/radius")
 
-                # Convert pixel position to wavelength using the same formula as pixToWave
-                wavelength = (
-                    self.calibration_parameters["slope"] * (pixels - self.calibration_parameters["offset"])
+            rows = []
+
+            def wavelength_from_pixels(pixels):
+                return (
+                    self.calibration_parameters["slope"]
+                    * (pixels - self.calibration_parameters["offset"])
                     + self.calibration_parameters["intercept"]
                 )
 
-                time = (frame) / fps
+            def add_rows(wave_subset, pairs=None):
+                row_count = len(wave_subset)
+                if include_distance:
+                    if not pairs:
+                        return
+                    row_count = min(row_count, len(pairs))
 
-                distance = pairs[i][0]
-                displacement = pairs[i][1]
+                for i in range(row_count):
+                    frame = wave_subset[i][0] + frame_offset
+                    pixels = wave_subset[i][1]
+                    time = frame / fps
+                    wavelength = wavelength_from_pixels(pixels)
 
-                # Same formula used in ForceVsDistanceWindow
-                force_over_distance = displacement * springConstant * 1e-7 / radius
+                    row = [frame, time, pixels, wavelength]
 
-                rows.append([
-                    frame,
-                    time,
-                    pixels,
-                    wavelength,
-                    distance,
-                    force_over_distance
-                ])
+                    if include_distance:
+                        distance = pairs[i][0]
+                        row.append(distance)
 
-        # --- IN DATA ---
-        if hasattr(self, "dispDistPairsIn"):
-            in_wave = wave_data[:split_index]
-            process_section(in_wave, self.dispDistPairsIn)
+                    if include_force:
+                        displacement = pairs[i][1]
+                        spring_constant = float(self.k_var.get())
+                        radius = float(self.radius_display.get()) / 100  # cm -> m
+                        force_over_radius = displacement * spring_constant * 1e-7 / radius
+                        row.append(force_over_radius)
 
-        # --- OUT DATA ---
-        if hasattr(self, "dispDistPairsOut"):
-            out_wave = wave_data[split_index+1:]
-            process_section(out_wave, self.dispDistPairsOut)
+                    rows.append(row)
 
-        # Write CSV
-        with open(output_path, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["Frame", "time", "pixels", "wavelength", "distance", "force/radius"])
-            writer.writerows(rows)
+            if include_distance:
+                in_pairs = self.dispDistPairsIn if self.dispDistPairsIn is not None else None
+                out_pairs = self.dispDistPairsOut if self.dispDistPairsOut is not None else None
 
-        print(f"Saved force-distance data to {output_path}")
-        self.set_status(f"Saved force-distance data to {output_path}")
+                # IN data uses everything before the split; OUT data uses everything after it,
+                # matching the existing TimeVsDistanceWindow slicing.
+                add_rows(wave_data[:split_index], in_pairs)
+                add_rows(wave_data[split_index + 1:], out_pairs)
+            else:
+                # Stage 1: write every detected wave point without requiring distance data.
+                add_rows(wave_data)
+
+            with open(output_path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(header)
+                writer.writerows(rows)
+
+            print(f"Saved {stage} data to {output_path}")
+            self.set_status(f"Saved {stage} data to {output_path}")
+
+        except Exception as e:
+            msg = "Error while saving CSV. See console for details."
+            if notify:
+                error_popup(msg)
+            print(f"Error saving {stage} data to CSV: {e}")
 
     def check_java(self):
         # Quick check if "java" is in PATH
@@ -2273,6 +2640,7 @@ class Wavelength_Calibration_Window:
         self.temp_crop_rectangle = None
         self.stage = 1
         self.scale_factor = 1
+        self.contrast = 1.0  # Contrast multiplier applied to the image data (1.0 = unchanged)
         self.cropped_image = None
         self.wave_x_avgs = []
         self.selected_waves = []
@@ -2308,6 +2676,11 @@ class Wavelength_Calibration_Window:
             self.slider.on_changed(self.update_frame)
         else:
             self.slider = None
+
+        # Contrast slider: modifies the actual image data used for display AND analysis
+        contrast_ax = plt.axes([0.2, 0.01, 0.6, 0.03])
+        self.contrast_slider = Slider(contrast_ax, "Contrast", 0.2, 5.0, valinit=1.0, valstep=0.05)
+        self.contrast_slider.on_changed(self.update_contrast)
 
         # Connect Matplotlib events
         self.fig.canvas.mpl_connect("button_press_event", self.handle_click)
@@ -2347,9 +2720,38 @@ class Wavelength_Calibration_Window:
     def update_frame(self, value):
         """Updates the displayed frame based on the slider value."""
         self.current_frame_index = int(value)
-        self.image.seek(self.current_frame_index)
-        scaled_frame = self.scale_image(self.image)
+        scaled_frame = self.scale_image(self.get_current_frame())
         self.display_image(scaled_frame)
+
+    def update_contrast(self, value):
+        """Sets the contrast multiplier and redraws the current frame."""
+        self.contrast = float(value)
+        self.update_frame(self.current_frame_index)
+
+    def get_current_frame(self):
+        """Returns a copy of the current frame with the contrast adjustment applied.
+        Prioritizes user contrast, keeping pixel values bounded to [0, 255].
+        """
+        self.image.seek(self.current_frame_index)
+        frame = self.image.copy()
+        if self.contrast == 1.0 or frame.mode not in ("L", "RGB", "I;16", "I", "F"):
+            return frame
+
+        arr = np.asarray(frame).astype(np.float32)
+        mean = arr.mean()
+        # Linear contrast stretch centered around the mean
+        adjusted = (arr - mean) * self.contrast + mean
+
+        # Keep values strictly bounded within [0, 255]
+        if np.issubdtype(np.asarray(frame).dtype, np.integer):
+            info = np.iinfo(np.asarray(frame).dtype)
+            min_bound = max(0, info.min)
+            max_bound = min(255, info.max)
+            adjusted = np.clip(np.rint(adjusted), min_bound, max_bound)
+        else:
+            adjusted = np.clip(adjusted, 0.0, 255.0)
+
+        return Image.fromarray(adjusted.astype(np.asarray(frame).dtype))
 
     def update_instructions(self, text):
         """Updates the instruction text dynamically."""
@@ -2419,15 +2821,15 @@ class Wavelength_Calibration_Window:
             # CHANGE WORDING (CONFIRM IDENTIFIED LINES)
             self.update_instructions(f"Select {self.num_waves} lines for calibration. Red lines are selected and green are not. Close when finished, or press escape to restart.")
             y1, y2 = sorted((int(self.crop_start_y), int(self.crop_end_y)))
-            self.image.seek(self.current_frame_index)
-            cropped_frame = self.image.crop((0, y1, self.image.width, y2))
+            cropped_frame = self.get_current_frame().crop((0, y1, self.image.width, y2))
             self.cropped_image = cropped_frame
             self.stage = 2
 
             # Hide the slider
             if self.slider:
                 self.slider.ax.set_visible(False)
-                self.fig.canvas.draw()
+            self.contrast_slider.ax.set_visible(False)
+            self.fig.canvas.draw()
 
             # Run wave analysis
             self.run_wave_detection(cropped_frame)
@@ -2454,30 +2856,39 @@ class Wavelength_Calibration_Window:
         self.update_frame(self.current_frame_index)
 
     def run_wave_detection(self, image):
-        """Runs the wave analysis on the cropped image."""
+        """Runs the wave analysis on the cropped image using the contrast-adjusted intensities."""
+        # Convert image to numpy array
+        raw_arr = np.asarray(image).astype(np.float32)
+        if raw_arr.ndim == 3:
+            raw_arr = raw_arr.mean(axis=2)
 
-        image = np.transpose(np.asarray(image))
+        # Average brightness across the vertical crop for each horizontal pixel (axis=0)
+        # Note: image width corresponds to horizontal pixel columns
+        avg_brightness = np.mean(raw_arr, axis=0)
 
-        #filtered = cv2.medianBlur(image, ksize=5)
-        #normalized = cv2.normalize(filtered, None, 0, 255, cv2.NORM_MINMAX)
-        filtered = cv2.medianBlur(image, ksize=3)
-        normalized = cv2.normalize(filtered, None, 0, 255, cv2.NORM_MINMAX)
+        # Apply a 1D median filter to suppress high-frequency noise without re-scaling
+        kernel_size = 3
+        pad = kernel_size // 2
+        padded = np.pad(avg_brightness, pad, mode='edge')
+        smoothed = np.array([
+            np.median(padded[i:i + kernel_size]) for i in range(len(avg_brightness))
+        ])
 
-        y_values = np.arange(normalized.shape[0])
-        avg_brightness = np.mean(image, axis=1)
+        # Prioritize user contrast: clip strictly to [0, 255] without min/max expansion
+        intensity_profile = np.clip(smoothed, 0, 255).astype(np.float32)
+        
+        y_values = np.arange(len(intensity_profile))
+        self.selected_data = list(zip(y_values, intensity_profile))
 
-        norm_255 = cv2.normalize(avg_brightness, None, 1, 255, cv2.NORM_MINMAX)
-        norm_255 = norm_255.flatten()
-        self.selected_data = list(zip(y_values, norm_255))
-
-        # Read prominence/distance from advanced settings (user-configurable)
+        # Read prominence/distance from advanced settings
         wc_settings = app.internal_flags.get("advanced_settings", {}).get("wavelength_calibration", {})
-        wc_prominence = wc_settings.get("prominence", 75)  # How much the wavelength lines appear over the noise
-        wc_distance   = wc_settings.get("distance",   10)  # How far apart the peaks are
+        wc_prominence = wc_settings.get("prominence", 75)
+        wc_distance = wc_settings.get("distance", 5)
 
+        # Peaks are now directly subject to the contrast-scaled prominence
         self.peaks, _ = find_peaks(
-            norm_255,
-            prominence=wc_prominence, 
+            intensity_profile,
+            prominence=wc_prominence,
             distance=wc_distance,
         )
 
@@ -2630,9 +3041,10 @@ class Mica_Thickness_Calibration_Window:
         convert_to_wavelengths(event): Converts selected x-coordinates to wavelengths using calibration parameters.
         calculate_thickness(): Calculates mica thickness based on selected wavelengths and calibration parameters.
     """
-    def __init__(self, calibration_parameters, input_file_path, callback):
+    def __init__(self, calibration_parameters, input_file_path, callback, mode="doublet"):
         self.calibration_parameters = calibration_parameters
         self.callback = callback
+        self.fringe_mode = mode  # "singlet" or "doublet"
         self.selected_waves = []
         file_path = input_file_path
 
@@ -2880,25 +3292,29 @@ class Mica_Thickness_Calibration_Window:
             if not deduped or abs(deduped[-1] - avg) > 5:
                 deduped.append(avg)
 
-        # Peaks come in pairs — collapse each consecutive pair into its midpoint.
-        # If there is an odd number, drop whichever unpaired endpoint (first or last)
-        # is furthest from its nearest neighbor.
-        if len(deduped) % 2 != 0 and len(deduped) >= 3:
-            gap_first = abs(deduped[1] - deduped[0])   # distance from first to its nearest neighbour
-            gap_last  = abs(deduped[-1] - deduped[-2])  # distance from last to its nearest neighbour
-            if gap_first >= gap_last:
-                deduped = deduped[1:]   # drop the isolated first peak
-            else:
-                deduped = deduped[:-1]  # drop the isolated last peak
+        if self.fringe_mode == "singlet":
+            # Singlet mode: use the raw detected peaks directly, no pairing needed
+            self.filtered_averages = deduped
+        else:
+            # Doublet mode: peaks come in pairs — collapse each consecutive pair into its midpoint.
+            # If there is an odd number, drop whichever unpaired endpoint (first or last)
+            # is furthest from its nearest neighbor.
+            if len(deduped) % 2 != 0 and len(deduped) >= 3:
+                gap_first = abs(deduped[1] - deduped[0])   # distance from first to its nearest neighbour
+                gap_last  = abs(deduped[-1] - deduped[-2])  # distance from last to its nearest neighbour
+                if gap_first >= gap_last:
+                    deduped = deduped[1:]   # drop the isolated first peak
+                else:
+                    deduped = deduped[:-1]  # drop the isolated last peak
 
-        # Replace each consecutive pair (deduped[0],deduped[1]), (deduped[2],deduped[3]), ...
-        # with the midpoint of that pair.
-        paired_means = []
-        for i in range(0, len(deduped) - 1, 2):
-            midpoint = (deduped[i] + deduped[i + 1]) / 2.0
-            paired_means.append(midpoint)
+            # Replace each consecutive pair (deduped[0],deduped[1]), (deduped[2],deduped[3]), ...
+            # with the midpoint of that pair.
+            paired_means = []
+            for i in range(0, len(deduped) - 1, 2):
+                midpoint = (deduped[i] + deduped[i + 1]) / 2.0
+                paired_means.append(midpoint)
 
-        self.filtered_averages = paired_means
+            self.filtered_averages = paired_means
         self.display_filtered_waves()
 
     def display_filtered_waves(self):
@@ -3032,6 +3448,312 @@ class Mica_Thickness_Calibration_Window:
     def close_figure(self):
         """Closes the Matplotlib figure and cleans up resources."""
         plt.close(self.fig)  # Close the specific figure 
+
+
+class RI_Fringe_Selection_Window:
+    """
+    A window for selecting exactly 3 FECO fringe lines from a reference contact image.
+    The user selects the three lines left-to-right; the leftmost has the lowest wavelength
+    and is labelled n.  The window computes the fringe order n from fringes n and n-1 using
+    the same formula as Mica_Thickness_Calibration_Window, then fires the callback:
+
+        callback(n, lam_n, lam_n1, lam_n2)
+
+    where lam_n < lam_n1 < lam_n2 (all in nm).
+    """
+
+    REQUIRED_WAVES = 3
+
+    def __init__(self, calibration_parameters, input_file_path, callback, mode="doublet"):
+        self.calibration_parameters = calibration_parameters
+        self.callback = callback
+        self.fringe_mode = mode  # "singlet" or "doublet"
+        self.selected_waves = []
+
+        self.crop_start_y = None
+        self.crop_end_y   = None
+        self.temp_crop_rectangle = None
+        self.mode = 'crop'
+        self.cropped_frame = None
+        self.scale_factor = 0.75
+        self.stage = 1
+        self.selected_wavelengths = []
+
+        self.image = Image.open(input_file_path)
+
+        self.fig, self.ax = plt.subplots(figsize=(8, 6))
+        plt.subplots_adjust(bottom=0.2, top=0.85)
+
+        self.secax = self.ax.secondary_xaxis('top', functions=(self.pixToWave, self.waveToPix))
+        self.secax.set_xlabel(r"Wavelength, $\it{\lambda}$ (nm)")
+
+        self.instruction_text = self.fig.text(
+            0.5, 0.95,
+            "Step 1: Select a region including the FECO peaks by clicking and dragging. Press Enter to confirm.",
+            ha="center", va="center", fontsize=10
+        )
+
+        self.current_frame_index = 0
+        self.update_frame(0)
+
+        if hasattr(self.image, "n_frames") and self.image.n_frames > 1:
+            slider_ax = plt.axes([0.2, 0.05, 0.6, 0.03])
+            self.slider = Slider(slider_ax, "Frame", 0, self.image.n_frames - 1, valinit=0, valstep=1)
+            self.slider.on_changed(self.update_frame)
+        else:
+            self.slider = None
+
+        self.fig.canvas.mpl_connect("button_press_event",   self.handle_click)
+        self.fig.canvas.mpl_connect("motion_notify_event",  self.drag_crop)
+        self.fig.canvas.mpl_connect("button_release_event", self.end_crop)
+        self.fig.canvas.mpl_connect("key_press_event",      self.handle_key_press)
+        self.fig.canvas.mpl_connect('draw_event',           self.update_secondary_axis)
+
+        self.fig.canvas.manager.set_window_title("RI Fringe Reference Selection")
+        plt.show()
+
+    # ── pixel ↔ wavelength helpers (identical to Mica window) ─────────────
+    def pixToWave(self, x):
+        return self.calibration_parameters["slope"] * (x - self.calibration_parameters["offset"]) + self.calibration_parameters["intercept"]
+
+    def waveToPix(self, lam):
+        return (lam - self.calibration_parameters["intercept"]) / self.calibration_parameters["slope"] + self.calibration_parameters["offset"]
+
+    def update_secondary_axis(self, event):
+        if hasattr(self, "secax"):
+            self.secax.set_xlim(self.ax.get_xlim())
+
+    def refresh_secondary_axis(self):
+        if hasattr(self, "secax") and self.secax:
+            try:
+                self.secax.remove()
+            except Exception:
+                pass
+        self.secax = self.ax.secondary_xaxis('top', functions=(self.pixToWave, self.waveToPix))
+        self.secax.set_xlabel(r"Wavelength, $\it{\lambda}$ (nm)")
+
+    # ── key / click routing ───────────────────────────────────────────────
+    def handle_key_press(self, event):
+        if event.key == "enter":
+            if self.stage == 1:
+                self.confirm_crop()
+            elif self.stage == 2 and len(self.selected_waves) == self.REQUIRED_WAVES:
+                self.convert_to_wavelengths()
+        elif event.key == "escape":
+            if self.stage == 1:
+                self.cancel_crop()
+            elif self.stage == 2:
+                self.cancel_selection()
+
+    def handle_click(self, event):
+        if self.stage == 1:
+            self.click_start_crop(event)
+        elif self.stage == 2:
+            self.select_wave_click(event)
+
+    # ── frame / display ───────────────────────────────────────────────────
+    def update_frame(self, value):
+        self.current_frame_index = int(value)
+        self.image.seek(self.current_frame_index)
+        scaled = self._scale_image(self.image)
+        self._display_image(scaled)
+
+    def _scale_image(self, image):
+        if image.mode not in ("RGB", "L"):
+            image = image.convert("RGB")
+        return image
+
+    def _display_image(self, image):
+        self.ax.clear()
+        self.ax.imshow(np.array(image), cmap="gray", aspect="auto")
+        self.ax.set_xlabel("Pixels")
+        self.ax.set_ylabel("Pixels")
+        self.refresh_secondary_axis()
+        self.update_instructions("Step 1: Select the region to crop by clicking and dragging. Press Enter to confirm.")
+        self.fig.canvas.draw_idle()
+
+    def update_instructions(self, text):
+        self.instruction_text.set_text(text)
+        self.instruction_text.set_wrap(True)
+        self.fig.canvas.draw_idle()
+
+    # ── crop stage ────────────────────────────────────────────────────────
+    def click_start_crop(self, event):
+        if self.stage == 1 and event.inaxes == self.ax:
+            self.cancel_crop()
+            self.crop_start_y = event.ydata
+            self.temp_crop_rectangle = None
+            self.fig.canvas.draw()
+
+    def drag_crop(self, event):
+        if self.stage == 1 and self.crop_start_y is not None and self.crop_end_y is None and event.inaxes == self.ax:
+            if self.temp_crop_rectangle:
+                self.temp_crop_rectangle.remove()
+            height = abs(event.ydata - self.crop_start_y)
+            y_start = min(self.crop_start_y, event.ydata)
+            self.temp_crop_rectangle = plt.Rectangle(
+                (0, y_start), self.ax.get_xlim()[1], height,
+                linewidth=1, edgecolor='red', facecolor='none'
+            )
+            self.ax.add_patch(self.temp_crop_rectangle)
+            self.fig.canvas.draw_idle()
+
+    def end_crop(self, event):
+        if self.stage == 1 and self.crop_start_y is not None and event.inaxes == self.ax:
+            self.crop_end_y = event.ydata
+
+    def confirm_crop(self):
+        if self.crop_start_y is not None and self.crop_end_y is not None:
+            y1 = int(min(self.crop_start_y, self.crop_end_y))
+            y2 = int(max(self.crop_start_y, self.crop_end_y))
+            self.image.seek(self.current_frame_index)
+            self.cropped_frame = self.image.crop((0, y1, self.image.width, y2))
+            self.stage = 2
+            if self.slider:
+                self.slider.ax.set_visible(False)
+                self.fig.canvas.draw()
+            self.run_wave_detection(self.cropped_frame)
+        else:
+            self.update_instructions("No crop area selected. Please try again.")
+
+    def cancel_crop(self):
+        self.crop_start_y = None
+        self.crop_end_y   = None
+        if self.temp_crop_rectangle:
+            try:
+                self.temp_crop_rectangle.remove()
+            except ValueError:
+                pass
+            finally:
+                self.temp_crop_rectangle = None
+        self.ax.clear()
+        self.update_frame(self.current_frame_index)
+
+    # ── wave detection ────────────────────────────────────────────────────
+    def run_wave_detection(self, image):
+        image_array = np.array(image)
+        if image_array.ndim == 3:
+            image_array = image_array.mean(axis=2)
+        normalized_image = cv2.normalize(image_array, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX).astype(np.float32)
+        col_avg = np.mean(normalized_image, axis=0)
+        x_vals  = np.arange(len(col_avg))
+        data    = list(zip(x_vals, col_avg))
+
+        st_settings      = app.internal_flags.get("advanced_settings", {}).get("sheet_thickness", {})
+        st_max_gaussians = st_settings.get("max_gaussians", 15)
+        st_prominence    = st_settings.get("prominence",    15)
+
+        result = tracking.arbitrary_gaussian_fits(
+            data, plot=True,
+            max_gaussians=st_max_gaussians,
+            prominence=st_prominence,
+            invert_peaks=True
+        )
+
+        raw_means = sorted(result["means"])
+        deduped = []
+        for avg in raw_means:
+            if not deduped or abs(deduped[-1] - avg) > 5:
+                deduped.append(avg)
+
+        if self.fringe_mode == "singlet":
+            # Singlet mode: use raw detected peaks directly, no pairing needed
+            self.filtered_averages = deduped
+        else:
+            # Doublet mode: drop stray unpaired endpoint if odd count, then average each pair
+            if len(deduped) % 2 != 0 and len(deduped) >= 3:
+                gap_first = abs(deduped[1] - deduped[0])
+                gap_last  = abs(deduped[-1] - deduped[-2])
+                if gap_first >= gap_last:
+                    deduped = deduped[1:]
+                else:
+                    deduped = deduped[:-1]
+
+            paired_means = []
+            for i in range(0, len(deduped) - 1, 2):
+                paired_means.append((deduped[i] + deduped[i + 1]) / 2.0)
+
+            self.filtered_averages = paired_means
+        self.display_filtered_waves()
+
+    def display_filtered_waves(self):
+        self.ax.clear()
+        self.ax.imshow(np.array(self.cropped_frame), cmap='gray')
+        self.ax.set_xlabel("Pixels")
+        self.ax.set_ylabel("Pixels")
+        for avg_x in self.filtered_averages:
+            self.ax.axvline(x=avg_x, color='lime', linestyle='--')
+        self.refresh_secondary_axis()
+        self.update_instructions(
+            f"Step 2: Click to select exactly 3 fringe lines (n, n-1, n-2) left-to-right "
+            f"(lowest → highest wavelength). Press Enter when done."
+        )
+        self.fig.canvas.draw_idle()
+
+    # ── wave selection ────────────────────────────────────────────────────
+    def select_wave_click(self, event):
+        if event.inaxes != self.ax:
+            return
+        x = event.xdata
+        closest_wave = min(self.filtered_averages, key=lambda w: abs(w - x), default=None)
+        if closest_wave is None:
+            return
+        if closest_wave not in self.selected_waves:
+            if len(self.selected_waves) < self.REQUIRED_WAVES:
+                self.selected_waves.append(closest_wave)
+        self.update_overlay()
+        if len(self.selected_waves) == self.REQUIRED_WAVES:
+            self.update_instructions("3 fringes selected. Press Enter to confirm or Esc to clear selection.")
+
+    def cancel_selection(self):
+        self.selected_waves = []
+        self.update_overlay()
+        self.update_instructions(
+            "Selection cleared. Click to select 3 fringe lines (n, n-1, n-2)."
+        )
+
+    def update_overlay(self):
+        self.ax.clear()
+        self.ax.imshow(np.array(self.cropped_frame), cmap='gray')
+        self.ax.set_xlabel("Pixels")
+        self.ax.set_ylabel("Pixels")
+        for avg_x in self.filtered_averages:
+            color = 'red' if avg_x in self.selected_waves else 'lime'
+            self.ax.axvline(x=avg_x, color=color, linestyle='--')
+        self.refresh_secondary_axis()
+        self.fig.canvas.draw()
+
+    # ── conversion & calculation ──────────────────────────────────────────
+    def convert_to_wavelengths(self, event=None):
+        if not self.calibration_parameters:
+            error_popup("Calibration parameters not provided.")
+            return
+
+        slope     = self.calibration_parameters['slope']
+        intercept = self.calibration_parameters['intercept']
+        offset    = self.calibration_parameters['offset']
+        wavelengths = [slope * (x - offset) + intercept for x in self.selected_waves]
+
+        # Sort ascending so leftmost (lowest λ) is index 0 → fringe n
+        wavelengths.sort()
+        lam_n, lam_n1, lam_n2 = wavelengths
+
+        # Compute fringe order using fringes n and n-1 (same formula as thickness window)
+        n = int(np.round(((lam_n1 / (lam_n1 - lam_n)) - 1) / 1.024))
+
+        if n % 2 == 0:
+            warning_popup(
+                f"Computed fringe order n = {n} is even. "
+                "The refractive index formula is defined for odd fringes. "
+                "Proceeding, but results may not be physically meaningful."
+            )
+
+        self.close_figure()
+        self.callback(n, lam_n, lam_n1, lam_n2)
+
+    def close_figure(self):
+        plt.close(self.fig)
+
 
 class Magnification_Calculation_Window:
     """
@@ -3211,13 +3933,14 @@ class Motion_Analysis_Window:
     PEAK_SELECT_MODE = 'peak_select'
     FIGURE_SIZE = (12, 4)
 
-    def __init__(self, motion_profile_file_path, calibration_parameters, output_file_path, modality, offset_callback=None) -> None:
+    def __init__(self, motion_profile_file_path, calibration_parameters, output_file_path, modality, offset_callback=None, wave_lines_callback=None) -> None:
         self.y_offset = 0
         self.x_offset_start = 0
         self.x_offset_end = 0
         self.calibration_parameters = calibration_parameters
         self.modality = modality
         self.offset_callback = offset_callback
+        self.wave_lines_callback = wave_lines_callback
 
         self.output_filename = output_file_path
         self.timelapse_image = np.array(Image.open(motion_profile_file_path).convert('L'))
@@ -3547,7 +4270,7 @@ class Motion_Analysis_Window:
 
         # Perform analysis on the cropped image
         #self.wave_lines = tracking.gaussianWaveDetection(self.cropped_image, self.peak_points)
-        self.wave_lines = tracking.newer_analyze_and_append_waves(self.cropped_image, self.peak_points, inertia=an_inertia, prominence=an_prominence, minSep=an_min_sep, noiseFloor=an_noise_floor, modality=app.mode_var.get())
+        self.wave_lines = tracking.newer_analyze_and_append_waves(self.cropped_image, self.peak_points, inertia=an_inertia, prominence=an_prominence, minSep=an_min_sep, noiseFloor=an_noise_floor, modality=self.modality)
         #self.wave_lines = tracking.new_analyze_and_append_waves(self.cropped_image,modality=app.mode_var.get())
 
         # Visualize the results and enable data deletion
@@ -3632,7 +4355,11 @@ class Motion_Analysis_Window:
         
         outputWaveLines = [[(x, y + self.x_offset_start) for (x, y) in wave] for wave in self.wave_lines]
 
-        app.setWaveLines(outputWaveLines)
+        # Dispatch to the appropriate consumer: RI section callback or the main app setter
+        if self.wave_lines_callback is not None:
+            self.wave_lines_callback(outputWaveLines)
+        else:
+            app.setWaveLines(outputWaveLines)
         self.save_wave_centerlines_to_csv(self.wave_lines, self.output_filename)
         
         # Update the plot title to a proper name
@@ -3909,7 +4636,7 @@ class RadiusMeasurementWindow:
         # Compute radius using the formula
         D_diff = abs(x_d1 - x_bottom)  # Only the difference matters
 
-        radius = (((X / (self.f/10e-6))) ** 2 ) / (8 * (D_diff*10e-9))
+        radius = (((X / (self.f*10e-6))) ** 2 ) / (8 * (D_diff*10e-9))
 
         self.callback(radius)  # Return value via callback
         plt.close(self.fig)  # Close the window after calculation
@@ -4396,7 +5123,7 @@ class ForceVsDistanceWindow:
         plt.grid(True)
         plt.yscale(y_scale)
         plt.legend()
-        self.fig.canvas.manager.set_window_title("Force vs Distance")
+        #self.fig.canvas.manager.set_window_title("Force vs Distance")
         plt.show()
 
 if __name__ == "__main__":
