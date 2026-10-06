@@ -355,7 +355,7 @@ class SFA_FECO_UI:
         self.thickness_frame = ttk.Frame(self.calibration_subframe)
         self.thickness_frame.grid(row=14+1, column=0, sticky='w', padx=10, pady=(5, 5))
 
-        self.calibration_thickness_label = ttk.Label(self.thickness_frame, text="Mica thickness (μm):", style='Regular.TLabel')
+        self.calibration_thickness_label = ttk.Label(self.thickness_frame, text="Mica thickness, T (μm):", style='Regular.TLabel')
         self.calibration_thickness_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
 
         self.thickness_display = tk.Entry(self.thickness_frame, width=10)
